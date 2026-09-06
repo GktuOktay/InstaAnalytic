@@ -4,19 +4,21 @@ import { sessionsApi, Session } from '../api/sessions'
 import { analysisApi, RelationshipUser, AnalysisSummary } from '../api/analysis'
 import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
+import { useLang } from '../contexts/LangContext'
 import { RefreshCw, Lock, BadgeCheck, Users, UserMinus, UserPlus, CheckSquare, Square } from 'lucide-react'
 
 type Tab = 'not_following_back' | 'not_followed_back' | 'mutual' | 'followers' | 'following'
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'not_following_back', label: 'Geri Takip Etmeyenler' },
-  { key: 'not_followed_back',  label: 'Takip Etmediklerimiz'  },
-  { key: 'mutual',             label: 'Karşılıklı'            },
-  { key: 'followers',          label: 'Tüm Takipçiler'        },
-  { key: 'following',          label: 'Tüm Takip Edilenler'   },
-]
-
 export default function FollowersPage() {
+  const { T } = useLang()
+
+  const TABS: { key: Tab; label: string }[] = [
+    { key: 'not_following_back', label: T.followers.notFollowingBackPlural },
+    { key: 'not_followed_back',  label: T.followers.notFollowedBack        },
+    { key: 'mutual',             label: T.followers.mutual                 },
+    { key: 'followers',          label: T.followers.allFollowers           },
+    { key: 'following',          label: T.followers.allFollowing           },
+  ]
   const [sessions,      setSessions]      = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string>('')
   const [tab,           setTab]           = useState<Tab>('not_following_back')
@@ -157,8 +159,8 @@ export default function FollowersPage() {
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-        <p className="mb-2">Kayıtlı session yok.</p>
-        <a href="/session" className="text-purple-400 hover:underline text-sm">Session ekle →</a>
+        <p className="mb-2">{T.followers.noSession}</p>
+        <a href="/session" className="text-purple-400 hover:underline text-sm">{T.followers.addSession}</a>
       </div>
     )
   }
@@ -167,7 +169,7 @@ export default function FollowersPage() {
     <div>
       {/* Başlık + session seçici + sync butonları */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Takipçi Analizi</h1>
+        <h1 className="text-2xl font-bold">{T.followers.title}</h1>
         <div className="flex items-center gap-2">
           {queueLength > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-900/40 border border-amber-700 rounded-lg text-xs text-amber-300">
@@ -183,11 +185,11 @@ export default function FollowersPage() {
           )}
           <button onClick={() => handleSync('followers')} disabled={syncing || !activeSession}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> Takipçi Sync
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.monitor.types.followerSync}
           </button>
           <button onClick={() => handleSync('following')} disabled={syncing || !activeSession}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> Takip Sync
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.monitor.types.followingSync}
           </button>
         </div>
       </div>
@@ -204,7 +206,7 @@ export default function FollowersPage() {
         <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4">
           <div className="flex justify-between text-sm mb-2">
             <span className="text-purple-400">
-              {syncProgress?.step === 'following' ? 'Takip edilenler' : 'Takipçiler'} çekiliyor…
+              {syncProgress?.step === 'following' ? T.followers.followingTab : T.followers.followersTab} {T.common.loading}
             </span>
             {syncProgress && syncProgress.total > 0 && (
               <span>{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
@@ -223,7 +225,7 @@ export default function FollowersPage() {
       {bulkRunning && (
         <div className="bg-gray-900 border border-amber-800 rounded-xl p-4 mb-4">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-amber-400">Toplu takipten çıkılıyor…</span>
+            <span className="text-amber-400">{T.followers.bulkUnfollowing}</span>
             {bulkProgress && (
               <span>{bulkProgress.done ?? 0} / {bulkProgress.total} tamamlandı</span>
             )}
@@ -241,11 +243,11 @@ export default function FollowersPage() {
       {summary && (
         <div className="grid grid-cols-5 gap-3 mb-6">
           {[
-            { label: 'Takipçi',              value: summary.total_followers  },
-            { label: 'Takip Edilen',         value: summary.total_following  },
-            { label: 'Karşılıklı',           value: summary.mutual           },
-            { label: 'Geri Takip Etmeyen',   value: summary.not_following_back, warn: true },
-            { label: 'Takip Etmediğimiz',    value: summary.not_followed_back },
+            { label: T.followers.followers,           value: summary.total_followers  },
+            { label: T.followers.followingTab,        value: summary.total_following  },
+            { label: T.followers.mutual,              value: summary.mutual           },
+            { label: T.followers.notFollowingBack,    value: summary.not_following_back, warn: true },
+            { label: T.followers.notFollowedBackSingle, value: summary.not_followed_back },
           ].map(c => (
             <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
               <p className={`text-2xl font-bold ${c.warn ? 'text-amber-400' : ''}`}>{c.value}</p>
@@ -272,7 +274,7 @@ export default function FollowersPage() {
       {/* Arama + toplu aksiyon */}
       <div className="flex items-center gap-3 mb-4">
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Kullanıcı ara…"
+          placeholder={T.followers.search}
           className="w-64 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-500" />
         {selected.size > 0 && (
           <button onClick={() => setShowBulkModal(true)} disabled={bulkRunning}
@@ -285,7 +287,7 @@ export default function FollowersPage() {
       {/* Liste */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-600 border border-dashed border-gray-800 rounded-xl">
-          <p className="text-sm">Veri yok.</p>
+          <p className="text-sm">{T.followers.noData}</p>
           <p className="text-xs mt-1">Önce Sync butonuna bas.</p>
         </div>
       ) : (
@@ -341,11 +343,11 @@ export default function FollowersPage() {
                           ? <span className="p-1.5"><RefreshCw size={13} className="animate-spin text-gray-500" /></span>
                           : !u.we_follow
                             ? <button onClick={() => handleSingleAction(u.id, 'follow')}
-                                className="p-1.5 rounded-lg bg-green-900 hover:bg-green-800 text-green-400" title="Takip Et (kuyruğa alınır)">
+                                className="p-1.5 rounded-lg bg-green-900 hover:bg-green-800 text-green-400" title={T.followers.follow}>
                                 <UserPlus size={13} />
                               </button>
                             : <button onClick={() => handleSingleAction(u.id, 'unfollow')}
-                                className="p-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-red-400" title="Takipten Çık (kuyruğa alınır)">
+                                className="p-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-red-400" title={T.followers.unfollow}>
                                 <UserMinus size={13} />
                               </button>
                       }
@@ -364,13 +366,13 @@ export default function FollowersPage() {
           onClick={() => setShowBulkModal(false)}>
           <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-96"
             onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-bold mb-1">Toplu Takipten Çık</h2>
+            <h2 className="text-lg font-bold mb-1">{T.followers.bulkUnfollow}</h2>
             <p className="text-sm text-gray-500 mb-5">{selected.size} kullanıcı seçildi</p>
             <div className="space-y-4 mb-6">
               {[
-                { label: 'Min Gecikme (sn)', key: 'min', min: 10 },
-                { label: 'Max Gecikme (sn)', key: 'max', min: 10 },
-                { label: 'Saatlik Limit',    key: 'limit', min: 1, max: 60 },
+                { label: T.followers.minDelay, key: 'min', min: 10 },
+                { label: T.followers.maxDelay, key: 'max', min: 10 },
+                { label: T.followers.hourlyLimit, key: 'limit', min: 1, max: 60 },
               ].map(f => (
                 <div key={f.key}>
                   <label className="block text-xs text-gray-400 mb-1">{f.label}</label>

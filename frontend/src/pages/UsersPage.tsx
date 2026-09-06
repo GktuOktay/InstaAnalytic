@@ -6,7 +6,7 @@ import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
 import {
   BadgeCheck, Lock, Download, RefreshCw, Heart, MessageSquare,
-  TrendingUp, UserPlus, UserMinus, ChevronLeft, ChevronRight, CheckSquare, Square
+  TrendingUp, UserPlus, UserMinus, UserX, ChevronLeft, ChevronRight, CheckSquare, Square
 } from 'lucide-react'
 
 type SortKey = 'engagement_desc' | 'engagement_asc' | 'username_asc' | 'username_desc'
@@ -318,7 +318,7 @@ export default function UsersPage() {
         {pageItems.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 130px',
+            gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 66px',
             gap: '0 10px',
             minWidth: 480,
             padding: '5px 10px',
@@ -356,7 +356,7 @@ export default function UsersPage() {
               return (
                 <div key={u.id} style={{
                   display: 'grid',
-                  gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 130px',
+                  gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 66px',
                   gap: '0 10px',
                   minWidth: 480,
                   alignItems: 'center',
@@ -414,40 +414,26 @@ export default function UsersPage() {
                   </div>
 
                   {/* Aksiyon */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                    {/* Biz takip ediyorsak: Çıkar butonu */}
+                  <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
                     {u.we_follow ? (
-                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad} style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        background: '#2a1a1a', border: '1px solid #4a2a2a', color: '#e07070',
-                        opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
-                      }}>
-                        {actLoad === 'unfollow' ? <RefreshCw size={10} className="animate-spin" /> : <UserMinus size={10} />}
-                        {T.users.action.unfollow}
+                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad}
+                        title={T.users.action.unfollow}
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: '#2a1a1a', border: '1px solid #4a2a2a', color: '#e07070', opacity: actLoad ? 0.5 : 1 }}>
+                        {actLoad === 'unfollow' ? <RefreshCw size={11} className="animate-spin" /> : <UserMinus size={11} />}
                       </button>
                     ) : (
-                      <button onClick={() => handleFollow(u)} disabled={!!actLoad} style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        background: '#1a2a1a', border: '1px solid #2a4a2a', color: '#4eca8a',
-                        opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
-                      }}>
-                        {actLoad === 'follow' ? <RefreshCw size={10} className="animate-spin" /> : <UserPlus size={10} />}
-                        {T.users.action.follow}
+                      <button onClick={() => handleFollow(u)} disabled={!!actLoad}
+                        title={T.users.action.follow}
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: '#1a2a1a', border: '1px solid #2a4a2a', color: '#4eca8a', opacity: actLoad ? 0.5 : 1 }}>
+                        {actLoad === 'follow' ? <RefreshCw size={11} className="animate-spin" /> : <UserPlus size={11} />}
                       </button>
                     )}
-                    {u.they_follow && (
-                      <button onClick={() => handleRemoveFollower(u)} disabled={!!actLoad} style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                        background: '#1a1a2a', border: '1px solid #2a2a4a', color: '#9b8fe0',
-                        opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
-                      }}>
-                        {actLoad === 'remove_follower' ? <RefreshCw size={10} className="animate-spin" /> : <UserMinus size={10} />}
-                        {T.users.action.removeFollower}
-                      </button>
-                    )}
+                    <button onClick={() => u.they_follow ? handleRemoveFollower(u) : undefined}
+                      disabled={!!actLoad || !u.they_follow}
+                      title={T.users.action.removeFollower}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: u.they_follow ? 'pointer' : 'default', background: '#1a1a2a', border: '1px solid #2a2a4a', color: u.they_follow ? '#9b8fe0' : '#2a2a3a', opacity: actLoad ? 0.5 : 1 }}>
+                      {actLoad === 'remove_follower' ? <RefreshCw size={11} className="animate-spin" /> : <UserX size={11} />}
+                    </button>
                   </div>
                 </div>
               )

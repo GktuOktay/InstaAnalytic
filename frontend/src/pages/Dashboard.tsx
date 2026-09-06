@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { sessionsApi, Session } from '../api/sessions'
+import { useLang } from '../contexts/LangContext'
 
 interface HealthStatus {
   status: string
@@ -10,6 +11,7 @@ interface HealthStatus {
 }
 
 export default function Dashboard() {
+  const { T, lang } = useLang()
   const [health, setHealth] = useState<HealthStatus | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const navigate = useNavigate()
@@ -23,7 +25,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-6">{T.dashboard.title}</h1>
 
       {/* Servis durumu */}
       <div className="grid grid-cols-3 gap-4 mb-8">
@@ -35,18 +37,18 @@ export default function Dashboard() {
       {/* Kayıtlı sessionlar */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Aktif Sessionlar</h2>
+          <h2 className="font-semibold">{T.dashboard.activeSessions}</h2>
           <button onClick={() => navigate('/session')}
             className="text-xs text-purple-400 hover:text-purple-300">
-            Yönet →
+            {lang === 'tr' ? 'Yönet →' : 'Manage →'}
           </button>
         </div>
         {sessions.length === 0 ? (
           <div className="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-5 text-center">
-            <p className="text-sm text-gray-500 mb-3">Henüz session yok.</p>
+            <p className="text-sm text-gray-500 mb-3">{T.dashboard.noSession}</p>
             <button onClick={() => navigate('/session')}
               className="px-4 py-2 bg-purple-700 hover:bg-purple-600 rounded-lg text-sm font-medium">
-              Session Tara
+              {T.session.scan}
             </button>
           </div>
         ) : (
@@ -55,7 +57,7 @@ export default function Dashboard() {
               <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
                 <p className="font-semibold">@{s.ig_username}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Eklendi: {new Date(s.created_at).toLocaleDateString('tr-TR')}
+                  {new Date(s.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
                 </p>
               </div>
             ))}
@@ -63,14 +65,13 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Hızlı erişim */}
       {sessions.length > 0 && (
         <div>
-          <h2 className="font-semibold mb-3">Hızlı Erişim</h2>
+          <h2 className="font-semibold mb-3">{T.dashboard.quickAccess}</h2>
           <div className="grid grid-cols-2 gap-3">
-            <QuickCard title="Takipçi Analizi" desc="Takip eden/edilenleri karşılaştır" onClick={() => navigate('/followers')} />
-            <QuickCard title="Gönderi Analizi" desc="Beğeni ve yorum istatistikleri" onClick={() => navigate('/posts')} />
-            <QuickCard title="Aksiyon Geçmişi" desc="Follow/unfollow kayıtları" onClick={() => navigate('/actions')} />
+            <QuickCard title={T.dashboard.cards.followers} desc={T.dashboard.cards.followersDesc} onClick={() => navigate('/followers')} />
+            <QuickCard title={T.dashboard.cards.posts} desc={T.dashboard.cards.postsDesc} onClick={() => navigate('/posts')} />
+            <QuickCard title={T.dashboard.cards.actions} desc={T.dashboard.cards.actionsDesc} onClick={() => navigate('/actions')} />
           </div>
         </div>
       )}

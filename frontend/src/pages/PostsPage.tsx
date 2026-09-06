@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { sessionsApi, Session } from '../api/sessions'
 import { postsApi, Post, PostLiker, PostComment, PostStats } from '../api/posts'
 import { analysisApi } from '../api/analysis'
+import { useLang } from '../contexts/LangContext'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { RefreshCw, Heart, MessageCircle, Play, Image, Layers, X, Users, Download } from 'lucide-react'
 
@@ -18,6 +19,7 @@ const MEDIA_ICON: Record<string, React.ReactNode> = {
 }
 
 export default function PostsPage() {
+  const { T, lang } = useLang()
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string>('')
   const [posts, setPosts] = useState<Post[]>([])
@@ -97,7 +99,7 @@ export default function PostsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Gönderi Analizi</h1>
+        <h1 className="text-2xl font-bold">{T.posts.title}</h1>
         <div className="flex items-center gap-2">
           {sessions.length > 1 && (
             <select value={activeSession} onChange={e => setActiveSession(e.target.value)}
@@ -107,11 +109,11 @@ export default function PostsPage() {
           )}
           <button onClick={handleSyncAllInteractions} disabled={syncingBulk || syncing || !activeSession || posts.length === 0}
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
-            <Users size={13} className={syncingBulk ? 'animate-spin' : ''} /> Tümünü Tara
+            <Users size={13} className={syncingBulk ? 'animate-spin' : ''} /> {T.posts.scanAll}
           </button>
           <button onClick={handleSync} disabled={syncing || !activeSession}
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> Gönderileri Çek
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.posts.fetch}
           </button>
         </div>
       </div>
@@ -119,7 +121,7 @@ export default function PostsPage() {
       {syncing && (
         <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-purple-400">Gönderiler çekiliyor...</span>
+            <span className="text-purple-400">{T.posts.fetching}</span>
             {syncProgress && <span>{syncProgress.current} / {syncProgress.total}</span>}
           </div>
           {syncProgress && (
@@ -134,8 +136,8 @@ export default function PostsPage() {
       {syncingBulk && (
         <div className="bg-gray-900 border border-blue-800 rounded-xl p-4 mb-4">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-blue-400">Tüm gönderiler için like/yorum kuyruğa alınıyor...</span>
-            {bulkProgress && <span>{bulkProgress.current} / {bulkProgress.total} gönderi</span>}
+            <span className="text-blue-400">{T.posts.scanning}</span>
+            {bulkProgress && <span>{bulkProgress.current} / {bulkProgress.total} {lang === 'en' ? 'posts' : 'gönderi'}</span>}
           </div>
           {bulkProgress && bulkProgress.total > 0 && (
             <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -143,18 +145,18 @@ export default function PostsPage() {
                 style={{ width: `${Math.round((bulkProgress.current / bulkProgress.total) * 100)}%` }} />
             </div>
           )}
-          <p className="text-xs text-gray-500 mt-2">Celery worker'lar arka planda işlemeye devam edecek.</p>
+          <p className="text-xs text-gray-500 mt-2">{T.posts.workerNote}</p>
         </div>
       )}
 
       {stats && stats.total_posts > 0 && (
         <div className="grid grid-cols-5 gap-3 mb-6">
           {[
-            { label: 'Toplam Gönderi', value: stats.total_posts.toLocaleString() },
-            { label: 'Toplam Like', value: stats.total_likes.toLocaleString() },
-            { label: 'Toplam Yorum', value: stats.total_comments.toLocaleString() },
-            { label: 'Ort. Like', value: stats.avg_likes.toLocaleString() },
-            { label: 'Ort. Yorum', value: stats.avg_comments.toLocaleString() },
+            { label: T.posts.totalPosts,    value: stats.total_posts.toLocaleString() },
+            { label: T.posts.totalLikes,    value: stats.total_likes.toLocaleString() },
+            { label: T.posts.totalComments, value: stats.total_comments.toLocaleString() },
+            { label: T.posts.avgLikes,      value: stats.avg_likes.toLocaleString() },
+            { label: T.posts.avgComments,   value: stats.avg_comments.toLocaleString() },
           ].map(c => (
             <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold">{c.value}</p>
@@ -165,7 +167,7 @@ export default function PostsPage() {
       )}
 
       {posts.length === 0 ? (
-        <p className="text-gray-600 text-sm text-center py-16">Gönderi yok. "Gönderileri Çek" butonuna bas.</p>
+        <p className="text-gray-600 text-sm text-center py-16">{T.posts.noPost}</p>
       ) : (
         <div className="grid grid-cols-3 gap-3">
           {posts.map(post => (
@@ -190,7 +192,7 @@ export default function PostsPage() {
                   <span className="flex items-center gap-1 text-blue-400"><MessageCircle size={13} />{post.comment_count.toLocaleString()}</span>
                 </div>
                 {post.taken_at && (
-                  <p className="text-xs text-gray-600">{new Date(post.taken_at).toLocaleDateString('tr-TR')}</p>
+                  <p className="text-xs text-gray-600">{new Date(post.taken_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}</p>
                 )}
               </div>
             </div>
@@ -210,7 +212,7 @@ export default function PostsPage() {
                 </div>
                 <a href={IG_URL(selected.shortcode)} target="_blank" rel="noreferrer"
                   className="text-xs text-purple-400 hover:underline">
-                  Instagram'da aç
+                  {lang === 'en' ? 'Open on Instagram' : 'Instagram\'da aç'}
                 </a>
               </div>
               <div className="flex items-center gap-2">
@@ -219,7 +221,7 @@ export default function PostsPage() {
                   disabled={syncingInteraction}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
                   <RefreshCw size={12} className={syncingInteraction ? 'animate-spin' : ''} />
-                  Like/Yorum Çek
+                  {lang === 'en' ? 'Fetch Likes/Comments' : 'Like/Yorum Çek'}
                 </button>
                 <button onClick={() => setSelected(null)} className="p-1.5 text-gray-500 hover:text-white">
                   <X size={18} />
@@ -235,7 +237,7 @@ export default function PostsPage() {
 
             {syncingInteraction && (
               <div className="px-4 py-2 text-xs text-purple-400 border-b border-gray-800">
-                Etkileşimler çekiliyor...
+                {lang === 'en' ? 'Fetching interactions...' : 'Etkileşimler çekiliyor...'}
               </div>
             )}
 
@@ -245,7 +247,9 @@ export default function PostsPage() {
                   className={`flex-1 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                     detailTab === t ? 'border-purple-500 text-white' : 'border-transparent text-gray-500'
                   }`}>
-                  {t === 'likers' ? `Likelar (${likers.length})` : `Yorumlar (${comments.length})`}
+                  {t === 'likers'
+                    ? `${lang === 'en' ? 'Likes' : 'Likelar'} (${likers.length})`
+                    : `${lang === 'en' ? 'Comments' : 'Yorumlar'} (${comments.length})`}
                 </button>
               ))}
             </div>
@@ -253,7 +257,7 @@ export default function PostsPage() {
             <div className="flex-1 overflow-y-auto p-2">
               {detailTab === 'likers' ? (
                 likers.length === 0 ? (
-                  <p className="text-gray-600 text-sm text-center py-8">Henüz like çekilmedi</p>
+                  <p className="text-gray-600 text-sm text-center py-8">{T.posts.noLikes}</p>
                 ) : (
                   <div className="space-y-1">
                     {likers.map(u => (
@@ -275,7 +279,7 @@ export default function PostsPage() {
                 )
               ) : (
                 comments.length === 0 ? (
-                  <p className="text-gray-600 text-sm text-center py-8">Henüz yorum çekilmedi</p>
+                  <p className="text-gray-600 text-sm text-center py-8">{T.posts.noComments}</p>
                 ) : (
                   <div className="space-y-2 p-2">
                     {comments.map((c, i) => (
@@ -286,7 +290,7 @@ export default function PostsPage() {
                         }
                         <p className="text-sm text-gray-300">{c.content}</p>
                         {c.interacted_at && (
-                          <p className="text-xs text-gray-600 mt-1">{new Date(c.interacted_at).toLocaleDateString('tr-TR')}</p>
+                          <p className="text-xs text-gray-600 mt-1">{new Date(c.interacted_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}</p>
                         )}
                       </div>
                     ))}

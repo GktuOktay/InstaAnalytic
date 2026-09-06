@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { sessionsApi, Session } from '../api/sessions'
 import { reportApi, InteractionReport } from '../api/report'
+import { useLang } from '../contexts/LangContext'
 import { Heart, MessageCircle, Users, TrendingUp, Star, Award, Loader2 } from 'lucide-react'
 
 const IG = (sc: string) => `https://www.instagram.com/p/${sc}/`
 
 /* ── Bar chart (SVG) ──────────────────────────────────────────── */
-function BarChart({ data }: { data: { month: string; total_likes: number; avg_likes: number; post_count: number }[] }) {
+function BarChart({ data, lang }: { data: { month: string; total_likes: number; avg_likes: number; post_count: number }[]; lang: string }) {
   if (!data.length) return null
   const maxTotal = Math.max(...data.map(d => d.total_likes), 1)
   const maxAvg   = Math.max(...data.map(d => d.avg_likes), 1)
@@ -17,9 +18,14 @@ function BarChart({ data }: { data: { month: string; total_likes: number; avg_li
     '01':'Oca','02':'Şub','03':'Mar','04':'Nis','05':'May','06':'Haz',
     '07':'Tem','08':'Ağu','09':'Eyl','10':'Eki','11':'Kas','12':'Ara',
   }
+  const MONTH_EN: Record<string, string> = {
+    '01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun',
+    '07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec',
+  }
   const label = (m: string) => {
     const [y, mo] = m.split('-')
-    return `${MONTH_TR[mo] ?? mo} ${y.slice(2)}`
+    const map = lang === 'en' ? MONTH_EN : MONTH_TR
+    return `${map[mo] ?? mo} ${y.slice(2)}`
   }
 
   // y-axis ticks
@@ -67,7 +73,7 @@ function BarChart({ data }: { data: { month: string; total_likes: number; avg_li
 }
 
 /* ── Donut ──────────────────────────────────────────────────────── */
-function Donut({ follower, outsider }: { follower: number; outsider: number }) {
+function Donut({ follower, outsider, label }: { follower: number; outsider: number; label: string }) {
   const total = follower + outsider || 1
   const pct = follower / total
   const R = 48, C = 60
@@ -86,7 +92,7 @@ function Donut({ follower, outsider }: { follower: number; outsider: number }) {
         %{Math.round(pct * 100)}
       </text>
       <text x={C} y={C + 11} textAnchor="middle" fontSize={8} fill="var(--c-muted)" fontFamily="inherit">
-        takipçi
+        {label}
       </text>
     </svg>
   )
@@ -102,6 +108,7 @@ function FanBar({ val, max }: { val: number; max: number }) {
 }
 
 export default function ReportPage() {
+  const { T, lang } = useLang()
   const [sessions, setSessions] = useState<Session[]>([])
   const [sid, setSid] = useState('')
   const [report, setReport] = useState<InteractionReport | null>(null)
@@ -120,7 +127,7 @@ export default function ReportPage() {
     setLoading(true); setError('')
     reportApi.interactions(sid)
       .then(setReport)
-      .catch(() => setError('Rapor yüklenemedi'))
+      .catch(() => setError(T.report.loadError))
       .finally(() => setLoading(false))
   }, [sid])
 
@@ -144,10 +151,10 @@ export default function ReportPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>
-            Etkileşim Raporu
+            {T.report.title}
           </h1>
           <p style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>
-            Like · Yorum · Takipçi Analizi
+            {T.report.subtitle}
           </p>
         </div>
         {sessions.length > 1 && (
@@ -161,7 +168,7 @@ export default function ReportPage() {
 
       {loading && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--c-muted)', padding: '40px 0' }}>
-          <Loader2 size={18} className="animate-spin" /> Rapor hesaplanıyor...
+          <Loader2 size={18} className="animate-spin" /> {T.report.calculating}
         </div>
       )}
       {error && <p style={{ color: '#E05B6A' }}>{error}</p>}
@@ -175,10 +182,10 @@ export default function ReportPage() {
             {/* KPI row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
               {[
-                { label: 'Toplam Like', val: kpi.total_likes.toLocaleString('tr'), sub: `Ort. ${kpi.avg_likes} / gönderi`, icon: <Heart size={14} color="var(--c-amber)" /> },
-                { label: 'Toplam Yorum', val: kpi.total_comments.toLocaleString('tr'), sub: `Ort. ${kpi.avg_comments} / gönderi`, icon: <MessageCircle size={14} color="var(--c-blue)" /> },
-                { label: 'Benzersiz Kişi', val: kpi.unique_interactors.toLocaleString('tr'), sub: 'Farklı hesap', icon: <Users size={14} color="var(--c-teal)" /> },
-                { label: 'En İyi Gönderi', val: kpi.max_likes.toLocaleString('tr'), sub: 'Tek gönderide like', icon: <Star size={14} color="var(--c-amber)" /> },
+                { label: T.report.kpi.likes,       val: kpi.total_likes.toLocaleString(),       sub: `${lang === 'en' ? 'Avg' : 'Ort'} ${kpi.avg_likes} / ${lang === 'en' ? 'post' : 'gönderi'}`, icon: <Heart size={14} color="var(--c-amber)" /> },
+                { label: T.report.kpi.comments,    val: kpi.total_comments.toLocaleString(),    sub: `${lang === 'en' ? 'Avg' : 'Ort'} ${kpi.avg_comments} / ${lang === 'en' ? 'post' : 'gönderi'}`, icon: <MessageCircle size={14} color="var(--c-blue)" /> },
+                { label: T.report.kpi.uniqueUsers, val: kpi.unique_interactors.toLocaleString(), sub: T.report.differentAccounts, icon: <Users size={14} color="var(--c-teal)" /> },
+                { label: T.report.sections.topPosts, val: kpi.max_likes.toLocaleString(),       sub: T.report.maxLike, icon: <Star size={14} color="var(--c-amber)" /> },
               ].map(c => (
                 <div key={c.label} style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '16px 18px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -195,13 +202,13 @@ export default function ReportPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 10, marginBottom: 10 }}>
               <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 20 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-muted)', marginBottom: 16 }}>
-                  Aylık Like Dağılımı
+                  {T.report.sections.monthly}
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <BarChart data={monthly} />
+                  <BarChart data={monthly} lang={lang} />
                 </div>
                 <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
-                  {[['var(--c-amber)', 'Toplam Like'], ['var(--c-blue)', 'Ort. Like / Gönderi']].map(([c, l]) => (
+                  {[['var(--c-amber)', T.report.kpi.likes], ['var(--c-blue)', T.report.kpi.avgLikes]].map(([c, l]) => (
                     <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--c-soft)' }}>
                       <div style={{ width: 10, height: 10, borderRadius: 2, background: c }} />{l}
                     </div>
@@ -211,26 +218,26 @@ export default function ReportPage() {
 
               <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 20 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-muted)', marginBottom: 16 }}>
-                  Takipçi Analizi
+                  {T.report.sections.breakdown}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                  <Donut follower={fb.follower_likes} outsider={fb.outsider_likes} />
+                  <Donut follower={fb.follower_likes} outsider={fb.outsider_likes} label={T.report.follower} />
                   <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {[
-                      { label: 'Takipçi', likes: fb.follower_likes, users: fb.follower_users, color: 'var(--c-teal)' },
-                      { label: 'Takipçi Değil', likes: fb.outsider_likes, users: fb.outsider_users, color: 'var(--c-amber)' },
+                      { label: T.report.follower,    likes: fb.follower_likes, users: fb.follower_users, color: 'var(--c-teal)' },
+                      { label: T.report.nonFollower, likes: fb.outsider_likes, users: fb.outsider_users, color: 'var(--c-amber)' },
                     ].map(r => (
                       <div key={r.label}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, color: 'var(--c-soft)' }}>{r.label}</span>
                           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text)', fontVariantNumeric: 'tabular-nums' }}>
-                            {r.likes.toLocaleString('tr')} like
+                            {r.likes.toLocaleString()} like
                           </span>
                         </div>
                         <div style={{ height: 4, background: 'var(--c-surface2)', borderRadius: 2, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${(r.likes / totalFbLikes) * 100}%`, background: r.color, borderRadius: 2 }} />
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>{r.users} kişi</div>
+                        <div style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>{r.users} {lang === 'en' ? 'people' : 'kişi'}</div>
                       </div>
                     ))}
                   </div>
@@ -245,7 +252,7 @@ export default function ReportPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <Award size={13} color="var(--c-amber)" />
                   <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>
-                    En Aktif Kullanıcılar
+                    {T.report.sections.topFans}
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -276,17 +283,17 @@ export default function ReportPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <TrendingUp size={13} color="var(--c-blue)" />
                   <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>
-                    En Yüksek Gönderi
+                    {T.report.sections.topPosts}
                   </span>
                 </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>
                       <th style={{ textAlign: 'left', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>#</th>
-                      <th style={{ textAlign: 'left', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>Tarih</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>Like</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>Yorum</th>
-                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>Sync</th>
+                      <th style={{ textAlign: 'left', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>{T.report.date}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>{T.report.like}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>{T.report.comment}</th>
+                      <th style={{ textAlign: 'right', paddingBottom: 10, borderBottom: '1px solid var(--c-border)' }}>{T.report.sync}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,7 +324,7 @@ export default function ReportPage() {
             {top_commenters.length > 0 && (
               <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 20 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-muted)', marginBottom: 16 }}>
-                  En Çok Yorum Yapanlar
+                  {T.report.sections.topCommenters}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
                   {top_commenters.map(c => (
@@ -344,10 +351,10 @@ export default function ReportPage() {
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 10,
               background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '14px 20px' }}>
               {[
-                { label: 'Gönderi Sayısı', val: `${kpi.total_posts} adet` },
-                { label: 'Senkronize Etkileşim', val: `${kpi.synced_interactions.toLocaleString('tr')} kayıt` },
-                { label: 'Takipçi Like Oranı', val: `%${Math.round(fb.follower_likes / totalFbLikes * 100)}` },
-                { label: 'Yorum / Like Oranı', val: `%${((kpi.total_comments / (kpi.total_likes || 1)) * 100).toFixed(2)}` },
+                { label: T.report.kpi.posts,   val: `${kpi.total_posts}${lang === 'en' ? '' : ' adet'}` },
+                { label: T.report.kpi.synced,  val: `${kpi.synced_interactions.toLocaleString()}${lang === 'en' ? ' records' : ' kayıt'}` },
+                { label: T.report.followerRate, val: `%${Math.round(fb.follower_likes / totalFbLikes * 100)}` },
+                { label: T.report.commentRate,  val: `%${((kpi.total_comments / (kpi.total_likes || 1)) * 100).toFixed(2)}` },
               ].map(item => (
                 <div key={item.label}>
                   <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--c-muted)' }}>{item.label}</div>

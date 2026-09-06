@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import api from '../api/client'
 import { sessionsApi, Session } from '../api/sessions'
 import { actionsApi, QueueStatus } from '../api/actions'
+import { useLang } from '../contexts/LangContext'
 import {
   Activity, Clock, CheckCircle2, XCircle, Loader2,
   RefreshCw, Trash2
@@ -40,12 +41,7 @@ const STATUS_COLORS: Record<string, string> = {
   PROGRESS:   'text-purple-400 bg-purple-900/30',
 }
 
-const JOB_LABELS: Record<string, string> = {
-  sync_followers:         'Takipçi Sync',
-  sync_following:         'Takip Sync',
-  sync_posts:             'Gönderi Sync',
-  sync_post_interactions: 'Etkileşim Sync',
-}
+// JOB_LABELS is now built inside the component using T
 
 function elapsed(created: string | null, finished: string | null) {
   if (!created) return null
@@ -65,6 +61,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function MonitorPage() {
+  const { T, lang } = useLang()
+  const JOB_LABELS: Record<string, string> = {
+    sync_followers:         T.monitor.types.followerSync,
+    sync_following:         T.monitor.types.followingSync,
+    sync_posts:             T.monitor.types.postSync,
+    sync_post_interactions: T.monitor.types.interactionSync,
+  }
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string>('')
   const [jobs, setJobs] = useState<SyncJob[]>([])
@@ -122,9 +125,9 @@ export default function MonitorPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold">Kuyruk Monitörü</h1>
+          <h1 className="text-xl font-bold">{T.monitor.title}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Aktif ve tamamlanan işlemler · {lastRefresh ? `Son güncelleme: ${lastRefresh.toLocaleTimeString('tr-TR')}` : ''}
+            {lastRefresh ? `${lang === 'tr' ? 'Son güncelleme' : 'Last updated'}: ${lastRefresh.toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-US')}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -145,7 +148,7 @@ export default function MonitorPage() {
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Yenile
+            {T.common.refresh}
           </button>
         </div>
       </div>
@@ -156,24 +159,24 @@ export default function MonitorPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-sm flex items-center gap-2">
               <Activity size={15} className="text-purple-400" />
-              Takip/Takipten Çıkma Kuyruğu
+              {lang === 'en' ? 'Follow/Unfollow Queue' : 'Takip/Takipten Çıkma Kuyruğu'}
             </h2>
             {queue.queue_length > 0 && (
               <button
                 onClick={handleClearQueue}
                 className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors"
               >
-                <Trash2 size={12} /> Temizle
+                <Trash2 size={12} /> {lang === 'en' ? 'Clear' : 'Temizle'}
               </button>
             )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: 'Kuyrukta',    value: queue.queue_length, color: queue.queue_length > 0 ? 'text-amber-400' : 'text-gray-400' },
-              { label: 'İşleniyor',  value: queue.processing ? 'Evet' : 'Hayır', color: queue.processing ? 'text-blue-400' : 'text-gray-500' },
-              { label: 'Bu Saat',    value: `${queue.hour_count}/${queue.hourly_limit}`, color: queue.hour_count >= queue.hourly_limit ? 'text-red-400' : 'text-green-400' },
-              { label: 'Bu Gün',     value: `${queue.day_count}/${queue.daily_limit}`,  color: queue.day_count  >= queue.daily_limit  ? 'text-red-400' : 'text-green-400' },
+              { label: T.monitor.queued,   value: queue.queue_length, color: queue.queue_length > 0 ? 'text-amber-400' : 'text-gray-400' },
+              { label: lang === 'en' ? 'Processing' : 'İşleniyor', value: queue.processing ? T.common.yes : T.common.no, color: queue.processing ? 'text-blue-400' : 'text-gray-500' },
+              { label: T.monitor.thisHour, value: `${queue.hour_count}/${queue.hourly_limit}`, color: queue.hour_count >= queue.hourly_limit ? 'text-red-400' : 'text-green-400' },
+              { label: T.monitor.today,    value: `${queue.day_count}/${queue.daily_limit}`,   color: queue.day_count  >= queue.daily_limit  ? 'text-red-400' : 'text-green-400' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-gray-800 rounded-lg p-3 text-center">
                 <p className={`text-lg font-bold ${color}`}>{value}</p>
@@ -187,11 +190,11 @@ export default function MonitorPage() {
               {queue.items.map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-xs bg-gray-800 rounded-lg px-3 py-2">
                   <span className={`font-semibold ${item.action === 'follow' ? 'text-green-400' : 'text-red-400'}`}>
-                    {item.action === 'follow' ? 'Takip' : 'Çıkart'}
+                    {item.action === 'follow' ? T.monitor.types.follow : T.users.action.unfollow}
                   </span>
                   <span className="text-gray-400">ID: {item.ig_user_id}</span>
                   <span className="text-gray-600 ml-auto">
-                    {new Date(item.queued_at * 1000).toLocaleTimeString('tr-TR')}
+                    {new Date(item.queued_at * 1000).toLocaleTimeString(lang === 'tr' ? 'tr-TR' : 'en-US')}
                   </span>
                 </div>
               ))}
@@ -205,7 +208,7 @@ export default function MonitorPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Loader2 size={15} className="text-blue-400 animate-spin" />
-            Worker'da Çalışan Task'lar ({active.length})
+            {lang === 'en' ? `Active Worker Tasks (${active.length})` : `Worker'da Çalışan Task'lar (${active.length})`}
           </h2>
           <div className="space-y-2">
             {active.map(t => (
@@ -224,11 +227,11 @@ export default function MonitorPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Clock size={15} className="text-yellow-400" />
-            Aktif Sync İşlemleri ({runningJobs.length})
+            {lang === 'en' ? `Active Sync Jobs (${runningJobs.length})` : `Aktif Sync İşlemleri (${runningJobs.length})`}
           </h2>
           <div className="space-y-2">
             {runningJobs.map(j => (
-              <JobRow key={j.id} job={j} />
+              <JobRow key={j.id} job={j} jobLabels={JOB_LABELS} lang={lang} />
             ))}
           </div>
         </div>
@@ -238,14 +241,14 @@ export default function MonitorPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
         <h2 className="font-semibold text-sm flex items-center gap-2">
           <CheckCircle2 size={15} className="text-gray-500" />
-          Tamamlanan İşlemler ({finishedJobs.length})
+          {lang === 'en' ? `Completed Jobs (${finishedJobs.length})` : `Tamamlanan İşlemler (${finishedJobs.length})`}
         </h2>
         {finishedJobs.length === 0 ? (
-          <p className="text-sm text-gray-600 text-center py-4">Henüz tamamlanan işlem yok</p>
+          <p className="text-sm text-gray-600 text-center py-4">{T.monitor.noCompleted}</p>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {finishedJobs.map(j => (
-              <JobRow key={j.id} job={j} />
+              <JobRow key={j.id} job={j} jobLabels={JOB_LABELS} lang={lang} />
             ))}
           </div>
         )}
@@ -254,7 +257,7 @@ export default function MonitorPage() {
   )
 }
 
-function JobRow({ job }: { job: SyncJob }) {
+function JobRow({ job, jobLabels, lang }: { job: SyncJob; jobLabels: Record<string, string>; lang: string }) {
   const pct = job.total_items && job.processed_items != null
     ? Math.round((job.processed_items / job.total_items) * 100)
     : null
@@ -263,7 +266,7 @@ function JobRow({ job }: { job: SyncJob }) {
     <div className="bg-gray-800 rounded-lg px-3 py-2.5 space-y-1.5">
       <div className="flex items-center gap-3">
         <StatusBadge status={job.status} />
-        <span className="text-sm font-medium">{JOB_LABELS[job.job_type] ?? job.job_type}</span>
+        <span className="text-sm font-medium">{jobLabels[job.job_type] ?? job.job_type}</span>
         {pct !== null && (
           <span className="text-xs text-gray-500 ml-1">%{pct}</span>
         )}
@@ -284,10 +287,10 @@ function JobRow({ job }: { job: SyncJob }) {
 
       <div className="flex items-center gap-4 text-xs text-gray-600">
         {job.processed_items != null && (
-          <span>{job.processed_items}{job.total_items ? `/${job.total_items}` : ''} işlem</span>
+          <span>{job.processed_items}{job.total_items ? `/${job.total_items}` : ''} {lang === 'en' ? 'items' : 'işlem'}</span>
         )}
         {job.created_at && (
-          <span>{new Date(job.created_at).toLocaleString('tr-TR')}</span>
+          <span>{new Date(job.created_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')}</span>
         )}
         {job.error_msg && (
           <span className="text-red-400 truncate max-w-xs" title={job.error_msg}>

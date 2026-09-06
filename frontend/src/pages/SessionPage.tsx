@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { sessionsApi, Session } from '../api/sessions'
+import { useLang } from '../contexts/LangContext'
 import {
   CheckCircle, XCircle, Trash2, RefreshCw, Wifi, WifiOff,
   ScanLine, Copy, Check, Terminal, Pencil, X,
@@ -15,6 +16,7 @@ interface LogLine {
 }
 
 export default function SessionPage() {
+  const { T, lang } = useLang()
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
@@ -85,7 +87,7 @@ export default function SessionPage() {
 
     es.addEventListener('done', e => {
       const d = JSON.parse(e.data)
-      addLog('─── Tamamlandı ───', 'done')
+      addLog(lang === 'en' ? '─── Done ───' : '─── Tamamlandı ───', 'done')
       setSessions(d.sessions)
       setLoading(false)
       es.close()
@@ -94,7 +96,7 @@ export default function SessionPage() {
 
     es.onerror = () => {
       if (es.readyState === EventSource.CLOSED) return
-      addLog('Bağlantı kesildi.', 'error')
+      addLog(T.session.disconnected, 'error')
       es.close()
       setScanning(false)
     }
@@ -119,7 +121,7 @@ export default function SessionPage() {
       await load()
       setEditingId(null)
     } catch (e: any) {
-      alert(e?.response?.data?.detail ?? 'Kayıt hatası')
+      alert(e?.response?.data?.detail ?? T.session.saveError)
     } finally {
       setEditSaving(false)
     }
@@ -138,9 +140,9 @@ export default function SessionPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">Session Yönetimi</h1>
+      <h1 className="text-2xl font-bold mb-1">{T.session.title}</h1>
       <p className="text-sm text-gray-500 mb-8">
-        Tarayıcıdan Instagram oturumunu tek tıkla tara.
+        {lang === 'en' ? 'Scan your Instagram session from the browser in one click.' : 'Tarayıcıdan Instagram oturumunu tek tıkla tara.'}
       </p>
 
       {/* Host Agent durumu + Tara butonu */}
@@ -156,7 +158,12 @@ export default function SessionPage() {
             <span className="font-semibold text-sm">
               Host Agent{' '}
               <span className={agentConnected ? 'text-green-400' : agentConnected === false ? 'text-red-400' : 'text-gray-500'}>
-                {agentConnected === null ? 'kontrol ediliyor…' : agentConnected ? 'çalışıyor' : 'çalışmıyor'}
+                {agentConnected === null
+                ? (lang === 'en' ? 'checking…' : 'kontrol ediliyor…')
+                : agentConnected
+                  ? (lang === 'en' ? 'running' : 'çalışıyor')
+                  : (lang === 'en' ? 'not running' : 'çalışmıyor')
+              }
               </span>
             </span>
           </div>
@@ -168,7 +175,7 @@ export default function SessionPage() {
               className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 rounded-xl text-sm font-semibold transition-colors"
             >
               <ScanLine size={15} className={scanning ? 'animate-pulse' : ''} />
-              {scanning ? 'Taranıyor…' : 'Oturumu Tara'}
+              {scanning ? T.session.scanning : T.session.scan}
             </button>
           )}
         </div>
@@ -177,13 +184,13 @@ export default function SessionPage() {
         {agentConnected === false && (
           <div className="space-y-3 mt-2">
             <p className="text-xs text-gray-400">
-              Bir kez kur — sonra her login'de otomatik başlar.
+              {lang === 'en' ? 'Install once — starts automatically on every login.' : 'Bir kez kur — sonra her login\'de otomatik başlar.'}
             </p>
             <CodeLine cmd={INSTALL_CMD} id="install" copied={copied} onCopy={copy} />
             <CodeLine cmd={LAUNCHAGENT_CMD} id="la" copied={copied} onCopy={copy} />
-            <p className="text-xs text-gray-600">— Sadece bu oturum için:</p>
+            <p className="text-xs text-gray-600">{lang === 'en' ? '— For this session only:' : '— Sadece bu oturum için:'}</p>
             <CodeLine cmd={AGENT_CMD} id="agent" copied={copied} onCopy={copy} />
-            <p className="text-xs text-gray-600 mt-1">Başlattıktan sonra bu sayfa otomatik güncellenir.</p>
+            <p className="text-xs text-gray-600 mt-1">{T.session.autoUpdate}</p>
           </div>
         )}
 
@@ -192,7 +199,7 @@ export default function SessionPage() {
           <div className="mt-4 bg-black rounded-xl border border-gray-800 overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 bg-gray-900">
               <Terminal size={12} className="text-gray-500" />
-              <span className="text-xs text-gray-500 font-mono">Tarama Çıktısı</span>
+              <span className="text-xs text-gray-500 font-mono">{T.session.scanOutput}</span>
               {scanning && <span className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
             </div>
             <div className="p-3 font-mono text-xs space-y-0.5 max-h-64 overflow-y-auto">
@@ -215,12 +222,12 @@ export default function SessionPage() {
       </div>
 
       {/* Session listesi */}
-      <h2 className="font-semibold mb-3">Kayıtlı Sessionlar</h2>
+      <h2 className="font-semibold mb-3">{T.session.saved}</h2>
       {loading ? (
-        <p className="text-gray-600 text-sm">Yükleniyor…</p>
+        <p className="text-gray-600 text-sm">{T.common.loading}</p>
       ) : sessions.length === 0 ? (
         <div className="text-center py-10 text-gray-600 border border-dashed border-gray-800 rounded-xl text-sm">
-          Henüz session yok — yukarıdan tara
+          {lang === 'en' ? 'No sessions yet — scan above' : 'Henüz session yok — yukarıdan tara'}
         </div>
       ) : (
         <div className="space-y-2">
@@ -250,7 +257,7 @@ export default function SessionPage() {
                     <span className="font-semibold">@{s.ig_username}</span>
                     {s.ig_username.startsWith('user_') && (
                       <span className="text-xs bg-amber-900 text-amber-400 px-2 py-0.5 rounded-full">
-                        Kullanıcı adı bilinmiyor
+                        {lang === 'en' ? 'Username unknown' : 'Kullanıcı adı bilinmiyor'}
                       </span>
                     )}
                     {s.plan_b_active && (
@@ -263,17 +270,17 @@ export default function SessionPage() {
                 )}
                 {editingId !== s.id && (
                   <p className="text-xs text-gray-500">
-                    Eklendi: {new Date(s.created_at).toLocaleDateString('tr-TR')}
-                    {s.last_verified_at && ` · Doğrulandı: ${new Date(s.last_verified_at).toLocaleDateString('tr-TR')}`}
+                    {lang === 'en' ? 'Added' : 'Eklendi'}: {new Date(s.created_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
+                    {s.last_verified_at && ` · ${lang === 'en' ? 'Verified' : 'Doğrulandı'}: ${new Date(s.last_verified_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}`}
                   </p>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => startEdit(s)} title="Kullanıcı adı düzenle"
+                <button onClick={() => startEdit(s)} title={T.session.editUsername}
                   className="p-2 text-gray-400 hover:text-purple-400 hover:bg-gray-800 rounded-lg">
                   <Pencil size={13} />
                 </button>
-                <button onClick={() => handleVerify(s.id)} title="Doğrula"
+                <button onClick={() => handleVerify(s.id)} title={T.session.validate}
                   className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg">
                   <RefreshCw size={14} />
                 </button>
@@ -282,7 +289,7 @@ export default function SessionPage() {
                     const updated = await sessionsApi.togglePlanB(s.id)
                     setSessions(prev => prev.map(x => x.id === s.id ? updated : x))
                   }}
-                  title={s.plan_b_active ? 'Plan B Kapalı (Playwright)' : 'Plan B Açık (Playwright)'}
+                  title={s.plan_b_active ? T.session.planBOff : T.session.planBOn}
                   className={`p-2 rounded-lg text-xs font-semibold transition-colors ${
                     s.plan_b_active
                       ? 'bg-yellow-700 hover:bg-yellow-600 text-yellow-100'
