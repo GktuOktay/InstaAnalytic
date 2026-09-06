@@ -1,0 +1,49 @@
+# ── Ortam & gizli değişkenler ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ─────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ── Node / Frontend ────────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── Veritabanı & çalışma zamanı ────────────────────────────────────────────────
+*.db
+*.sqlite3
+postgres_data/
+redis_data/
+
+# ── Docker ─────────────────────────────────────────────────────────────────────
+# docker-compose dosyaları takip edilir, override'lar değil
+docker-compose.override.yml
+
+# ── macOS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editor ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Log & geçici dosyalar ──────────────────────────────────────────────────────
+*.log
+logs/
+tmp/
