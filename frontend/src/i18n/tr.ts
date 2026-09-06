@@ -1,0 +1,118 @@
+const tr = {
+  nav: {
+    dashboard:    'Dashboard',
+    session:      'Oturum',
+    followers:    'Takipçi Analizi',
+    posts:        'Gönderiler',
+    report:       'Etkileşim Raporu',
+    users:        'Kullanıcı Havuzu',
+    monitor:      'Kuyruk Monitörü',
+    actions:      'Aksiyon Geçmişi',
+  },
+  common: {
+    loading:      'Yükleniyor…',
+    error:        'Hata',
+    save:         'Kaydet',
+    cancel:       'İptal',
+    confirm:      'Onayla',
+    search:       'Ara…',
+    noData:       'Veri bulunamadı',
+    all:          'Tümü',
+    total:        'Toplam',
+  },
+  lang: {
+    tr: 'Türkçe',
+    en: 'English',
+  },
+  users: {
+    title:          'Kullanıcı Havuzu',
+    tabs: {
+      all:          'Tümü',
+      following:    'Takip Ettiklerim',
+      followers:    'Takipçilerim',
+      ghosts:       '👻 Hayaletler',
+    },
+    sort: {
+      engDesc:      'Etkileşim ↓ (Yüksekten)',
+      engAsc:       'Etkileşim ↑ (Düşükten)',
+      nameAsc:      'Kullanıcı adı A → Z',
+      nameDesc:     'Kullanıcı adı Z → A',
+    },
+    col: {
+      user:         'Kullanıcı',
+      likes:        'Beğeni',
+      comments:     'Yorum',
+      engagement:   'Oran',
+      action:       'İşlem',
+    },
+    action: {
+      follow:           'Takip et',
+      unfollow:         'Takipten çık',
+      removeFollower:   'Takipçiden çıkart',
+      bulkFollow:       'Toplu Takip',
+      bulkUnfollow:     'Toplu Çıkar',
+    },
+    toast: {
+      followed:         (u: string) => `@${u} takip edildi`,
+      unfollowed:       (u: string) => `@${u} takipten çıkıldı`,
+      removed:          (u: string) => `@${u} takipçilerden çıkartıldı`,
+      failed:           'İstek başarısız',
+    },
+    ghost: {
+      badge:      'hayalet',
+      hint:       'Takipçi/takip ama hiç etkileşim yok',
+    },
+    syncAll:      'Tümünü Tara',
+    exportCsv:    'CSV İndir',
+    selectAll:    'Tümünü seç',
+    page:         'Sayfa',
+  },
+  posts: {
+    title:        'Gönderiler',
+    syncPosts:    'Gönderileri Senkronize Et',
+    syncAll:      'Tümünü Tara',
+    syncing:      'Taranıyor…',
+    likes:        'beğeni',
+    comments:     'yorum',
+    synced:       'tarandı',
+  },
+  report: {
+    title:        'Etkileşim Raporu',
+    kpi: {
+      posts:          'Toplam Gönderi',
+      likes:          'Toplam Beğeni',
+      comments:       'Toplam Yorum',
+      avgLikes:       'Ortalama Beğeni',
+      uniqueUsers:    'Tekil Etkileşimci',
+    },
+    sections: {
+      monthly:        'Aylık Beğeni Trendi',
+      breakdown:      'Takipçi / Dışarıdan Kırılımı',
+      topFans:        'En Aktif Hayranlar',
+      topPosts:       'En Çok Beğenilen Gönderiler',
+      topCommenters:  'En Çok Yorum Yapanlar',
+    },
+  },
+  session: {
+    title:        'Oturum Yönetimi',
+    new:          'Yeni Oturum',
+    validate:     'Doğrula',
+    status: {
+      active:     'Aktif',
+      expired:    'Süresi Dolmuş',
+      pending:    'Beklemede',
+    },
+  },
+  followers: {
+    title:        'Takipçi Analizi',
+    sync:         'Senkronize Et',
+    following:    'Takip Ettiklerim',
+    followers:    'Takipçilerim',
+    mutual:       'Karşılıklı',
+    notFollowingBack: 'Geri Takip Etmedi',
+    notFollowedBack:  'Ben Takip Etmedim',
+  },
+}
+
+export default tr
+export type Translations = typeof tr

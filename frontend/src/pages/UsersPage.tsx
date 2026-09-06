@@ -2,6 +2,7 @@ import { proxyImg } from '../utils/imgProxy'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { sessionsApi, Session } from '../api/sessions'
 import { actionsApi } from '../api/actions'
+import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
 import {
   BadgeCheck, Lock, Download, RefreshCw, Heart, MessageSquare,
@@ -28,19 +29,14 @@ interface UserPoolItem {
   first_seen_at: string | null
 }
 
-const SORT_OPTIONS: { key: SortKey; label: string; apiSort: string; apiDir: 'asc'|'desc' }[] = [
-  { key: 'engagement_desc', label: 'Etkileşim ↓ (Yüksekten)',  apiSort: 'engagement', apiDir: 'desc' },
-  { key: 'engagement_asc',  label: 'Etkileşim ↑ (Düşükten)',   apiSort: 'engagement', apiDir: 'asc'  },
-  { key: 'username_asc',    label: 'Kullanıcı adı A → Z',       apiSort: 'username',   apiDir: 'asc'  },
-  { key: 'username_desc',   label: 'Kullanıcı adı Z → A',       apiSort: 'username',   apiDir: 'desc' },
+const SORT_META: { key: SortKey; apiSort: string; apiDir: 'asc'|'desc' }[] = [
+  { key: 'engagement_desc', apiSort: 'engagement', apiDir: 'desc' },
+  { key: 'engagement_asc',  apiSort: 'engagement', apiDir: 'asc'  },
+  { key: 'username_asc',    apiSort: 'username',   apiDir: 'asc'  },
+  { key: 'username_desc',   apiSort: 'username',   apiDir: 'desc' },
 ]
 
-const FILTER_TABS: { key: FilterTab; label: string; hint: string }[] = [
-  { key: 'all',       label: 'Tümü',            hint: 'Havuzdaki herkes'                            },
-  { key: 'following', label: 'Takip Ettiklerim', hint: 'Benim takip ettiğim hesaplar'               },
-  { key: 'followers', label: 'Takipçilerim',     hint: 'Beni takip eden hesaplar'                   },
-  { key: 'ghosts',    label: '👻 Hayaletler',   hint: 'Takipçi/takip ama hiç etkileşim yok'        },
-]
+const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'ghosts']
 
 function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
   switch (tab) {
@@ -67,6 +63,19 @@ function EngagementBar({ val }: { val: number }) {
 }
 
 export default function UsersPage() {
+  const { T, lang } = useLang()
+
+  const SORT_OPTIONS = SORT_META.map((m, i) => ({
+    ...m,
+    label: [T.users.sort.engDesc, T.users.sort.engAsc, T.users.sort.nameAsc, T.users.sort.nameDesc][i],
+  }))
+
+  const FILTER_TABS = FILTER_KEYS.map(key => ({
+    key,
+    label: T.users.tabs[key],
+    hint:  T.users.ghost.hint,
+  }))
+
   const [sessions,      setSessions]      = useState<Session[]>([])
   const [sid,           setSid]           = useState('')
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
@@ -135,11 +144,11 @@ export default function UsersPage() {
       const r = await actionsApi.follow(sid, u.id)
       if (r.success || r.queued) {
         setAllItems(prev => prev.map(x => x.id === u.id ? { ...x, we_follow: true } : x))
-        showToast(`@${u.username} takip edildi`)
+        showToast(T.users.toast.followed(u.username))
       } else {
-        showToast(r.error ?? 'Hata', false)
+        showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast('İstek başarısız', false) }
+    } catch { showToast(T.users.toast.failed, false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -149,11 +158,11 @@ export default function UsersPage() {
       const r = await actionsApi.unfollow(sid, u.id)
       if (r.success || r.queued) {
         setAllItems(prev => prev.map(x => x.id === u.id ? { ...x, we_follow: false } : x))
-        showToast(`@${u.username} takipten çıkıldı`)
+        showToast(T.users.toast.unfollowed(u.username))
       } else {
-        showToast(r.error ?? 'Hata', false)
+        showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast('İstek başarısız', false) }
+    } catch { showToast(T.users.toast.failed, false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -163,11 +172,11 @@ export default function UsersPage() {
       const r = await actionsApi.removeFollower(sid, u.id)
       if (r.success || r.queued) {
         setAllItems(prev => prev.map(x => x.id === u.id ? { ...x, they_follow: false } : x))
-        showToast(`@${u.username} takipçilerden çıkartıldı`)
+        showToast(T.users.toast.removed(u.username))
       } else {
-        showToast(r.error ?? 'Hata', false)
+        showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast('İstek başarısız', false) }
+    } catch { showToast(T.users.toast.failed, false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -238,7 +247,7 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold">Kişi Havuzu & Etkileşim</h1>
+          <h1 className="text-2xl font-bold">{T.users.title}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {allItems.length.toLocaleString('tr-TR')} kişi · {filtered.length.toLocaleString('tr-TR')} filtreli
           </p>
@@ -251,7 +260,7 @@ export default function UsersPage() {
             </select>
           )}
           <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
-            <Download size={13} /> CSV
+            <Download size={13} /> {T.users.exportCsv}
           </button>
           <button onClick={() => load(1, sort, search)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -280,7 +289,7 @@ export default function UsersPage() {
       {/* Toolbar: search + sort + bulk */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Kullanıcı ara…"
+          placeholder={T.common.search}
           className="w-52 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-500" />
         <select value={sort} onChange={e => { setSort(e.target.value as SortKey); setPage(1) }}
           style={{ background: '#1a1e2b', border: '1px solid #252a3a', borderRadius: 8, color: '#c8ccf0', padding: '5px 10px', fontSize: 12 }}>
@@ -292,11 +301,11 @@ export default function UsersPage() {
             <span className="text-xs text-gray-400">{selected.size} seçili</span>
             <button onClick={handleBulkFollow} disabled={bulkLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900 hover:bg-green-800 disabled:opacity-50 rounded-lg text-xs text-green-300">
-              <UserPlus size={12} /> Toplu Takip
+              <UserPlus size={12} /> {T.users.action.bulkFollow}
             </button>
             <button onClick={handleBulkUnfollow} disabled={bulkLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 rounded-lg text-xs text-red-300">
-              <UserMinus size={12} /> Toplu Çıkar
+              <UserMinus size={12} /> {T.users.action.bulkUnfollow}
             </button>
           </div>
         )}
@@ -325,11 +334,11 @@ export default function UsersPage() {
               {selected.size === pageItems.length && pageItems.length > 0 ? <CheckSquare size={12} /> : <Square size={12} />}
             </button>
             <span />
-            <span>Kullanıcı</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><Heart size={8} />Like</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><MessageSquare size={8} />Yorum</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><TrendingUp size={8} />Skor</span>
-            <span style={{ textAlign: 'center' }}>İşlem</span>
+            <span>{T.users.col.user}</span>
+            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><Heart size={8} />{T.users.col.likes}</span>
+            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><MessageSquare size={8} />{T.users.col.comments}</span>
+            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><TrendingUp size={8} />{T.users.col.engagement}</span>
+            <span style={{ textAlign: 'center' }}>{T.users.col.action}</span>
           </div>
         )}
 
@@ -379,9 +388,9 @@ export default function UsersPage() {
                       </a>
                       {u.is_verified && <BadgeCheck size={12} style={{ color: '#60a5fa' }} />}
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
-                      {isGhost && <span style={{ fontSize: 9, background: '#2a1a3a', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 hayalet</span>}
-                      {u.we_follow   && <span style={{ fontSize: 9, background: '#1a3a2a', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>Takip</span>}
-                      {u.they_follow && <span style={{ fontSize: 9, background: '#1a2a3a', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>Takipçi</span>}
+                      {isGhost && <span style={{ fontSize: 9, background: '#2a1a3a', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
+                      {u.we_follow   && <span style={{ fontSize: 9, background: '#1a3a2a', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
+                      {u.they_follow && <span style={{ fontSize: 9, background: '#1a2a3a', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
                     {u.full_name && <p style={{ fontSize: 11, color: '#5d6585' }}>{u.full_name}</p>}
                   </div>
@@ -415,7 +424,7 @@ export default function UsersPage() {
                         opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
                       }}>
                         {actLoad === 'unfollow' ? <RefreshCw size={10} className="animate-spin" /> : <UserMinus size={10} />}
-                        Takipten çık
+                        {T.users.action.unfollow}
                       </button>
                     ) : (
                       <button onClick={() => handleFollow(u)} disabled={!!actLoad} style={{
@@ -425,10 +434,9 @@ export default function UsersPage() {
                         opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
                       }}>
                         {actLoad === 'follow' ? <RefreshCw size={10} className="animate-spin" /> : <UserPlus size={10} />}
-                        Takip et
+                        {T.users.action.follow}
                       </button>
                     )}
-                    {/* Bizi takip ediyorsa: Takipçiden çıkart */}
                     {u.they_follow && (
                       <button onClick={() => handleRemoveFollower(u)} disabled={!!actLoad} style={{
                         display: 'flex', alignItems: 'center', gap: 4,
@@ -437,7 +445,7 @@ export default function UsersPage() {
                         opacity: actLoad ? 0.5 : 1, whiteSpace: 'nowrap',
                       }}>
                         {actLoad === 'remove_follower' ? <RefreshCw size={10} className="animate-spin" /> : <UserMinus size={10} />}
-                        Takipçiden çıkart
+                        {T.users.action.removeFollower}
                       </button>
                     )}
                   </div>
@@ -453,12 +461,12 @@ export default function UsersPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 20 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#13161f', border: '1px solid #252a3a', borderRadius: 8, color: '#8a93b8', fontSize: 13, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>
-            <ChevronLeft size={14} /> Önceki
+            <ChevronLeft size={14} /> {lang === 'tr' ? 'Önceki' : 'Prev'}
           </button>
-          <span style={{ fontSize: 13, color: '#5d6585' }}>{page} / {totalPages} · {filtered.length} kişi</span>
+          <span style={{ fontSize: 13, color: '#5d6585' }}>{page} / {totalPages} · {filtered.length}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#13161f', border: '1px solid #252a3a', borderRadius: 8, color: '#8a93b8', fontSize: 13, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>
-            Sonraki <ChevronRight size={14} />
+            {lang === 'tr' ? 'Sonraki' : 'Next'} <ChevronRight size={14} />
           </button>
         </div>
       )}
