@@ -1,6 +1,6 @@
 # ── Ortam & gizli değişkenler ──────────────────────────────────────────────────
-# Gerçek production şifreleri taşıyorsa bu satırı aç:
-# .env
+# .env dosyası asla commit edilmez — .env.example kullanın
+.env
 
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
