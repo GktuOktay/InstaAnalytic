@@ -8,189 +8,175 @@ import {
   Users, Image, Network, History, FileBarChart2, CheckCircle,
   XCircle, RefreshCw, Wifi, WifiOff, ScanLine, Copy, Check,
   Terminal, Pencil, X, Trash2, ChevronDown, ChevronUp,
-  Settings, AlertCircle,
+  Settings, AlertCircle, TrendingUp, UserCheck, UserX,
 } from 'lucide-react'
 
 interface HealthStatus { status: string; postgres: string; redis: string }
 interface LogLine { text: string; type: 'info' | 'error' | 'done' }
 
-const INSTALL_CMD  = 'pip3 install -r scripts/requirements.txt'
-const LAUNCH_CMD   = 'python3 scripts/host_agent.py --install-launchagent'
-const AGENT_CMD    = 'python3 scripts/host_agent.py &'
+const INSTALL_CMD = 'pip3 install -r scripts/requirements.txt'
+const LAUNCH_CMD  = 'python3 scripts/host_agent.py --install-launchagent'
+const AGENT_CMD   = 'python3 scripts/host_agent.py &'
 
 export default function Dashboard() {
   const { T, lang } = useLang()
-  const navigate = useNavigate()
+  const navigate    = useNavigate()
 
-  const [health,    setHealth]    = useState<HealthStatus | null>(null)
-  const [sessions,  setSessions]  = useState<Session[]>([])
-  const [summary,   setSummary]   = useState<AnalysisSummary | null>(null)
-  const [loading,   setLoading]   = useState(true)
+  const [health,      setHealth]      = useState<HealthStatus | null>(null)
+  const [sessions,    setSessions]    = useState<Session[]>([])
+  const [summary,     setSummary]     = useState<AnalysisSummary | null>(null)
+  const [loading,     setLoading]     = useState(true)
   const [showSession, setShowSession] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [, slist] = await Promise.allSettled([
+    await Promise.allSettled([
       api.get('/health').then(r => setHealth(r.data)).catch(() => setHealth(null)),
-      sessionsApi.list().then(setSessions).catch(() => []),
+      sessionsApi.list().then(list => {
+        setSessions(list)
+        if (list.length > 0) {
+          analysisApi.summary(list[0].id).then(setSummary).catch(() => {})
+        }
+      }).catch(() => {}),
     ])
     setLoading(false)
-    if (slist.status === 'fulfilled') {
-      const list = await sessionsApi.list()
-      if (list.length > 0) {
-        analysisApi.summary(list[0].id).then(setSummary).catch(() => {})
-      }
-    }
   }, [])
 
   useEffect(() => { load() }, [load])
 
   const hasSessions = sessions.length > 0
-  const allOk = health?.status === 'ok' && health?.postgres === 'ok' && health?.redis === 'ok'
 
   return (
-    <div className="max-w-4xl">
-      {/* ── Top bar: health dots + session toggle ── */}
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ width: '100%' }}>
+
+      {/* ── Header row ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <h1 className="text-2xl font-bold">
-            {hasSessions ? `@${sessions[0].ig_username}` : T.dashboard.title}
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 4 }}>
+            {hasSessions ? (
+              <>
+                <span style={{ color: 'var(--text-2)', fontWeight: 400 }}>@</span>
+                {sessions[0].ig_username}
+              </>
+            ) : 'Dashboard'}
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            InstaAnalytic
+          <p style={{ fontSize: 13, color: 'var(--text-2)' }}>
+            {hasSessions
+              ? (lang === 'tr' ? 'Instagram analitik paneli' : 'Instagram analytics overview')
+              : 'InstaAnalytic'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Health dots */}
-          <div className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2">
-            <HealthDot label="API" ok={health?.status === 'ok'} />
-            <HealthDot label="DB" ok={health?.postgres === 'ok'} />
-            <HealthDot label="Redis" ok={health?.redis === 'ok'} />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Health indicators */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '8px 14px', borderRadius: 12,
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            fontSize: 12,
+          }}>
+            {(['API', 'DB', 'Redis'] as const).map((label, i) => {
+              const ok = i === 0 ? health?.status === 'ok' : i === 1 ? health?.postgres === 'ok' : health?.redis === 'ok'
+              return (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: ok == null ? 'var(--text-3)' : ok ? '#22C55E' : '#EF4444',
+                    boxShadow: ok ? '0 0 6px rgba(34,197,94,0.5)' : undefined,
+                  }} />
+                  <span style={{ color: 'var(--text-2)' }}>{label}</span>
+                </div>
+              )
+            })}
           </div>
+
           {/* Session toggle */}
           <button
             onClick={() => setShowSession(s => !s)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
-              showSession
-                ? 'bg-purple-900/40 border-purple-600 text-purple-300'
-                : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200'
-            }`}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 12, fontSize: 13, fontWeight: 500,
+              cursor: 'pointer', transition: 'all 0.15s',
+              background: showSession ? 'rgba(99,102,241,0.12)' : 'var(--surface)',
+              border: showSession ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border)',
+              color: showSession ? '#A5B4FC' : 'var(--text-2)',
+            }}
           >
-            <Settings size={14} />
+            <Settings size={13} />
             {lang === 'tr' ? 'Oturum' : 'Session'}
-            {showSession ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {showSession ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
         </div>
       </div>
 
-      {/* ── Session Panel (collapsible) ── */}
+      {/* ── Session Panel ── */}
       {showSession && (
-        <SessionPanel
-          sessions={sessions}
-          setSessions={setSessions}
-          lang={lang}
-          T={T}
-          onClose={() => setShowSession(false)}
-        />
+        <SessionPanel sessions={sessions} setSessions={setSessions} lang={lang} T={T} onClose={() => setShowSession(false)} />
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center h-48 text-gray-600 text-sm">{T.common.loading}</div>
+        <LoadingState />
       ) : !hasSessions ? (
         <OnboardingView lang={lang} T={T} setSessions={setSessions} />
       ) : (
         <>
-          {/* ── Stats row ── */}
-          {summary ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              <StatCard
-                label={lang === 'tr' ? 'Takipçi' : 'Followers'}
-                value={summary.total_followers}
-                color="text-blue-400"
-              />
-              <StatCard
-                label={lang === 'tr' ? 'Takip' : 'Following'}
-                value={summary.total_following}
-                color="text-purple-400"
-              />
-              <StatCard
-                label={lang === 'tr' ? 'Karşılıklı' : 'Mutual'}
-                value={summary.mutual}
-                color="text-green-400"
-              />
-              <StatCard
-                label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'}
-                value={summary.not_following_back}
-                color="text-amber-400"
-              />
-            </div>
-          ) : (
-            <div className="mb-6 bg-gray-900 border border-dashed border-gray-700 rounded-2xl p-4 text-center text-sm text-gray-500">
-              {lang === 'tr'
-                ? 'İstatistik için önce Takipçi Analizi sayfasından senkronizasyon yap.'
-                : 'Sync followers & following first to see stats here.'}
-              <button
-                onClick={() => navigate('/followers')}
-                className="ml-2 text-purple-400 hover:text-purple-300 underline underline-offset-2"
-              >
-                {lang === 'tr' ? 'Analiz sayfasına git →' : 'Go to analysis →'}
-              </button>
-            </div>
-          )}
-
-          {/* ── Quick actions ── */}
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            {T.dashboard.quickAccess}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-            <ActionCard
-              icon={Users}
-              title={T.dashboard.cards.followers}
-              desc={T.dashboard.cards.followersDesc}
-              accent="purple"
-              onClick={() => navigate('/followers')}
-            />
-            <ActionCard
-              icon={Image}
-              title={T.dashboard.cards.posts}
-              desc={T.dashboard.cards.postsDesc}
-              accent="blue"
-              onClick={() => navigate('/posts')}
-            />
-            <ActionCard
-              icon={Network}
-              title={T.nav.users}
-              desc={lang === 'tr' ? 'Etkileşim oranına göre sırala' : 'Ranked by engagement rate'}
-              accent="cyan"
-              onClick={() => navigate('/users')}
-            />
-            <ActionCard
-              icon={FileBarChart2}
-              title={T.nav.report}
-              desc={lang === 'tr' ? 'Aylık trend ve hayran raporu' : 'Monthly trends & top fans'}
-              accent="green"
-              onClick={() => navigate('/report')}
-            />
-            <ActionCard
-              icon={History}
-              title={T.dashboard.cards.actions}
-              desc={T.dashboard.cards.actionsDesc}
-              accent="amber"
-              onClick={() => navigate('/actions')}
-            />
+          {/* ── Stat cards ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+            {summary ? (
+              <>
+                <StatCard icon={Users}     label={lang === 'tr' ? 'Takipçi' : 'Followers'}         value={summary.total_followers}    color="#60A5FA" glow="rgba(96,165,250,0.15)" />
+                <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'   : 'Following'}         value={summary.total_following}    color="#A78BFA" glow="rgba(167,139,250,0.15)" />
+                <StatCard icon={UserCheck} label={lang === 'tr' ? 'Karşılıklı' : 'Mutual'}         value={summary.mutual}             color="#34D399" glow="rgba(52,211,153,0.15)" />
+                <StatCard icon={UserX}     label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#FB923C" glow="rgba(251,146,60,0.15)" />
+              </>
+            ) : (
+              <div style={{
+                gridColumn: '1 / -1',
+                padding: '16px 20px',
+                borderRadius: 16,
+                background: 'var(--surface)',
+                border: '1px dashed var(--border-2)',
+                display: 'flex', alignItems: 'center', gap: 12,
+                fontSize: 13, color: 'var(--text-2)',
+              }}>
+                <AlertCircle size={16} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                {lang === 'tr'
+                  ? 'İstatistik için önce Takipçi Analizi\'nden senkronizasyon yap.'
+                  : 'Run a sync in Follower Analysis to populate stats.'}
+                <button
+                  onClick={() => navigate('/followers')}
+                  style={{ marginLeft: 'auto', fontSize: 13, color: '#818CF8', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                >
+                  {lang === 'tr' ? 'Analize git →' : 'Go to analysis →'}
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* ── Multiple sessions ── */}
+          {/* ── Quick actions ── */}
+          <div style={{ marginBottom: 8 }}>
+            <p className="label" style={{ marginBottom: 14 }}>{T.dashboard.quickAccess}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+              <ActionCard icon={Users}        title={T.dashboard.cards.followers} desc={T.dashboard.cards.followersDesc} accent="#818CF8" onClick={() => navigate('/followers')} />
+              <ActionCard icon={Image}        title={T.dashboard.cards.posts}     desc={T.dashboard.cards.postsDesc}     accent="#60A5FA" onClick={() => navigate('/posts')} />
+              <ActionCard icon={Network}      title={T.nav.users}                  desc={lang === 'tr' ? 'Etkileşim oranına göre sırala' : 'Ranked by engagement'} accent="#34D399" onClick={() => navigate('/users')} />
+              <ActionCard icon={FileBarChart2} title={T.nav.report}               desc={lang === 'tr' ? 'Aylık trend & hayran listesi' : 'Monthly trends & top fans'} accent="#F472B6" onClick={() => navigate('/report')} />
+              <ActionCard icon={History}      title={T.dashboard.cards.actions}   desc={T.dashboard.cards.actionsDesc}  accent="#FB923C" onClick={() => navigate('/actions')} />
+            </div>
+          </div>
+
+          {/* ── Multiple sessions badge ── */}
           {sessions.length > 1 && (
-            <div>
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                {T.dashboard.activeSessions}
-              </h2>
-              <div className="grid grid-cols-2 gap-3">
+            <div style={{ marginTop: 28 }}>
+              <p className="label" style={{ marginBottom: 14 }}>{T.dashboard.activeSessions}</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
                 {sessions.map(s => (
-                  <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                    <p className="font-semibold">@{s.ig_username}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
+                  <div key={s.id} style={{
+                    padding: '14px 16px', borderRadius: 14,
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                  }}>
+                    <p style={{ fontWeight: 600, fontSize: 14 }}>@{s.ig_username}</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>
                       {new Date(s.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
                     </p>
                   </div>
@@ -204,55 +190,89 @@ export default function Dashboard() {
   )
 }
 
-/* ── Sub-components ────────────────────────────────────────────────── */
+/* ── Sub-components ──────────────────────────────────────────────────── */
 
-function HealthDot({ label, ok }: { label: string; ok: boolean }) {
+function LoadingState() {
   return (
-    <div className="flex items-center gap-1">
-      <span className={`w-2 h-2 rounded-full ${ok ? 'bg-green-400' : 'bg-red-500'}`} />
-      <span className="text-xs text-gray-500">{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--text-3)', fontSize: 14 }}>
+      <RefreshCw size={16} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
+      Yükleniyor…
     </div>
   )
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({ icon: Icon, label, value, color, glow }: {
+  icon: React.ElementType; label: string; value: number; color: string; glow: string
+}) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-3xl font-bold tabular-nums ${color}`}>
+    <div style={{
+      padding: '20px 20px 18px',
+      borderRadius: 18,
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Subtle glow behind icon */}
+      <div style={{
+        position: 'absolute', top: 0, right: 0,
+        width: 80, height: 80,
+        borderRadius: '50%',
+        background: glow,
+        filter: 'blur(24px)',
+        transform: 'translate(20px, -20px)',
+      }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Icon size={15} style={{ color }} />
+        <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 500 }}>{label}</span>
+      </div>
+      <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', color, lineHeight: 1 }}>
         {value.toLocaleString()}
       </p>
     </div>
   )
 }
 
-function ActionCard({
-  icon: Icon, title, desc, accent, onClick,
-}: {
+function ActionCard({ icon: Icon, title, desc, accent, onClick }: {
   icon: React.ElementType; title: string; desc: string; accent: string; onClick: () => void
 }) {
-  const accentMap: Record<string, string> = {
-    purple: 'hover:border-purple-600 group-hover:text-purple-400',
-    blue:   'hover:border-blue-600   group-hover:text-blue-400',
-    cyan:   'hover:border-cyan-600   group-hover:text-cyan-400',
-    green:  'hover:border-green-600  group-hover:text-green-400',
-    amber:  'hover:border-amber-600  group-hover:text-amber-400',
-  }
-  const iconColor: Record<string, string> = {
-    purple: 'text-purple-500',
-    blue:   'text-blue-500',
-    cyan:   'text-cyan-500',
-    green:  'text-green-500',
-    amber:  'text-amber-500',
-  }
   return (
     <button
       onClick={onClick}
-      className={`group bg-gray-900 border border-gray-800 ${accentMap[accent]} rounded-2xl p-5 text-left transition-all hover:shadow-lg hover:shadow-black/30`}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '20px',
+        borderRadius: 18,
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        textAlign: 'left',
+        cursor: 'pointer',
+        transition: 'all 0.18s',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget
+        el.style.borderColor = `${accent}40`
+        el.style.transform = 'translateY(-2px)'
+        el.style.boxShadow = `0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px ${accent}20`
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget
+        el.style.borderColor = 'var(--border)'
+        el.style.transform = 'translateY(0)'
+        el.style.boxShadow = 'none'
+      }}
     >
-      <Icon size={20} className={`${iconColor[accent]} mb-3`} />
-      <p className="font-semibold text-sm mb-1">{title}</p>
-      <p className="text-xs text-gray-500">{desc}</p>
+      <div style={{
+        width: 36, height: 36, borderRadius: 10,
+        background: `${accent}15`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        marginBottom: 14,
+      }}>
+        <Icon size={17} style={{ color: accent }} />
+      </div>
+      <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 5, color: 'var(--text)' }}>{title}</p>
+      <p style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}>{desc}</p>
     </button>
   )
 }
@@ -262,21 +282,26 @@ function OnboardingView({ lang, T, setSessions }: {
   lang: string; T: any; setSessions: (s: Session[]) => void
 }) {
   return (
-    <div className="max-w-xl mx-auto mt-8">
-      <div className="text-center mb-10">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-900/40 border border-purple-700/50 mb-4">
-          <AlertCircle size={28} className="text-purple-400" />
+    <div style={{ maxWidth: 520, margin: '40px auto 0' }}>
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{
+          width: 64, height: 64, borderRadius: 20, margin: '0 auto 20px',
+          background: 'rgba(99,102,241,0.1)',
+          border: '1px solid rgba(99,102,241,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <AlertCircle size={26} style={{ color: '#818CF8' }} />
         </div>
-        <h2 className="text-xl font-bold mb-2">
+        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
           {lang === 'tr' ? 'Henüz oturum yok' : 'No session yet'}
         </h2>
-        <p className="text-sm text-gray-500">
+        <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
           {lang === 'tr'
-            ? 'Instagram oturumunu taramak için Host Agent\'ı başlatman gerekiyor.'
-            : 'Start the Host Agent to scan your Instagram session from the browser.'}
+            ? 'Instagram oturumunu taramak için aşağıdaki adımları takip et.'
+            : 'Follow the steps below to scan your Instagram session.'}
         </p>
       </div>
-      <AgentSetup lang={lang} T={T} setSessions={setSessions} compact={false} />
+      <AgentSetup lang={lang} T={T} setSessions={setSessions} agentConnected={null} />
     </div>
   )
 }
@@ -288,15 +313,13 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
 }) {
   const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
   const [verifyStatus, setVerifyStatus] = useState<Record<string, 'loading' | boolean>>({})
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const [editSaving, setEditSaving] = useState(false)
+  const [editingId,   setEditingId]   = useState<string | null>(null)
+  const [editValue,   setEditValue]   = useState('')
+  const [editSaving,  setEditSaving]  = useState(false)
 
   const checkAgent = useCallback(async () => {
-    try {
-      const s = await sessionsApi.hostAgentStatus()
-      setAgentConnected(s.connected)
-    } catch { setAgentConnected(false) }
+    try { setAgentConnected((await sessionsApi.hostAgentStatus()).connected) }
+    catch { setAgentConnected(false) }
   }, [])
 
   useEffect(() => {
@@ -305,20 +328,13 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
     return () => clearInterval(t)
   }, [checkAgent])
 
-  const load = async () => {
-    const list = await sessionsApi.list()
-    setSessions(list)
-  }
-
+  const load = async () => { setSessions(await sessionsApi.list()) }
   const startEdit = (s: Session) => { setEditingId(s.id); setEditValue(s.ig_username) }
-
   const saveEdit = async () => {
     if (!editingId || !editValue.trim()) return
     setEditSaving(true)
-    try {
-      await sessionsApi.updateUsername(editingId, editValue.trim().replace(/^@/, ''))
-      await load(); setEditingId(null)
-    } catch (e: any) { alert(e?.response?.data?.detail ?? T.session.saveError) }
+    try { await sessionsApi.updateUsername(editingId, editValue.trim().replace(/^@/, '')); await load(); setEditingId(null) }
+    catch (e: any) { alert(e?.response?.data?.detail ?? T.session.saveError) }
     finally { setEditSaving(false) }
   }
 
@@ -329,116 +345,120 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
   }
 
   return (
-    <div className="bg-gray-900 border border-purple-800/40 rounded-2xl p-5 mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-sm">{T.session.title}</h2>
-        <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-300 rounded-lg">
+    <div style={{
+      marginBottom: 24,
+      padding: 20,
+      borderRadius: 18,
+      background: 'var(--surface)',
+      border: '1px solid rgba(99,102,241,0.25)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{T.session.title}</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>
           <X size={14} />
         </button>
       </div>
 
-      <AgentSetup lang={lang} T={T} setSessions={setSessions} compact agentConnected={agentConnected} />
+      <AgentSetup lang={lang} T={T} setSessions={setSessions} agentConnected={agentConnected} />
 
       {sessions.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <p className="text-xs text-gray-500 mb-2">{T.session.saved}</p>
-          {sessions.map(s => (
-            <div key={s.id} className="bg-gray-800/60 border border-gray-700 rounded-xl p-3 flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                {editingId === s.id ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-400 text-sm">@</span>
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value.replace(/^@/, ''))}
-                      onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null) }}
-                      className="bg-gray-700 border border-purple-600 rounded-lg px-2 py-0.5 text-sm focus:outline-none w-36"
-                    />
-                    <button onClick={saveEdit} disabled={editSaving}
-                      className="p-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-50">
-                      {editSaving ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+        <div style={{ marginTop: 16 }}>
+          <p className="label" style={{ marginBottom: 10 }}>{T.session.saved}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {sessions.map(s => (
+              <div key={s.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px', borderRadius: 12,
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {editingId === s.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: 'var(--text-2)', fontSize: 13 }}>@</span>
+                      <input
+                        autoFocus value={editValue}
+                        onChange={e => setEditValue(e.target.value.replace(/^@/, ''))}
+                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null) }}
+                        style={{ background: 'var(--bg)', border: '1px solid var(--accent)', borderRadius: 8, padding: '3px 8px', fontSize: 13, color: 'var(--text)', width: 140 }}
+                      />
+                      <button onClick={saveEdit} disabled={editSaving} style={{ background: 'var(--accent)', border: 'none', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', color: '#fff' }}>
+                        {editSaving ? <RefreshCw size={11} /> : <Check size={11} />}
+                      </button>
+                      <button onClick={() => setEditingId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}><X size={11} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>@{s.ig_username}</span>
+                        {s.plan_b_active && <span className="tag" style={{ background: 'rgba(234,179,8,0.15)', color: '#FDE047' }}>Plan B</span>}
+                        {verifyStatus[s.id] === 'loading' && <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} />}
+                        {verifyStatus[s.id] === true  && <CheckCircle size={12} style={{ color: '#22C55E' }} />}
+                        {verifyStatus[s.id] === false && <XCircle size={12} style={{ color: '#EF4444' }} />}
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-2)' }}>
+                        {new Date(s.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[
+                    { icon: <Pencil size={12} />, onClick: () => startEdit(s), title: T.session.editUsername },
+                    { icon: <RefreshCw size={12} />, onClick: () => handleVerify(s.id), title: T.session.validate },
+                    {
+                      icon: <span style={{ fontSize: 11, fontWeight: 700 }}>B</span>,
+                      onClick: async () => { const u = await sessionsApi.togglePlanB(s.id); setSessions(sessions.map(x => x.id === s.id ? u : x)) },
+                      title: s.plan_b_active ? T.session.planBOff : T.session.planBOn,
+                      active: s.plan_b_active,
+                    },
+                    { icon: <Trash2 size={12} />, onClick: async () => { await sessionsApi.delete(s.id); await load() }, danger: true },
+                  ].map((btn, i) => (
+                    <button
+                      key={i}
+                      onClick={btn.onClick}
+                      title={btn.title}
+                      style={{
+                        width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: 8, border: 'none', cursor: 'pointer', transition: 'all 0.12s',
+                        background: (btn as any).active ? 'rgba(234,179,8,0.2)' : 'transparent',
+                        color: (btn as any).active ? '#FDE047' : (btn as any).danger ? 'var(--text-3)' : 'var(--text-2)',
+                      }}
+                      onMouseEnter={e => {
+                        const el = e.currentTarget
+                        if ((btn as any).danger) { el.style.color = '#F87171'; el.style.background = 'rgba(239,68,68,0.1)' }
+                        else if (!(btn as any).active) { el.style.color = 'var(--text)'; el.style.background = 'var(--bg)' }
+                      }}
+                      onMouseLeave={e => {
+                        const el = e.currentTarget
+                        el.style.color = (btn as any).active ? '#FDE047' : (btn as any).danger ? 'var(--text-3)' : 'var(--text-2)'
+                        el.style.background = (btn as any).active ? 'rgba(234,179,8,0.2)' : 'transparent'
+                      }}
+                    >
+                      {btn.icon}
                     </button>
-                    <button onClick={() => setEditingId(null)} className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">@{s.ig_username}</span>
-                    {s.plan_b_active && (
-                      <span className="text-xs bg-yellow-900/50 text-yellow-400 px-1.5 py-0.5 rounded-full">Plan B</span>
-                    )}
-                    {verifyStatus[s.id] === 'loading' && <RefreshCw size={12} className="animate-spin text-gray-500" />}
-                    {verifyStatus[s.id] === true  && <CheckCircle size={12} className="text-green-400" />}
-                    {verifyStatus[s.id] === false && <XCircle size={12} className="text-red-400" />}
-                  </div>
-                )}
-                {editingId !== s.id && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {new Date(s.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
-                  </p>
-                )}
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => startEdit(s)} className="p-1.5 text-gray-400 hover:text-purple-400 hover:bg-gray-700 rounded-lg">
-                  <Pencil size={12} />
-                </button>
-                <button onClick={() => handleVerify(s.id)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg">
-                  <RefreshCw size={12} />
-                </button>
-                <button
-                  onClick={async () => {
-                    const updated = await sessionsApi.togglePlanB(s.id)
-                    setSessions(sessions.map(x => x.id === s.id ? updated : x))
-                  }}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-colors ${
-                    s.plan_b_active ? 'bg-yellow-700 text-yellow-100' : 'text-gray-500 hover:text-yellow-400 hover:bg-gray-700'
-                  }`}
-                >B</button>
-                <button
-                  onClick={async () => { await sessionsApi.delete(s.id); await load() }}
-                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-/* ── Agent Setup (shared by Onboarding + SessionPanel) ── */
-function AgentSetup({ lang, T, setSessions, compact, agentConnected: externalAgentConnected }: {
-  lang: string; T: any; setSessions: (s: Session[]) => void
-  compact: boolean; agentConnected?: boolean | null
+/* ── Agent Setup ── */
+function AgentSetup({ lang, T, setSessions, agentConnected: initialConnected }: {
+  lang: string; T: any; setSessions: (s: Session[]) => void; agentConnected: boolean | null
 }) {
-  const [agentConnected, setAgentConnected] = useState<boolean | null>(externalAgentConnected ?? null)
-  const [scanning,  setScanning]  = useState(false)
-  const [logs,      setLogs]      = useState<LogLine[]>([])
-  const [copied,    setCopied]    = useState<string | null>(null)
+  const [agentConnected, setAgentConnected] = useState<boolean | null>(initialConnected)
+  const [scanning, setScanning] = useState(false)
+  const [logs,     setLogs]     = useState<LogLine[]>([])
+  const [copied,   setCopied]   = useState<string | null>(null)
   const logEndRef = useRef<HTMLDivElement>(null)
   const esRef     = useRef<EventSource | null>(null)
 
-  useEffect(() => {
-    if (externalAgentConnected !== undefined) {
-      setAgentConnected(externalAgentConnected ?? null)
-    }
-  }, [externalAgentConnected])
-
-  useEffect(() => {
-    if (externalAgentConnected !== undefined) return
-    const check = async () => {
-      try { setAgentConnected((await sessionsApi.hostAgentStatus()).connected) }
-      catch { setAgentConnected(false) }
-    }
-    check()
-    const t = setInterval(check, 5000)
-    return () => clearInterval(t)
-  }, [externalAgentConnected])
+  useEffect(() => { setAgentConnected(initialConnected) }, [initialConnected])
 
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [logs])
 
@@ -447,107 +467,90 @@ function AgentSetup({ lang, T, setSessions, compact, agentConnected: externalAge
 
   const handleScan = () => {
     if (scanning) return
-    setLogs([])
-    setScanning(true)
+    setLogs([]); setScanning(true)
     esRef.current?.close()
     const es = new EventSource('/api/sessions/scan-browser/stream')
     esRef.current = es
-
-    es.addEventListener('log', e => { const d = JSON.parse(e.data); addLog(d.msg, 'info') })
-    es.addEventListener('error', e => {
-      const d = JSON.parse((e as MessageEvent).data); addLog(d.msg, 'error')
-      es.close(); setScanning(false)
-    })
-    es.addEventListener('done', e => {
-      const d = JSON.parse(e.data)
-      addLog(lang === 'en' ? '─── Done ───' : '─── Tamamlandı ───', 'done')
-      setSessions(d.sessions)
-      es.close(); setScanning(false)
-    })
-    es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) return
-      addLog(T.session.disconnected, 'error'); es.close(); setScanning(false)
-    }
+    es.addEventListener('log',   e => { const d = JSON.parse(e.data); addLog(d.msg) })
+    es.addEventListener('error', e => { const d = JSON.parse((e as MessageEvent).data); addLog(d.msg, 'error'); es.close(); setScanning(false) })
+    es.addEventListener('done',  e => { const d = JSON.parse(e.data); addLog(lang === 'en' ? '─── Done ───' : '─── Tamamlandı ───', 'done'); setSessions(d.sessions); es.close(); setScanning(false) })
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED) return; addLog(T.session.disconnected, 'error'); es.close(); setScanning(false) }
   }
 
-  const copy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(key)
-    setTimeout(() => setCopied(null), 2000)
-  }
+  const copy = (text: string, key: string) => { navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(null), 2000) }
 
   return (
-    <div>
-      {/* Agent status + scan button */}
-      <div className={`rounded-xl border p-4 ${agentConnected ? 'bg-green-950/20 border-green-800/40' : 'bg-gray-800/40 border-gray-700'}`}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            {agentConnected === null
-              ? <RefreshCw size={14} className="animate-spin text-gray-400" />
-              : agentConnected
-                ? <Wifi size={14} className="text-green-400" />
-                : <WifiOff size={14} className="text-gray-500" />
-            }
-            <span className="text-sm font-medium">
-              Host Agent{' '}
-              <span className={agentConnected ? 'text-green-400' : agentConnected === false ? 'text-gray-500' : 'text-gray-600'}>
-                {agentConnected === null
-                  ? (lang === 'tr' ? 'kontrol ediliyor…' : 'checking…')
-                  : agentConnected
-                    ? (lang === 'tr' ? 'çalışıyor' : 'running')
-                    : (lang === 'tr' ? 'çalışmıyor' : 'not running')
-                }
-              </span>
+    <div style={{
+      borderRadius: 14,
+      border: agentConnected ? '1px solid rgba(34,197,94,0.2)' : '1px solid var(--border)',
+      background: agentConnected ? 'rgba(34,197,94,0.04)' : 'var(--surface-2)',
+      padding: 16,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: agentConnected === false ? 16 : 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {agentConnected === null
+            ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-3)' }} />
+            : agentConnected
+              ? <Wifi size={13} style={{ color: '#22C55E' }} />
+              : <WifiOff size={13} style={{ color: 'var(--text-3)' }} />
+          }
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            Host Agent{' '}
+            <span style={{ color: agentConnected ? '#22C55E' : agentConnected === false ? 'var(--text-3)' : 'var(--text-3)', fontWeight: 400 }}>
+              {agentConnected === null ? (lang === 'tr' ? 'kontrol ediliyor…' : 'checking…')
+                : agentConnected ? (lang === 'tr' ? 'çalışıyor' : 'running')
+                : (lang === 'tr' ? 'çalışmıyor' : 'not running')}
             </span>
-          </div>
-          {agentConnected && (
-            <button
-              onClick={handleScan}
-              disabled={scanning}
-              className="flex items-center gap-2 px-4 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 rounded-lg text-sm font-semibold transition-colors"
-            >
-              <ScanLine size={14} className={scanning ? 'animate-pulse' : ''} />
-              {scanning ? T.session.scanning : T.session.scan}
-            </button>
-          )}
+          </span>
         </div>
-
-        {/* Install steps */}
-        {agentConnected === false && (
-          <div className="space-y-2 mt-1">
-            <p className="text-xs text-gray-500">
-              {lang === 'tr' ? 'Bir kez kur — sonra otomatik başlar:' : 'Install once — starts automatically:'}
-            </p>
-            <CodeLine cmd={INSTALL_CMD}  id="install" copied={copied} onCopy={copy} />
-            <CodeLine cmd={LAUNCH_CMD}   id="la"      copied={copied} onCopy={copy} />
-            <p className="text-xs text-gray-600">{lang === 'tr' ? '— Sadece bu oturum için:' : '— For this session only:'}</p>
-            <CodeLine cmd={AGENT_CMD}    id="agent"   copied={copied} onCopy={copy} />
-          </div>
-        )}
-
-        {/* Live log */}
-        {logs.length > 0 && (
-          <div className="mt-3 bg-black rounded-xl border border-gray-800 overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 bg-gray-900">
-              <Terminal size={11} className="text-gray-500" />
-              <span className="text-xs text-gray-500 font-mono">{T.session.scanOutput}</span>
-              {scanning && <span className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
-            </div>
-            <div className="p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto">
-              {logs.map((l, i) => (
-                <div key={i} className={
-                  l.type === 'error' ? 'text-red-400'
-                  : l.type === 'done' ? 'text-purple-400 font-semibold'
-                  : l.text.startsWith('✓') ? 'text-green-400'
-                  : l.text.startsWith('✗') ? 'text-red-400'
-                  : 'text-gray-300'
-                }>{l.text}</div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-          </div>
+        {agentConnected && (
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="btn-primary"
+            style={{ padding: '7px 14px', fontSize: 12 }}
+          >
+            <ScanLine size={13} style={scanning ? { animation: 'pulse 1s infinite' } : {}} />
+            {scanning ? T.session.scanning : T.session.scan}
+          </button>
         )}
       </div>
+
+      {agentConnected === false && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>
+            {lang === 'tr' ? 'Bir kez kur, sonra otomatik başlar:' : 'Install once — starts automatically:'}
+          </p>
+          <CodeLine cmd={INSTALL_CMD} id="install" copied={copied} onCopy={copy} />
+          <CodeLine cmd={LAUNCH_CMD}  id="la"      copied={copied} onCopy={copy} />
+          <p style={{ fontSize: 11, color: 'var(--text-3)', margin: '4px 0' }}>
+            {lang === 'tr' ? '— Sadece bu oturum için:' : '— For this session only:'}
+          </p>
+          <CodeLine cmd={AGENT_CMD}   id="agent"   copied={copied} onCopy={copy} />
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div style={{ marginTop: 14, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+            <Terminal size={11} style={{ color: 'var(--text-3)' }} />
+            <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'monospace' }}>{T.session.scanOutput}</span>
+            {scanning && <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 6px rgba(34,197,94,0.6)' }} />}
+          </div>
+          <div style={{ padding: 12, fontFamily: 'monospace', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto', background: '#050508' }}>
+            {logs.map((l, i) => (
+              <div key={i} style={{
+                color: l.type === 'error' ? '#F87171'
+                  : l.type === 'done' ? '#A78BFA'
+                  : l.text.startsWith('✓') ? '#34D399'
+                  : l.text.startsWith('✗') ? '#F87171'
+                  : 'var(--text-2)',
+              }}>{l.text}</div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -556,11 +559,15 @@ function CodeLine({ cmd, id, copied, onCopy }: {
   cmd: string; id: string; copied: string | null; onCopy: (t: string, i: string) => void
 }) {
   return (
-    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 font-mono text-xs">
-      <span className="text-green-400 select-none">$</span>
-      <span className="flex-1 text-gray-300 select-all">{cmd}</span>
-      <button onClick={() => onCopy(cmd, id)} className="text-gray-500 hover:text-gray-300 shrink-0">
-        {copied === id ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      background: 'var(--bg)', border: '1px solid var(--border)',
+      borderRadius: 8, padding: '7px 10px', fontFamily: 'monospace', fontSize: 11,
+    }}>
+      <span style={{ color: '#34D399', userSelect: 'none' }}>$</span>
+      <span style={{ flex: 1, color: 'var(--text)', userSelect: 'all' }}>{cmd}</span>
+      <button onClick={() => onCopy(cmd, id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 2, display: 'flex' }}>
+        {copied === id ? <Check size={11} style={{ color: '#34D399' }} /> : <Copy size={11} />}
       </button>
     </div>
   )

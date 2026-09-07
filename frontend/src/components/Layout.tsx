@@ -1,37 +1,71 @@
-import { Outlet, NavLink } from 'react-router-dom'
-import { BarChart2, Image, Network, History, MonitorDot, FileBarChart2, Users } from 'lucide-react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import {
+  LayoutDashboard, Users, Image, Network,
+  History, MonitorDot, FileBarChart2,
+} from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 
 export default function Layout() {
   const { T, lang, setLang } = useLang()
+  const location = useLocation()
 
   const nav = [
-    { to: '/',          label: T.nav.dashboard,  icon: BarChart2     },
-    { to: '/followers', label: T.nav.followers,  icon: Users         },
-    { to: '/posts',     label: T.nav.posts,      icon: Image         },
-    { to: '/report',    label: T.nav.report,     icon: FileBarChart2 },
-    { to: '/users',     label: T.nav.users,      icon: Network       },
-    { to: '/monitor',   label: T.nav.monitor,    icon: MonitorDot    },
-    { to: '/actions',   label: T.nav.actions,    icon: History       },
+    { to: '/',          label: T.nav.dashboard,  icon: LayoutDashboard },
+    { to: '/followers', label: T.nav.followers,  icon: Users           },
+    { to: '/posts',     label: T.nav.posts,      icon: Image           },
+    { to: '/report',    label: T.nav.report,     icon: FileBarChart2   },
+    { to: '/users',     label: T.nav.users,      icon: Network         },
+    { to: '/monitor',   label: T.nav.monitor,    icon: MonitorDot      },
+    { to: '/actions',   label: T.nav.actions,    icon: History         },
   ]
 
   return (
-    <div className="flex h-screen bg-gray-950">
-      <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+
+      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      <aside style={{
+        width: 220,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--surface)',
+        borderRight: '1px solid var(--border)',
+      }}>
+
         {/* Brand */}
-        <div className="px-4 py-5 border-b border-gray-800">
-          <div className="flex items-center justify-between">
+        <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <span className="text-base font-bold text-white tracking-tight">InstaAnalytic</span>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                <span className="text-xs text-gray-500">Analytics</span>
+              <div style={{
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: '-0.02em',
+                background: 'linear-gradient(135deg, #6366F1, #A78BFA)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                InstaAnalytic
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                {lang === 'tr' ? 'Analitik Platformu' : 'Analytics Platform'}
               </div>
             </div>
+
+            {/* Lang toggle */}
             <button
               onClick={() => setLang(lang === 'tr' ? 'en' : 'tr')}
-              title={lang === 'tr' ? 'Switch to English' : 'Türkçeye geç'}
-              className="text-xs font-bold px-2 py-1 rounded-md bg-gray-800 border border-gray-700 text-purple-400 hover:border-purple-600 transition-colors"
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                padding: '4px 8px',
+                borderRadius: 8,
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
             >
               {lang === 'tr' ? 'EN' : 'TR'}
             </button>
@@ -39,35 +73,79 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {nav.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-purple-600/20 text-purple-300 border border-purple-700/40'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100 border border-transparent'
-                }`
-              }
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
-          ))}
+        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto' }}>
+          {nav.map(({ to, label, icon: Icon }) => {
+            const isActive = to === '/'
+              ? location.pathname === '/'
+              : location.pathname.startsWith(to)
+
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '9px 12px',
+                  borderRadius: 10,
+                  marginBottom: 2,
+                  fontSize: 13,
+                  fontWeight: isActive ? 600 : 400,
+                  color: isActive ? '#fff' : 'var(--text-2)',
+                  textDecoration: 'none',
+                  transition: 'all 0.12s',
+                  background: isActive
+                    ? 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))'
+                    : 'transparent',
+                  border: isActive
+                    ? '1px solid rgba(99,102,241,0.3)'
+                    : '1px solid transparent',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => {
+                  if (!isActive) {
+                    (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)'
+                    ;(e.currentTarget as HTMLElement).style.color = 'var(--text)'
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!isActive) {
+                    (e.currentTarget as HTMLElement).style.background = 'transparent'
+                    ;(e.currentTarget as HTMLElement).style.color = 'var(--text-2)'
+                  }
+                }}
+              >
+                <Icon size={15} style={{ opacity: isActive ? 1 : 0.6, flexShrink: 0 }} />
+                {label}
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-800">
-          <p className="text-xs text-gray-600">InstaAnalytic · MIT</p>
-          <p className="text-xs text-gray-700">© 2026</p>
+        <div style={{
+          padding: '12px 16px',
+          borderTop: '1px solid var(--border)',
+          fontSize: 10,
+          color: 'var(--text-3)',
+        }}>
+          InstaAnalytic · MIT © 2026
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6 bg-gray-950">
-        <Outlet />
+      {/* ── Main content ────────────────────────────────────────── */}
+      <main style={{
+        flex: 1,
+        minWidth: 0,
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        <div style={{ flex: 1, padding: '28px 32px' }}>
+          <Outlet />
+        </div>
       </main>
     </div>
   )

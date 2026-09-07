@@ -2,6 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Inter font ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ── Design tokens ───────────────────────────────────────────────── */
+:root {
+  --bg:        #07070F;
+  --surface:   #0E0E1C;
+  --surface-2: #141425;
+  --border:    rgba(255,255,255,0.07);
+  --border-2:  rgba(255,255,255,0.12);
+  --text:      #E8E8F0;
+  --text-2:    #7B7B9A;
+  --text-3:    #3F3F5A;
+  --accent:    #6366F1;      /* indigo-500 */
+  --accent-2:  #8B5CF6;      /* violet-500 */
+  --accent-glow: rgba(99,102,241,0.15);
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
 body {
-  @apply bg-gray-950 text-gray-100 font-sans;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ── Utility classes ─────────────────────────────────────────────── */
+@layer components {
+  .card {
+    @apply rounded-2xl;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200;
+  }
+  .card-hover:hover {
+    border-color: var(--border-2);
+    box-shadow: 0 0 0 1px rgba(99,102,241,0.08), 0 8px 24px rgba(0,0,0,0.4);
+    transform: translateY(-1px);
+  }
+
+  .btn-primary {
+    @apply flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 0 20px var(--accent-glow);
+    filter: brightness(1.1);
+  }
+  .btn-primary:disabled { opacity: 0.5; filter: none; }
+
+  .btn-ghost {
+    @apply flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors;
+    color: var(--text-2);
+    border: 1px solid transparent;
+  }
+  .btn-ghost:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  .tag {
+    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+}
+
+/* ── Input base ──────────────────────────────────────────────────── */
+input, textarea, select {
+  outline: none;
+  font-family: inherit;
+}
+input:focus-visible, textarea:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
 }
