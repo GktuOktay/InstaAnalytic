@@ -1,7 +1,8 @@
 import { proxyImg } from '../utils/imgProxy'
 import { useCallback, useEffect, useState } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { Session } from '../api/sessions'
 import { analysisApi, RelationshipUser, AnalysisSummary } from '../api/analysis'
+import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { useLang } from '../contexts/LangContext'
@@ -11,6 +12,7 @@ type Tab = 'not_following_back' | 'not_followed_back' | 'mutual' | 'followers' |
 
 export default function FollowersPage() {
   const { T } = useLang()
+  const { sessions, loading: sessionLoading } = useSession()
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'not_following_back', label: T.followers.notFollowingBackPlural },
@@ -19,7 +21,6 @@ export default function FollowersPage() {
     { key: 'followers',          label: T.followers.allFollowers           },
     { key: 'following',          label: T.followers.allFollowing           },
   ]
-  const [sessions,      setSessions]      = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string>('')
   const [tab,           setTab]           = useState<Tab>('not_following_back')
   const [summary,       setSummary]       = useState<AnalysisSummary | null>(null)
@@ -83,11 +84,8 @@ export default function FollowersPage() {
 
   // ── İlk yükleme ────────────────────────────────────────────────────────────
   useEffect(() => {
-    sessionsApi.list().then(s => {
-      setSessions(s)
-      if (s.length > 0) setActiveSession(s[0].id)
-    }).catch(() => setError('Sessionlar yüklenemedi'))
-  }, [])
+    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
+  }, [sessions, activeSession])
 
   useEffect(() => {
     if (activeSession) loadData()
@@ -156,6 +154,15 @@ export default function FollowersPage() {
   const bulkProgress = bulkStatus?.status === 'PROGRESS' ? bulkStatus.progress : null
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  if (sessionLoading) {
+    return (
+      <div className="flex items-center justify-center h-64" style={{ color: 'var(--text-3)' }}>
+        <RefreshCw size={18} className="animate-spin" style={{ marginRight: 10 }} />
+        <span style={{ fontSize: 14 }}>Yükleniyor…</span>
+      </div>
+    )
+  }
+
   if (sessions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500">

@@ -1,6 +1,7 @@
 import { proxyImg } from '../utils/imgProxy'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
@@ -76,7 +77,7 @@ export default function UsersPage() {
     hint:  T.users.ghost.hint,
   }))
 
-  const [sessions,      setSessions]      = useState<Session[]>([])
+  const { sessions, loading: sessionLoading } = useSession()
   const [sid,           setSid]           = useState('')
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
   const [total,         setTotal]         = useState(0)
@@ -94,8 +95,8 @@ export default function UsersPage() {
   const LIMIT = 50
 
   useEffect(() => {
-    sessionsApi.list().then(s => { setSessions(s); if (s.length) setSid(s[0].id) })
-  }, [])
+    if (sessions.length > 0 && !sid) setSid(sessions[0].id)
+  }, [sessions, sid])
 
   const load = useCallback(async (p = 1, s = sort, q = search) => {
     if (!sid) return
@@ -225,6 +226,15 @@ export default function UsersPage() {
     const url = URL.createObjectURL(r.data)
     const a = document.createElement('a'); a.href = url; a.download = 'instapp_users.csv'; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  if (sessionLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240, color: 'var(--text-3)' }}>
+        <RefreshCw size={18} className="animate-spin" style={{ marginRight: 10 }} />
+        <span style={{ fontSize: 14 }}>Yükleniyor…</span>
+      </div>
+    )
   }
 
   return (
