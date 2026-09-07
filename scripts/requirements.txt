@@ -1,2 +1,4 @@
 browser-cookie3==0.19.1
 requests==2.31.0
+pycryptodome>=3.9.0
+pywin32>=300; sys_platform == "win32"

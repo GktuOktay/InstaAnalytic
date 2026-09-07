@@ -34,8 +34,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install pyinstaller browser-cookie3
+      - name: Install dependencies (Unix)
+        if: runner.os != 'Windows'
+        run: pip install pyinstaller browser-cookie3 pycryptodome
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: pip install pyinstaller browser-cookie3 pycryptodome pywin32
 
       - name: Build binary (Unix)
         if: runner.os != 'Windows'

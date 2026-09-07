@@ -3,56 +3,61 @@
 InstaAnalytic Host Agent — Tek seferlik başlatılır, arka planda çalışır.
 Backend Docker container'ına tarayıcı cookie'lerine erişim sağlar.
 
-Kurulum (bir kez):
-    pip3 install -r scripts/requirements.txt
-
-Başlatma (arka planda):
-    python3 scripts/host_agent.py &
-
-Veya LaunchAgent ile otomatik başlatma:
-    python3 scripts/host_agent.py --install-launchagent
+macOS/Linux:  python3 scripts/host_agent.py &
+Windows:      start.ps1 otomatik yönetir
 """
 
 import argparse
 import json
 import os
+import platform
 import sys
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PORT = 8002
 HOST = "127.0.0.1"
-CORS_ORIGIN = "http://localhost:3002"
 
 EXTRA_COOKIE_KEYS = ["csrftoken", "ds_user_id", "mid", "ig_did", "rur"]
+
+_SYSTEM = platform.system()   # "Darwin" | "Linux" | "Windows"
 
 try:
     import browser_cookie3
 except ImportError:
     print("HATA: browser-cookie3 yüklü değil.")
-    print("  pip3 install -r scripts/requirements.txt")
+    print("  pip install browser-cookie3 pycryptodome" + (" pywin32" if _SYSTEM == "Windows" else ""))
     sys.exit(1)
 
-# Desteklenen tüm tarayıcılar — önce en yaygın olanlar
+# Tarayıcı listesi — (görünen ad, browser_cookie3 fn adı, sadece bu OS | None=hepsi)
 _ALL_BROWSERS = [
-    ("Chrome",   "chrome"),
-    ("Arc",      "arc"),
-    ("Brave",    "brave"),
-    ("Edge",     "edge"),
-    ("Firefox",  "firefox"),
-    ("Safari",   "safari"),
-    ("Opera",    "opera"),
-    ("Opera GX", "opera_gx"),
-    ("Chromium", "chromium"),
-    ("Vivaldi",  "vivaldi"),
-    ("LibreWolf","librewolf"),
+    ("Chrome",    "chrome",    None),
+    ("Brave",     "brave",     None),
+    ("Edge",      "edge",      None),
+    ("Firefox",   "firefox",   None),
+    ("Opera",     "opera",     None),
+    ("Opera GX",  "opera_gx",  None),
+    ("Chromium",  "chromium",  None),
+    ("Vivaldi",   "vivaldi",   None),
+    ("LibreWolf", "librewolf", None),
+    ("Arc",       "arc",       "Darwin"),    # macOS/Linux
+    ("Safari",    "safari",    "Darwin"),    # macOS only
 ]
 
 BROWSERS = []
-for name, fn_name in _ALL_BROWSERS:
-    fn = getattr(browser_cookie3, fn_name, None)
-    if fn:
-        BROWSERS.append((name, fn))
+for _name, _fn_name, _only_on in _ALL_BROWSERS:
+    if _only_on and _SYSTEM != _only_on:
+        continue
+    _fn = getattr(browser_cookie3, _fn_name, None)
+    if _fn:
+        BROWSERS.append((_name, _fn))
+
+# Platform'a göre User-Agent
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    if _SYSTEM == "Windows" else
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 def parse_user_id_from_sessionid(sessionid: str) -> str | None:
@@ -76,7 +81,6 @@ def scan_cookies() -> tuple[list[dict], list[str]]:
         try:
             jar = loader(domain_name="instagram.com")
             cookies = {c.name: c.value for c in jar}
-            # Şifre çözme başarısız → boş/None değerleri at
             cookies = {k: v for k, v in cookies.items() if v}
             if "sessionid" not in cookies:
                 continue
@@ -96,56 +100,68 @@ def scan_cookies() -> tuple[list[dict], list[str]]:
         except Exception as e:
             err_str = str(e)
             print(f"  {browser_name}: {err_str}")
-            # Keychain / şifre hatalarını kullanıcıya bildir
             low = err_str.lower()
-            if any(k in low for k in ("keychain", "password", "decrypt", "permission", "denied", "locked")):
-                errors.append(
-                    f"{browser_name} cookie'leri okunamadı: Keychain/şifre erişimi reddedildi. "
-                    f"macOS → Sistem Ayarları → Gizlilik → Tam Disk Erişimi'nde InstaAnalytic'e izin verin."
-                )
+            if any(k in low for k in ("keychain", "password", "decrypt", "permission", "denied", "locked", "dpapi")):
+                if _SYSTEM == "Darwin":
+                    errors.append(
+                        f"{browser_name}: Keychain erişimi reddedildi. "
+                        "Sistem Ayarları → Gizlilik → Tam Disk Erişimi'nde InstaAnalytic'e izin verin."
+                    )
+                elif _SYSTEM == "Windows":
+                    errors.append(
+                        f"{browser_name}: Cookie şifresi çözülemiyor (DPAPI). "
+                        "Uygulamayı aynı Windows kullanıcısıyla çalıştırın."
+                    )
     return found, errors
 
 
 def resolve_username(session_id_cookie: str, extra_cookies: dict, user_id: str) -> str | None:
     """Host makineden (Docker NAT olmadan) Instagram username'i çek."""
-    import urllib.request, re
+    import urllib.request
+    import re
+    import ssl
+
     cookies = {"sessionid": session_id_cookie, **extra_cookies}
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-    # 1. Ana sayfa HTML'inden username parse et
-    try:
-        req = urllib.request.Request("https://www.instagram.com/", headers={
-            "User-Agent": ua,
-            "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
-            "Accept-Language": "tr-TR,tr;q=0.9",
-            "Cookie": cookie_header,
-        })
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-        m = re.search(r'"username":"([^"]{3,30})"', html)
-        if m:
-            return m.group(1)
-    except Exception as e:
-        print(f"  resolve_username homepage: {e}")
+    # Windows'ta SSL doğrulamasını atla (sertifika mağazası sorunu)
+    ctx = ssl.create_default_context()
+    if _SYSTEM == "Windows":
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
 
-    # 2. API v1 current_user (bazı hesaplarda çalışır)
-    try:
-        req2 = urllib.request.Request(
-            "https://www.instagram.com/api/v1/accounts/current_user/?edit=true",
-            headers={
-                "User-Agent": ua,
+    def _get(url: str) -> bytes | None:
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": _UA,
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+                "Cookie": cookie_header,
                 "X-IG-App-ID": "936619743392459",
                 "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie_header,
-            }
-        )
-        with urllib.request.urlopen(req2, timeout=10) as resp2:
-            data = json.loads(resp2.read())
-        if data.get("user", {}).get("username"):
-            return data["user"]["username"]
-    except Exception as e:
-        print(f"  resolve_username api: {e}")
+            })
+            with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
+                return resp.read()
+        except Exception as e:
+            print(f"  resolve {url}: {e}")
+            return None
+
+    # 1. Ana sayfa HTML'inden parse
+    html = _get("https://www.instagram.com/")
+    if html:
+        m = re.search(rb'"username":"([^"]{3,30})"', html)
+        if m:
+            return m.group(1).decode()
+
+    # 2. API endpoint
+    data_raw = _get("https://www.instagram.com/api/v1/accounts/current_user/?edit=true")
+    if data_raw:
+        try:
+            data = json.loads(data_raw)
+            if data.get("user", {}).get("username"):
+                return data["user"]["username"]
+        except Exception:
+            pass
 
     return None
 
@@ -154,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[host_agent] {fmt % args}")
 
-    def _headers(self, status: int, content_type="application/json"):
+    def _headers(self, status: int, content_type: str = "application/json"):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -168,35 +184,35 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._headers(200)
-            self.wfile.write(json.dumps({"status": "ok"}).encode())
+            self.wfile.write(json.dumps({"status": "ok", "platform": _SYSTEM}).encode())
         else:
             self._headers(404)
             self.wfile.write(b'{"error":"not found"}')
 
     def do_POST(self):
         if self.path == "/scan":
-            errors = []
-            sessions = []
+            sessions, errors = [], []
             try:
                 sessions, errors = scan_cookies()
             except Exception as e:
                 errors.append(str(e))
-            # Her session için username'i de çek
+
             for s in sessions:
                 if not s.get("username"):
-                    uname = resolve_username(
+                    s["username"] = resolve_username(
                         s["session_id_cookie"],
                         s.get("extra_cookies", {}),
                         s.get("user_id", ""),
                     )
-                    s["username"] = uname
-            scanned = [name for name, _ in BROWSERS]
+
             self._headers(200)
             self.wfile.write(json.dumps({
                 "sessions": sessions,
                 "errors": errors,
-                "scanned_browsers": scanned,
+                "scanned_browsers": [name for name, _ in BROWSERS],
+                "platform": _SYSTEM,
             }).encode())
+
         elif self.path == "/resolve-username":
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
@@ -207,62 +223,94 @@ class Handler(BaseHTTPRequestHandler):
             )
             self._headers(200)
             self.wfile.write(json.dumps({"username": username}).encode())
+
         else:
             self._headers(404)
             self.wfile.write(b'{"error":"not found"}')
 
 
-def install_launchagent():
-    """macOS LaunchAgent oluştur — login'de otomatik başlat."""
-    label = "com.instaanalytic.host-agent"
-    plist_path = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
-    script_path = os.path.abspath(__file__)
-    python_path = sys.executable
-
-    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+def _install_autostart():
+    """Platform'a göre otomatik başlatma kur."""
+    if _SYSTEM == "Darwin":
+        label = "com.instaanalytic.host-agent"
+        plist_path = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+        bin_path = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+        args = [bin_path] if getattr(sys, "frozen", False) else [sys.executable, bin_path]
+        plist = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>{label}</string>
+<plist version="1.0"><dict>
+    <key>Label</key><string>{label}</string>
     <key>ProgramArguments</key>
-    <array>
-        <string>{python_path}</string>
-        <string>{script_path}</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/instaanalytic-host-agent.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/instaanalytic-host-agent.log</string>
-</dict>
-</plist>"""
+    <array>{"".join(f"<string>{a}</string>" for a in args)}</array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>{os.path.expanduser("~/Library/Logs/InstaAnalytic/host-agent.log")}</string>
+    <key>StandardErrorPath</key><string>{os.path.expanduser("~/Library/Logs/InstaAnalytic/host-agent.log")}</string>
+</dict></plist>"""
+        os.makedirs(os.path.dirname(plist_path), exist_ok=True)
+        os.makedirs(os.path.expanduser("~/Library/Logs/InstaAnalytic"), exist_ok=True)
+        with open(plist_path, "w") as f:
+            f.write(plist)
+        os.system(f"launchctl unload '{plist_path}' 2>/dev/null; launchctl load '{plist_path}'")
+        print(f"✓ LaunchAgent kuruldu: {plist_path}")
 
-    os.makedirs(os.path.dirname(plist_path), exist_ok=True)
-    with open(plist_path, "w") as f:
-        f.write(plist)
-    os.system(f"launchctl load '{plist_path}'")
-    print(f"✓ LaunchAgent kuruldu: {plist_path}")
-    print(f"  Host agent şimdi arka planda çalışıyor (port {PORT}).")
-    print(f"  Loglar: /tmp/instaanalytic-host-agent.log")
+    elif _SYSTEM == "Linux":
+        service_dir = os.path.expanduser("~/.config/systemd/user")
+        os.makedirs(service_dir, exist_ok=True)
+        bin_path = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+        exec_line = bin_path if getattr(sys, "frozen", False) else f"{sys.executable} {bin_path}"
+        log_dir = os.path.expanduser("~/.local/share/instaanalytic/logs")
+        os.makedirs(log_dir, exist_ok=True)
+        service = f"""[Unit]
+Description=InstaAnalytic Host Agent
+After=network.target
+
+[Service]
+ExecStart={exec_line}
+Restart=always
+RestartSec=5
+StandardOutput=append:{log_dir}/host-agent.log
+StandardError=append:{log_dir}/host-agent.log
+
+[Install]
+WantedBy=default.target
+"""
+        svc_path = os.path.join(service_dir, "instaanalytic-host-agent.service")
+        with open(svc_path, "w") as f:
+            f.write(service)
+        os.system("systemctl --user daemon-reload")
+        os.system("systemctl --user enable instaanalytic-host-agent.service")
+        os.system("systemctl --user start  instaanalytic-host-agent.service")
+        print(f"✓ systemd service kuruldu: {svc_path}")
+
+    elif _SYSTEM == "Windows":
+        import subprocess
+        bin_path = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+        task_name = "InstaAnalytic\\HostAgent"
+        subprocess.run([
+            "schtasks", "/create", "/f",
+            "/tn", task_name,
+            "/tr", bin_path,
+            "/sc", "ONLOGON",
+            "/rl", "HIGHEST",
+        ], check=False)
+        subprocess.run(["schtasks", "/run", "/tn", task_name], check=False)
+        print(f"✓ Task Scheduler kuruldu: {task_name}")
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--install-launchagent", action="store_true",
-                        help="macOS LaunchAgent oluştur ve başlat")
+    parser = argparse.ArgumentParser(description="InstaAnalytic Host Agent")
+    parser.add_argument("--install-autostart", action="store_true",
+                        help="Otomatik başlatmayı kur (LaunchAgent/systemd/Task Scheduler)")
     args = parser.parse_args()
 
-    if args.install_launchagent:
-        install_launchagent()
+    if args.install_autostart:
+        _install_autostart()
         return
 
     server = HTTPServer((HOST, PORT), Handler)
-    print(f"InstaAnalytic Host Agent — http://{HOST}:{PORT}")
+    print(f"InstaAnalytic Host Agent [{_SYSTEM}] — http://{HOST}:{PORT}")
     print("Durdurmak için Ctrl+C")
     try:
         server.serve_forever()
