@@ -2,7 +2,7 @@ from celery import Celery
 from app.core.config import settings
 
 celery_app = Celery(
-    "instapp",
+    "instaanalytic",
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=["app.tasks.sync_tasks", "app.tasks.action_tasks"],

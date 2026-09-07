@@ -155,5 +155,5 @@ async def export_users_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=instapp_users.csv"},
+        headers={"Content-Disposition": "attachment; filename=instaanalytic_users.csv"},
     )

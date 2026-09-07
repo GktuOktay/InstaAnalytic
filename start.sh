@@ -1,5 +1,5 @@
 #!/bin/bash
-# Instapp — Kurulum & Başlatma (macOS + Linux)
+# InstaAnalytic — Kurulum & Başlatma (macOS + Linux)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -12,11 +12,11 @@ case "$OS" in
     ARCH="$(uname -m)"   # arm64 | x86_64
     ARCH="${ARCH/x86_64/amd64}"
     AGENT_BIN="$SCRIPT_DIR/scripts/bin/host_agent-darwin-$ARCH"
-    LOG_DIR="$HOME/Library/Logs/Instapp"
+    LOG_DIR="$HOME/Library/Logs/InstaAnalytic"
     ;;
   Linux)
     AGENT_BIN="$SCRIPT_DIR/scripts/bin/host_agent-linux-amd64"
-    LOG_DIR="$HOME/.local/share/instapp/logs"
+    LOG_DIR="$HOME/.local/share/instaanalytic/logs"
     ;;
   *)
     echo "Bu platform desteklenmiyor: $OS"
@@ -28,7 +28,7 @@ esac
 mkdir -p "$LOG_DIR"
 
 echo "╔══════════════════════════════════════╗"
-echo "║       Instapp — Kuruluyor…           ║"
+echo "║       InstaAnalytic — Kuruluyor…           ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
 
@@ -70,11 +70,11 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
   RAND_KEY="$(openssl rand -hex 32)"
   RAND_PASS="$(openssl rand -hex 16)"
   cat > "$SCRIPT_DIR/.env" <<ENV
-DATABASE_URL=postgresql+asyncpg://instapp:${RAND_PASS}@postgres:5432/instapp
+DATABASE_URL=postgresql+asyncpg://instaanalytic:${RAND_PASS}@postgres:5432/instaanalytic
 REDIS_URL=redis://redis:6379/0
-POSTGRES_USER=instapp
+POSTGRES_USER=instaanalytic
 POSTGRES_PASSWORD=${RAND_PASS}
-POSTGRES_DB=instapp
+POSTGRES_DB=instaanalytic
 ENCRYPTION_KEY=${RAND_KEY}
 ENVIRONMENT=production
 LOG_LEVEL=INFO
@@ -96,7 +96,7 @@ if [ ! -f "$AGENT_BIN" ]; then
       --name "$(basename "$AGENT_BIN")" \
       "$SCRIPT_DIR/scripts/host_agent.py" \
       --distpath "$SCRIPT_DIR/scripts/bin/" \
-      --workpath /tmp/instapp_build \
+      --workpath /tmp/instaanalytic_build \
       --specpath /tmp/ -y --log-level ERROR 2>/dev/null
   }
   if command -v python3 &>/dev/null; then
@@ -121,12 +121,12 @@ if [ "$OS" = "Darwin" ]; then
   mkdir -p "$LAUNCHAGENTS"
 
   # Host Agent
-  cat > "$LAUNCHAGENTS/com.instapp.host-agent.plist" <<PLIST
+  cat > "$LAUNCHAGENTS/com.instaanalytic.host-agent.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>com.instapp.host-agent</string>
+  <key>Label</key><string>com.instaanalytic.host-agent</string>
   <key>ProgramArguments</key>
   <array><string>$AGENT_BIN</string></array>
   <key>RunAtLoad</key><true/>
@@ -135,17 +135,17 @@ if [ "$OS" = "Darwin" ]; then
   <key>StandardErrorPath</key><string>$LOG_DIR/host-agent.log</string>
 </dict></plist>
 PLIST
-  launchctl unload "$LAUNCHAGENTS/com.instapp.host-agent.plist" 2>/dev/null || true
-  launchctl load   "$LAUNCHAGENTS/com.instapp.host-agent.plist"
+  launchctl unload "$LAUNCHAGENTS/com.instaanalytic.host-agent.plist" 2>/dev/null || true
+  launchctl load   "$LAUNCHAGENTS/com.instaanalytic.host-agent.plist"
 
   # Docker Compose
   DOCKER_BIN="$(which docker)"
-  cat > "$LAUNCHAGENTS/com.instapp.docker.plist" <<PLIST
+  cat > "$LAUNCHAGENTS/com.instaanalytic.docker.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>com.instapp.docker</string>
+  <key>Label</key><string>com.instaanalytic.docker</string>
   <key>ProgramArguments</key>
   <array>
     <string>$DOCKER_BIN</string><string>compose</string>
@@ -160,8 +160,8 @@ PLIST
   <key>StandardErrorPath</key><string>$LOG_DIR/docker.log</string>
 </dict></plist>
 PLIST
-  launchctl unload "$LAUNCHAGENTS/com.instapp.docker.plist" 2>/dev/null || true
-  launchctl load   "$LAUNCHAGENTS/com.instapp.docker.plist"
+  launchctl unload "$LAUNCHAGENTS/com.instaanalytic.docker.plist" 2>/dev/null || true
+  launchctl load   "$LAUNCHAGENTS/com.instaanalytic.docker.plist"
   echo "  ✓ macOS LaunchAgent kuruldu (login'de otomatik başlar)"
 
 elif [ "$OS" = "Linux" ]; then
@@ -170,9 +170,9 @@ elif [ "$OS" = "Linux" ]; then
   mkdir -p "$SYSTEMD_DIR"
 
   # Host Agent service
-  cat > "$SYSTEMD_DIR/instapp-host-agent.service" <<UNIT
+  cat > "$SYSTEMD_DIR/instaanalytic-host-agent.service" <<UNIT
 [Unit]
-Description=Instapp Host Agent
+Description=InstaAnalytic Host Agent
 After=network.target
 
 [Service]
@@ -188,9 +188,9 @@ UNIT
 
   # Docker Compose service
   DOCKER_BIN="$(which docker)"
-  cat > "$SYSTEMD_DIR/instapp-docker.service" <<UNIT
+  cat > "$SYSTEMD_DIR/instaanalytic-docker.service" <<UNIT
 [Unit]
-Description=Instapp Docker Compose
+Description=InstaAnalytic Docker Compose
 After=docker.service network-online.target
 Requires=docker.service
 
@@ -208,8 +208,8 @@ WantedBy=default.target
 UNIT
 
   systemctl --user daemon-reload
-  systemctl --user enable instapp-host-agent.service instapp-docker.service
-  systemctl --user start  instapp-host-agent.service
+  systemctl --user enable instaanalytic-host-agent.service instaanalytic-docker.service
+  systemctl --user start  instaanalytic-host-agent.service
   echo "  ✓ systemd user service kuruldu (login'de otomatik başlar)"
 fi
 echo ""
@@ -237,7 +237,7 @@ echo ""
 
 # ── Hazır ─────────────────────────────────────────────────────────────────────
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  ✓ Instapp hazır!                                        ║"
+echo "║  ✓ InstaAnalytic hazır!                                        ║"
 echo "║                                                          ║"
 echo "║  Adres : http://localhost:3002                           ║"
 echo "║  Session: Ayarlar → Session → Oturumu Tara              ║"

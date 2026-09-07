@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Instapp — Tarayıcı Session Tarayıcı (Otonom)
+InstaAnalytic — Tarayıcı Session Tarayıcı (Otonom)
 Host makinede çalışır. Chrome/Firefox/Safari'den Instagram session'ını okur,
 backend'e kaydeder. Sıfır kullanıcı girişi gerektirir.
 
@@ -133,7 +133,7 @@ def register_session(ig_username: str, sessionid: str, extra_cookies: dict) -> b
 
 def main():
     print("=" * 52)
-    print("  Instapp — Tarayıcı Session Tarayıcı")
+    print("  InstaAnalytic — Tarayıcı Session Tarayıcı")
     print("=" * 52)
     print()
 
@@ -183,7 +183,7 @@ def main():
     # 4. Sonuç
     if success_count:
         print(f"✓ {success_count} session başarıyla kaydedildi.")
-        print("  Instapp: http://localhost:3002")
+        print("  InstaAnalytic: http://localhost:3002")
     else:
         print("✗ Hiçbir session kaydedilemedi.")
         sys.exit(1)

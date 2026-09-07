@@ -1,5 +1,5 @@
 #!/bin/bash
-# Instapp Kurulum — Bu dosyaya çift tıklayarak kurulum yapabilirsiniz.
+# InstaAnalytic Kurulum — Bu dosyaya çift tıklayarak kurulum yapabilirsiniz.
 cd "$(dirname "$0")"
 bash start.sh
 echo ""

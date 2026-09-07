@@ -1,4 +1,4 @@
-# Instapp — Windows Kurulum & Başlatma
+# InstaAnalytic — Windows Kurulum & Başlatma
 # Çalıştırma: sağ tık → "PowerShell ile çalıştır"
 # veya: powershell -ExecutionPolicy Bypass -File start.ps1
 param()
@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $AgentBin   = "$ScriptDir\scripts\bin\host_agent-windows-amd64.exe"
-$LogDir     = "$env:LOCALAPPDATA\Instapp\Logs"
+$LogDir     = "$env:LOCALAPPDATA\InstaAnalytic\Logs"
 $EnvFile    = "$ScriptDir\.env"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -18,7 +18,7 @@ function Write-Warn($msg)   { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
 function Write-Fail($msg)   { Write-Host "  ✗ $msg" -ForegroundColor Red }
 
 Write-Banner "╔══════════════════════════════════════╗"
-Write-Banner "║       Instapp — Kuruluyor…           ║"
+Write-Banner "║       InstaAnalytic — Kuruluyor…           ║"
 Write-Banner "╚══════════════════════════════════════╝"
 Write-Host ""
 
@@ -60,11 +60,11 @@ if (-not (Test-Path $EnvFile)) {
     $randKey  = [System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace("-","").ToLower()
     $randPass = [System.BitConverter]::ToString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).Replace("-","").ToLower()
     @"
-DATABASE_URL=postgresql+asyncpg://instapp:$randPass@postgres:5432/instapp
+DATABASE_URL=postgresql+asyncpg://instaanalytic:$randPass@postgres:5432/instaanalytic
 REDIS_URL=redis://redis:6379/0
-POSTGRES_USER=instapp
+POSTGRES_USER=instaanalytic
 POSTGRES_PASSWORD=$randPass
-POSTGRES_DB=instapp
+POSTGRES_DB=instaanalytic
 ENCRYPTION_KEY=$randKey
 ENVIRONMENT=production
 LOG_LEVEL=INFO
@@ -84,7 +84,7 @@ if (-not (Test-Path $AgentBin)) {
         $agentName = [System.IO.Path]::GetFileName($AgentBin)
         pyinstaller --onefile --name $agentName "$ScriptDir\scripts\host_agent.py" `
             --distpath "$ScriptDir\scripts\bin\" `
-            --workpath "$env:TEMP\instapp_build" `
+            --workpath "$env:TEMP\instaanalytic_build" `
             --specpath "$env:TEMP" -y --log-level ERROR 2>&1 | Out-Null
     }
     if (-not (Test-Path $AgentBin)) {
@@ -99,7 +99,7 @@ Write-Host ""
 Write-Host "► Otomatik başlatma kuruluyor…"
 
 # Host Agent — Task Scheduler
-$taskNameAgent = "Instapp\HostAgent"
+$taskNameAgent = "InstaAnalytic\HostAgent"
 $action  = New-ScheduledTaskAction -Execute $AgentBin
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
@@ -108,7 +108,7 @@ Register-ScheduledTask -TaskName $taskNameAgent -Action $action -Trigger $trigge
 Start-ScheduledTask -TaskName $taskNameAgent -ErrorAction SilentlyContinue
 
 # Docker Compose — Task Scheduler
-$taskNameDocker = "Instapp\DockerCompose"
+$taskNameDocker = "InstaAnalytic\DockerCompose"
 $dockerAction   = New-ScheduledTaskAction -Execute "docker" `
     -Argument "compose --project-directory `"$ScriptDir`" up -d --build --wait" `
     -WorkingDirectory $ScriptDir
@@ -146,7 +146,7 @@ Write-Host ""
 
 # ── Hazır ─────────────────────────────────────────────────────────────────────
 Write-Banner "╔══════════════════════════════════════════════════════════╗"
-Write-Banner "║  ✓ Instapp hazır!                                        ║"
+Write-Banner "║  ✓ InstaAnalytic hazır!                                        ║"
 Write-Banner "║                                                          ║"
 Write-Banner "║  Adres : http://localhost:3002                           ║"
 Write-Banner "║  Session: Ayarlar → Session → Oturumu Tara              ║"

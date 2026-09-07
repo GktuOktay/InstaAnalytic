@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Instapp Host Agent — Tek seferlik başlatılır, arka planda çalışır.
+InstaAnalytic Host Agent — Tek seferlik başlatılır, arka planda çalışır.
 Backend Docker container'ına tarayıcı cookie'lerine erişim sağlar.
 
 Kurulum (bir kez):
@@ -186,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def install_launchagent():
     """macOS LaunchAgent oluştur — login'de otomatik başlat."""
-    label = "com.instapp.host-agent"
+    label = "com.instaanalytic.host-agent"
     plist_path = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
     script_path = os.path.abspath(__file__)
     python_path = sys.executable
@@ -208,9 +208,9 @@ def install_launchagent():
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/instapp-host-agent.log</string>
+    <string>/tmp/instaanalytic-host-agent.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/instapp-host-agent.log</string>
+    <string>/tmp/instaanalytic-host-agent.log</string>
 </dict>
 </plist>"""
 
@@ -220,7 +220,7 @@ def install_launchagent():
     os.system(f"launchctl load '{plist_path}'")
     print(f"✓ LaunchAgent kuruldu: {plist_path}")
     print(f"  Host agent şimdi arka planda çalışıyor (port {PORT}).")
-    print(f"  Loglar: /tmp/instapp-host-agent.log")
+    print(f"  Loglar: /tmp/instaanalytic-host-agent.log")
 
 
 def main():
@@ -234,7 +234,7 @@ def main():
         return
 
     server = HTTPServer((HOST, PORT), Handler)
-    print(f"Instapp Host Agent — http://{HOST}:{PORT}")
+    print(f"InstaAnalytic Host Agent — http://{HOST}:{PORT}")
     print("Durdurmak için Ctrl+C")
     try:
         server.serve_forever()
