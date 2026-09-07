@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import GoldenHourHeatmap from '../components/GoldenHourHeatmap'
+import DashboardCharts from '../components/DashboardCharts'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { sessionsApi, Session } from '../api/sessions'
@@ -45,62 +47,62 @@ export default function Dashboard() {
   return (
     <div style={{ width: '100%' }}>
 
-      {/* ── Header row ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.03em', marginBottom: 4, lineHeight: 1.1 }}>
             {hasSessions ? (
               <>
-                <span style={{ color: 'var(--text-2)', fontWeight: 400 }}>@</span>
-                {sessions[0].ig_username}
+                <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 20 }}>@</span>
+                <span style={{ background: 'var(--logo-grad)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                  {sessions[0].ig_username}
+                </span>
               </>
             ) : 'Dashboard'}
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-2)' }}>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', letterSpacing: '0.01em' }}>
             {hasSessions
-              ? (lang === 'tr' ? 'Instagram analitik paneli' : 'Instagram analytics overview')
+              ? (lang === 'tr' ? 'Instagram analitik paneli' : 'Instagram analytics')
               : 'InstaAnalytic'}
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Health indicators */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Health pill */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '8px 14px', borderRadius: 12,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '7px 14px', borderRadius: 12,
             background: 'var(--surface)', border: '1px solid var(--border)',
-            fontSize: 12,
+            fontSize: 11, fontWeight: 500,
           }}>
-            {(['API', 'DB', 'Redis'] as const).map((label, i) => {
+            {(['API', 'DB', 'Redis'] as const).map((lbl, i) => {
               const ok = i === 0 ? health?.status === 'ok' : i === 1 ? health?.postgres === 'ok' : health?.redis === 'ok'
+              const color = ok == null ? 'var(--text-3)' : ok ? '#22C55E' : '#EF4444'
               return (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: ok == null ? 'var(--text-3)' : ok ? '#22C55E' : '#EF4444',
-                    boxShadow: ok ? '0 0 6px rgba(34,197,94,0.5)' : undefined,
+                    width: 6, height: 6, borderRadius: '50%', background: color,
+                    boxShadow: ok ? `0 0 5px ${color}80` : 'none',
                   }} />
-                  <span style={{ color: 'var(--text-2)' }}>{label}</span>
+                  <span style={{ color: 'var(--text-3)' }}>{lbl}</span>
                 </div>
               )
             })}
           </div>
 
           {/* Session toggle */}
-          <button
-            onClick={() => setShowSession(s => !s)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', borderRadius: 12, fontSize: 13, fontWeight: 500,
-              cursor: 'pointer', transition: 'all 0.15s',
-              background: showSession ? 'rgba(99,102,241,0.12)' : 'var(--surface)',
-              border: showSession ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border)',
-              color: showSession ? '#A5B4FC' : 'var(--text-2)',
-            }}
-          >
-            <Settings size={13} />
+          <button onClick={() => setShowSession(s => !s)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 12,
+            fontSize: 12, fontWeight: 500, cursor: 'pointer',
+            background: showSession ? 'rgba(99,102,241,0.1)' : 'var(--surface)',
+            border: showSession ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--border)',
+            color: showSession ? '#A5B4FC' : 'var(--text-2)',
+            transition: 'all 0.15s',
+          }}>
+            <Settings size={12} />
             {lang === 'tr' ? 'Oturum' : 'Session'}
-            {showSession ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            {showSession ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </button>
         </div>
       </div>
@@ -116,70 +118,31 @@ export default function Dashboard() {
         <OnboardingView lang={lang} T={T} setSessions={setSessions} />
       ) : (
         <>
-          {/* ── Stat cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-            {summary ? (
-              <>
-                <StatCard icon={Users}     label={lang === 'tr' ? 'Takipçi' : 'Followers'}         value={summary.total_followers}    color="#60A5FA" glow="rgba(96,165,250,0.15)" />
-                <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'   : 'Following'}         value={summary.total_following}    color="#A78BFA" glow="rgba(167,139,250,0.15)" />
-                <StatCard icon={UserCheck} label={lang === 'tr' ? 'Karşılıklı' : 'Mutual'}         value={summary.mutual}             color="#34D399" glow="rgba(52,211,153,0.15)" />
-                <StatCard icon={UserX}     label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#FB923C" glow="rgba(251,146,60,0.15)" />
-              </>
-            ) : (
-              <div style={{
-                gridColumn: '1 / -1',
-                padding: '16px 20px',
-                borderRadius: 16,
-                background: 'var(--surface)',
-                border: '1px dashed var(--border-2)',
-                display: 'flex', alignItems: 'center', gap: 12,
-                fontSize: 13, color: 'var(--text-2)',
-              }}>
-                <AlertCircle size={16} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
-                {lang === 'tr'
-                  ? 'İstatistik için önce Takipçi Analizi\'nden senkronizasyon yap.'
-                  : 'Run a sync in Follower Analysis to populate stats.'}
-                <button
-                  onClick={() => navigate('/followers')}
-                  style={{ marginLeft: 'auto', fontSize: 13, color: '#818CF8', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                >
-                  {lang === 'tr' ? 'Analize git →' : 'Go to analysis →'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ── Quick actions ── */}
-          <div style={{ marginBottom: 8 }}>
-            <p className="label" style={{ marginBottom: 14 }}>{T.dashboard.quickAccess}</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-              <ActionCard icon={Users}        title={T.dashboard.cards.followers} desc={T.dashboard.cards.followersDesc} accent="#818CF8" onClick={() => navigate('/followers')} />
-              <ActionCard icon={Image}        title={T.dashboard.cards.posts}     desc={T.dashboard.cards.postsDesc}     accent="#60A5FA" onClick={() => navigate('/posts')} />
-              <ActionCard icon={Network}      title={T.nav.users}                  desc={lang === 'tr' ? 'Etkileşim oranına göre sırala' : 'Ranked by engagement'} accent="#34D399" onClick={() => navigate('/users')} />
-              <ActionCard icon={FileBarChart2} title={T.nav.report}               desc={lang === 'tr' ? 'Aylık trend & hayran listesi' : 'Monthly trends & top fans'} accent="#F472B6" onClick={() => navigate('/report')} />
-              <ActionCard icon={History}      title={T.dashboard.cards.actions}   desc={T.dashboard.cards.actionsDesc}  accent="#FB923C" onClick={() => navigate('/actions')} />
+          {/* ── Stat strip ── */}
+          {summary ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <StatCard icon={Users}      label={lang === 'tr' ? 'Takipçi'            : 'Followers'}         value={summary.total_followers}    color="#60A5FA" glow="" />
+              <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'              : 'Following'}         value={summary.total_following}    color="#818CF8" glow="" />
+              <StatCard icon={UserCheck}  label={lang === 'tr' ? 'Karşılıklı'         : 'Mutual'}            value={summary.mutual}             color="#34D399" glow="" />
+              <StatCard icon={UserX}      label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#F472B6" glow="" />
             </div>
-          </div>
-
-          {/* ── Multiple sessions badge ── */}
-          {sessions.length > 1 && (
-            <div style={{ marginTop: 28 }}>
-              <p className="label" style={{ marginBottom: 14 }}>{T.dashboard.activeSessions}</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                {sessions.map(s => (
-                  <div key={s.id} style={{
-                    padding: '14px 16px', borderRadius: 14,
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                  }}>
-                    <p style={{ fontWeight: 600, fontSize: 14 }}>@{s.ig_username}</p>
-                    <p style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 3 }}>
-                      {new Date(s.created_at).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}
-                    </p>
-                  </div>
-                ))}
-              </div>
+          ) : (
+            <div style={{ padding: '14px 18px', borderRadius: 14,
+              background: 'var(--surface)', border: '1px dashed var(--border-2)',
+              display: 'flex', alignItems: 'center', gap: 12,
+              fontSize: 13, color: 'var(--text-2)' }}>
+              <AlertCircle size={15} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+              {lang === 'tr' ? 'İstatistik için önce Takipçi Analizi\'nden senkronizasyon yap.' : 'Run a sync in Follower Analysis to populate stats.'}
+              <button onClick={() => navigate('/followers')} style={{
+                marginLeft: 'auto', fontSize: 13, color: '#818CF8',
+                cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+                {lang === 'tr' ? 'Analize git →' : 'Go →'}
+              </button>
             </div>
           )}
+
+          <DashboardCharts sessionId={sessions[0].id} />
+          <GoldenHourHeatmap sessionId={sessions[0].id} />
         </>
       )}
     </div>
@@ -197,32 +160,48 @@ function LoadingState() {
   )
 }
 
-function StatCard({ icon: Icon, label, value, color, glow }: {
+function StatCard({ icon: Icon, label, value, color: c }: {
   icon: React.ElementType; label: string; value: number; color: string; glow: string
 }) {
   return (
     <div style={{
-      padding: '20px 20px 18px',
-      borderRadius: 18,
+      padding: '18px 20px',
+      borderRadius: 16,
       background: 'var(--surface)',
       border: '1px solid var(--border)',
       position: 'relative',
       overflow: 'hidden',
-    }}>
-      {/* Subtle glow behind icon */}
+      transition: 'box-shadow 0.2s, border-color 0.2s',
+    }}
+    onMouseEnter={e => {
+      (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px ${c}22`
+      ;(e.currentTarget as HTMLElement).style.borderColor = `${c}33`
+    }}
+    onMouseLeave={e => {
+      (e.currentTarget as HTMLElement).style.boxShadow = 'none'
+      ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
+    }}
+    >
+      {/* Ambient glow */}
       <div style={{
-        position: 'absolute', top: 0, right: 0,
-        width: 80, height: 80,
-        borderRadius: '50%',
-        background: glow,
-        filter: 'blur(24px)',
-        transform: 'translate(20px, -20px)',
+        position: 'absolute', top: -20, right: -20,
+        width: 80, height: 80, borderRadius: '50%',
+        background: `${c}12`, filter: 'blur(20px)', pointerEvents: 'none',
       }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Icon size={15} style={{ color }} />
-        <span style={{ fontSize: 11, color: 'var(--text-2)', fontWeight: 500 }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+          {label}
+        </span>
+        <div style={{
+          width: 30, height: 30, borderRadius: 8,
+          background: `${c}14`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Icon size={14} style={{ color: c }} />
+        </div>
       </div>
-      <p style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', color, lineHeight: 1 }}>
+      <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', lineHeight: 1 }}>
         {value.toLocaleString()}
       </p>
     </div>
