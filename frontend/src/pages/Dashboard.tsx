@@ -121,10 +121,10 @@ export default function Dashboard() {
           {/* ── Stat strip ── */}
           {summary ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              <StatCard icon={Users}      label={lang === 'tr' ? 'Takipçi'            : 'Followers'}         value={summary.total_followers}    color="#60A5FA" glow="" />
-              <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'              : 'Following'}         value={summary.total_following}    color="#818CF8" glow="" />
-              <StatCard icon={UserCheck}  label={lang === 'tr' ? 'Karşılıklı'         : 'Mutual'}            value={summary.mutual}             color="#34D399" glow="" />
-              <StatCard icon={UserX}      label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#F472B6" glow="" />
+              <StatCard icon={Users}      label={lang === 'tr' ? 'Takipçi'            : 'Followers'}          value={summary.total_followers}    color="#60A5FA" glow="" onClick={() => navigate('/followers')} />
+              <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'              : 'Following'}          value={summary.total_following}    color="#818CF8" glow="" onClick={() => navigate('/followers')} />
+              <StatCard icon={UserCheck}  label={lang === 'tr' ? 'Karşılıklı'         : 'Mutual'}             value={summary.mutual}             color="#34D399" glow="" onClick={() => navigate('/followers')} />
+              <StatCard icon={UserX}      label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#F472B6" glow="" onClick={() => navigate('/followers')} />
             </div>
           ) : (
             <div style={{ padding: '14px 18px', borderRadius: 14,
@@ -160,27 +160,32 @@ function LoadingState() {
   )
 }
 
-function StatCard({ icon: Icon, label, value, color: c }: {
-  icon: React.ElementType; label: string; value: number; color: string; glow: string
+function StatCard({ icon: Icon, label, value, color: c, onClick }: {
+  icon: React.ElementType; label: string; value: number; color: string; glow: string; onClick?: () => void
 }) {
   return (
-    <div style={{
-      padding: '18px 20px',
-      borderRadius: 16,
-      background: 'var(--surface)',
-      border: '1px solid var(--border)',
-      position: 'relative',
-      overflow: 'hidden',
-      transition: 'box-shadow 0.2s, border-color 0.2s',
-    }}
-    onMouseEnter={e => {
-      (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px ${c}22`
-      ;(e.currentTarget as HTMLElement).style.borderColor = `${c}33`
-    }}
-    onMouseLeave={e => {
-      (e.currentTarget as HTMLElement).style.boxShadow = 'none'
-      ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
-    }}
+    <div
+      onClick={onClick}
+      style={{
+        padding: '18px 20px',
+        borderRadius: 16,
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'box-shadow 0.2s, border-color 0.2s, transform 0.15s',
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px ${c}22`
+        ;(e.currentTarget as HTMLElement).style.borderColor = `${c}33`
+        if (onClick) (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.boxShadow = 'none'
+        ;(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'
+        ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
+      }}
     >
       {/* Ambient glow */}
       <div style={{

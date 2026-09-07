@@ -47,7 +47,7 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
   const max   = Math.max(...vals, 1)
 
   // Fixed logical canvas — SVG scales it proportionally via viewBox
-  const VW = 500, VH = 90, PB = 18, PX = 8
+  const VW = 500, VH = 100, PB = 22, PX = 8
   const chartH = VH - PB
 
   const x = (i: number) => PX + (i / (last.length - 1)) * (VW - PX * 2)
@@ -107,14 +107,20 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
                 fill={i === pts.length - 1 ? '#818CF8' : 'var(--surface)'}
                 stroke="#818CF8" strokeWidth={1.4} />
               {i % tickEvery === 0 && (
-                <text x={p.x} y={VH - 3} textAnchor="middle"
-                  fontSize={7.5} fill="var(--text-3)">{fmtM(last[i].month)}</text>
+                <text x={p.x} y={VH - 4} textAnchor="middle"
+                  fontSize={9} fill="var(--text-3)">{fmtM(last[i].month)}</text>
               )}
               {i === pts.length - 1 && (
-                <text x={p.x} y={p.y - 6} textAnchor="middle"
-                  fontSize={7.5} fontWeight="600" fill="#818CF8">
-                  {vals[i].toLocaleString()}
-                </text>
+                <g>
+                  <rect
+                    x={p.x - 18} y={p.y - 19} width={36} height={14}
+                    rx={4} fill="#818CF8" fillOpacity={0.15}
+                  />
+                  <text x={p.x} y={p.y - 9} textAnchor="middle"
+                    fontSize={9} fontWeight="700" fill="#818CF8">
+                    {vals[i].toLocaleString()}
+                  </text>
+                </g>
               )}
             </g>
           ))}
