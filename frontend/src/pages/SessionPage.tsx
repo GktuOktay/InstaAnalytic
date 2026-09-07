@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { sessionsApi, Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { useLang } from '../contexts/LangContext'
 import {
   CheckCircle, XCircle, Trash2, RefreshCw, Wifi, WifiOff,
@@ -17,8 +18,7 @@ interface LogLine {
 
 export default function SessionPage() {
   const { T, lang } = useLang()
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [loading, setLoading] = useState(true)
+  const { sessions, loading, refresh: refreshContext, setSessionsDirectly: setSessions } = useSession()
   const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
   const [scanning, setScanning] = useState(false)
   const [logs, setLogs] = useState<LogLine[]>([])
@@ -32,11 +32,8 @@ export default function SessionPage() {
   const esRef = useRef<EventSource | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    const data = await sessionsApi.list()
-    setSessions(data)
-    setLoading(false)
-  }, [])
+    await refreshContext()
+  }, [refreshContext])
 
   const checkAgent = useCallback(async () => {
     try {
@@ -48,7 +45,6 @@ export default function SessionPage() {
   }, [])
 
   useEffect(() => {
-    load()
     checkAgent()
     agentPollRef.current = setInterval(checkAgent, 5000)
     return () => {

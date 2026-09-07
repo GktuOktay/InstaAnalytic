@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { actionsApi, ActionLogEntry } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
 import { CheckCircle, XCircle, Clock, SkipForward } from 'lucide-react'
@@ -13,17 +14,14 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 
 export default function ActionLogPage() {
   const { T, lang } = useLang()
-  const [sessions, setSessions] = useState<Session[]>([])
+  const { sessions } = useSession()
   const [activeSession, setActiveSession] = useState<string>('')
   const [logs, setLogs] = useState<ActionLogEntry[]>([])
   const [filter, setFilter] = useState<string>('all')
 
   useEffect(() => {
-    sessionsApi.list().then(s => {
-      setSessions(s)
-      if (s.length > 0) setActiveSession(s[0].id)
-    })
-  }, [])
+    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
+  }, [sessions, activeSession])
 
   useEffect(() => {
     if (activeSession) actionsApi.log(activeSession).then(setLogs)

@@ -1,6 +1,7 @@
 import { proxyImg } from '../utils/imgProxy'
 import { useEffect, useState } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { postsApi, Post, PostLiker, PostComment, PostStats } from '../api/posts'
 import { analysisApi } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
@@ -20,7 +21,7 @@ const MEDIA_ICON: Record<string, React.ReactNode> = {
 
 export default function PostsPage() {
   const { T, lang } = useLang()
-  const [sessions, setSessions] = useState<Session[]>([])
+  const { sessions } = useSession()
   const [activeSession, setActiveSession] = useState<string>('')
   const [posts, setPosts] = useState<Post[]>([])
   const [stats, setStats] = useState<PostStats | null>(null)
@@ -47,11 +48,8 @@ export default function PostsPage() {
   })
 
   useEffect(() => {
-    sessionsApi.list().then(s => {
-      setSessions(s)
-      if (s.length > 0) setActiveSession(s[0].id)
-    })
-  }, [])
+    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
+  }, [sessions, activeSession])
 
   useEffect(() => { if (activeSession) loadData() }, [activeSession])
 

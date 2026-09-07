@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { reportApi, InteractionReport } from '../api/report'
 import { useLang } from '../contexts/LangContext'
 import { Heart, MessageCircle, Users, TrendingUp, Star, Award, Loader2 } from 'lucide-react'
@@ -109,18 +109,15 @@ function FanBar({ val, max }: { val: number; max: number }) {
 
 export default function ReportPage() {
   const { T, lang } = useLang()
-  const [sessions, setSessions] = useState<Session[]>([])
+  const { sessions } = useSession()
   const [sid, setSid] = useState('')
   const [report, setReport] = useState<InteractionReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    sessionsApi.list().then(s => {
-      setSessions(s)
-      if (s.length) setSid(s[0].id)
-    })
-  }, [])
+    if (sessions.length > 0 && !sid) setSid(sessions[0].id)
+  }, [sessions, sid])
 
   useEffect(() => {
     if (!sid) return

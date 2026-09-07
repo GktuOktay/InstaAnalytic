@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import api from '../api/client'
-import { sessionsApi, Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { actionsApi, QueueStatus } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
 import {
@@ -62,13 +62,13 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function MonitorPage() {
   const { T, lang } = useLang()
+  const { sessions } = useSession()
   const JOB_LABELS: Record<string, string> = {
     sync_followers:         T.monitor.types.followerSync,
     sync_following:         T.monitor.types.followingSync,
     sync_posts:             T.monitor.types.postSync,
     sync_post_interactions: T.monitor.types.interactionSync,
   }
-  const [sessions, setSessions] = useState<Session[]>([])
   const [activeSession, setActiveSession] = useState<string>('')
   const [jobs, setJobs] = useState<SyncJob[]>([])
   const [active, setActive] = useState<ActiveTask[]>([])
@@ -77,11 +77,8 @@ export default function MonitorPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
   useEffect(() => {
-    sessionsApi.list().then(ss => {
-      setSessions(ss)
-      if (ss.length > 0 && !activeSession) setActiveSession(ss[0].id)
-    }).catch(() => {})
-  }, [])
+    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
+  }, [sessions, activeSession])
 
   const load = useCallback(async () => {
     setLoading(true)

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/client'
 import { sessionsApi, Session } from '../api/sessions'
+import { useSession } from '../contexts/SessionContext'
 import { analysisApi, AnalysisSummary } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
 import {
@@ -21,28 +22,23 @@ const AGENT_CMD   = 'python3 scripts/host_agent.py &'
 export default function Dashboard() {
   const { T, lang } = useLang()
   const navigate    = useNavigate()
+  const { sessions, loading: sessionsLoading, setSessionsDirectly: setSessions } = useSession()
 
   const [health,      setHealth]      = useState<HealthStatus | null>(null)
-  const [sessions,    setSessions]    = useState<Session[]>([])
   const [summary,     setSummary]     = useState<AnalysisSummary | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [showSession, setShowSession] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    await Promise.allSettled([
-      api.get('/health').then(r => setHealth(r.data)).catch(() => setHealth(null)),
-      sessionsApi.list().then(list => {
-        setSessions(list)
-        if (list.length > 0) {
-          analysisApi.summary(list[0].id).then(setSummary).catch(() => {})
-        }
-      }).catch(() => {}),
-    ])
-    setLoading(false)
+  useEffect(() => {
+    api.get('/health').then(r => setHealth(r.data)).catch(() => setHealth(null))
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (sessions.length > 0) {
+      analysisApi.summary(sessions[0].id).then(setSummary).catch(() => {})
+    }
+    setLoading(sessionsLoading)
+  }, [sessions, sessionsLoading])
 
   const hasSessions = sessions.length > 0
 
@@ -311,6 +307,7 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
   sessions: Session[]; setSessions: (s: Session[]) => void
   lang: string; T: any; onClose: () => void
 }) {
+  const { refresh: refreshSessions } = useSession()
   const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
   const [verifyStatus, setVerifyStatus] = useState<Record<string, 'loading' | boolean>>({})
   const [editingId,   setEditingId]   = useState<string | null>(null)
@@ -328,7 +325,7 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
     return () => clearInterval(t)
   }, [checkAgent])
 
-  const load = async () => { setSessions(await sessionsApi.list()) }
+  const load = async () => { await refreshSessions() }
   const startEdit = (s: Session) => { setEditingId(s.id); setEditValue(s.ig_username) }
   const saveEdit = async () => {
     if (!editingId || !editValue.trim()) return
