@@ -47,5 +47,5 @@ docker-compose.override.yml
 logs/
 tmp/
 
-# Host Agent binary (platforma özel, ayrı dağıtılır)
-scripts/bin/
+# Host Agent build artifacts (binary git'e alınır, temp dosyalar değil)
+/tmp/instapp_build/
