@@ -1,15 +1,19 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, cast, Float
+from sqlalchemy.dialects.postgresql import INTERVAL
+import sqlalchemy as sa
 from celery.result import AsyncResult
 from app.db.base import get_db
 from app.models.session import Session
 from app.models.ig_user import IgUser
+from app.models.post import Post
 from app.models.relationship import Relationship
 from app.models.sync_job import SyncJob
 from app.schemas.analysis import (
-    RelationshipUser, AnalysisSummary, SyncResponse, TaskStatus
+    RelationshipUser, AnalysisSummary, SyncResponse, TaskStatus,
+    GoldenHourSlot, GoldenHourResponse,
 )
 from app.tasks.sync_tasks import sync_followers, sync_following
 from app.tasks.celery_app import celery_app
@@ -155,3 +159,38 @@ async def followers(session_id: uuid.UUID, page: int = 1, limit: int = 50, db: A
 async def following(session_id: uuid.UUID, page: int = 1, limit: int = 50, db: AsyncSession = Depends(get_db)):
     await _get_session(session_id, db)
     return await _paginated_rel(db, session_id, we_follow=True, they_follow=None, page=page, limit=limit)
+
+
+@router.get("/analysis/golden-hour", response_model=GoldenHourResponse)
+async def golden_hour(session_id: uuid.UUID, tz: str = "Europe/Istanbul", db: AsyncSession = Depends(get_db)):
+    await _get_session(session_id, db)
+
+    # Group posts by local day-of-week and hour, aggregate avg engagement
+    local_ts = sa.func.timezone(tz, Post.taken_at)
+    day_col = sa.cast(sa.func.extract("DOW", local_ts), sa.Integer)
+    hour_col = sa.cast(sa.func.extract("HOUR", local_ts), sa.Integer)
+    engagement = sa.cast(Post.like_count + Post.comment_count, Float)
+
+    q = (
+        select(
+            day_col.label("day_of_week"),
+            hour_col.label("hour"),
+            func.avg(engagement).label("avg_engagement"),
+            func.count().label("post_count"),
+        )
+        .where(and_(Post.session_id == session_id, Post.taken_at.is_not(None)))
+        .group_by(day_col, hour_col)
+        .order_by(day_col, hour_col)
+    )
+
+    rows = (await db.execute(q)).all()
+    slots = [
+        GoldenHourSlot(
+            day_of_week=int(r.day_of_week),
+            hour=int(r.hour),
+            avg_engagement=round(float(r.avg_engagement), 1),
+            post_count=int(r.post_count),
+        )
+        for r in rows
+    ]
+    return GoldenHourResponse(slots=slots, timezone=tz)

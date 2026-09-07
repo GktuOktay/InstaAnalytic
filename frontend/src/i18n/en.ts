@@ -103,6 +103,19 @@ const en: Translations = {
     search:         'Search user…',
   },
 
+  goldenHour: {
+    title:      'Golden Hour',
+    subtitle:   'When should you post for maximum engagement?',
+    noData:     'No posts found. Fetch posts first.',
+    avgEng:     'Avg. Engagement',
+    posts:      'Posts',
+    days:       ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    best:       'Best',
+    good:       'Good',
+    low:        'Low',
+    tip:        'Dark purple = highest expected engagement',
+  },
+
   posts: {
     title:          'Post Analysis',
     fetch:          'Fetch Posts',

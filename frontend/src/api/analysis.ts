@@ -46,6 +46,18 @@ export interface TaskStatus {
 
 const s = (id: string) => `/sessions/${id}`
 
+export interface GoldenHourSlot {
+  day_of_week: number
+  hour: number
+  avg_engagement: number
+  post_count: number
+}
+
+export interface GoldenHourResponse {
+  slots: GoldenHourSlot[]
+  timezone: string
+}
+
 export const analysisApi = {
   syncFollowers: (id: string) => api.post<SyncResponse>(`${s(id)}/sync/followers`).then(r => r.data),
   syncFollowing: (id: string) => api.post<SyncResponse>(`${s(id)}/sync/following`).then(r => r.data),
@@ -56,4 +68,6 @@ export const analysisApi = {
   followers: (id: string, page = 1) => api.get<RelationshipUser[]>(`${s(id)}/analysis/followers?page=${page}&limit=100`).then(r => r.data),
   following: (id: string, page = 1) => api.get<RelationshipUser[]>(`${s(id)}/analysis/following?page=${page}&limit=100`).then(r => r.data),
   taskStatus: (taskId: string) => api.get<TaskStatus>(`/tasks/${taskId}`).then(r => r.data),
+  goldenHour: (id: string, tz = 'Europe/Istanbul') =>
+    api.get<GoldenHourResponse>(`${s(id)}/analysis/golden-hour?tz=${encodeURIComponent(tz)}`).then(r => r.data),
 }

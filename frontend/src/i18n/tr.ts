@@ -101,6 +101,19 @@ const tr = {
     search:         'Kullanıcı ara…',
   },
 
+  goldenHour: {
+    title:      'Golden Hour',
+    subtitle:   'Hangi gün ve saatte paylaşım yaparsam etkileşim daha yüksek?',
+    noData:     'Gönderi bulunamadı. Önce gönderileri çekin.',
+    avgEng:     'Ort. Etkileşim',
+    posts:      'Gönderi',
+    days:       ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'],
+    best:       'En İyi',
+    good:       'İyi',
+    low:        'Düşük',
+    tip:        'Koyu mor = en yüksek etkileşim beklentisi',
+  },
+
   posts: {
     title:          'Gönderi Analizi',
     fetch:          'Gönderileri Çek',

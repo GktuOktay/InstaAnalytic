@@ -42,3 +42,15 @@ class TaskStatus(BaseModel):
     progress: dict | None = None
     result: dict | None = None
     error: str | None = None
+
+
+class GoldenHourSlot(BaseModel):
+    day_of_week: int   # 0=Sun ... 6=Sat (PostgreSQL DOW)
+    hour: int
+    avg_engagement: float
+    post_count: int
+
+
+class GoldenHourResponse(BaseModel):
+    slots: list[GoldenHourSlot]
+    timezone: str
