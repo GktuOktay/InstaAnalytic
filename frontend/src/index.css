@@ -231,3 +231,40 @@ aside, main, .card, .card-hover, input, select, textarea {
 
 /* Focus ring */
 .focus\:border-purple-500:focus { border-color: var(--accent) !important; }
+
+/* ── Opacity-variant gray backgrounds ────────────────────────────
+   Tailwind generates .bg-gray-950\/70 etc. — bridge them to theme  */
+.bg-gray-950\/70 { background-color: rgba(7,7,15,0.7)   !important; }
+.bg-gray-950\/80 { background-color: rgba(7,7,15,0.8)   !important; }
+.bg-gray-900\/40 { background-color: var(--surface-2)   !important; opacity: 0.9; }
+[data-theme="light"] .bg-gray-950\/70 { background-color: rgba(180,180,200,0.55) !important; }
+[data-theme="light"] .bg-gray-950\/80 { background-color: rgba(180,180,200,0.65) !important; }
+
+/* ── Semantic color badge backgrounds in light mode ─────────────
+   *-900/30 and *-900/50 are near-black tints — remap to soft tints */
+[data-theme="light"] .bg-green-900\/30,
+[data-theme="light"] .bg-green-900\/50  { background-color: rgba(22,163,74,0.12)  !important; }
+[data-theme="light"] .bg-red-900\/30,
+[data-theme="light"] .bg-red-900\/50    { background-color: rgba(220,38,38,0.1)   !important; }
+[data-theme="light"] .bg-yellow-900\/30 { background-color: rgba(202,138,4,0.1)   !important; }
+[data-theme="light"] .bg-blue-900\/30   { background-color: rgba(37,99,235,0.1)   !important; }
+[data-theme="light"] .bg-purple-900\/30 { background-color: rgba(99,102,241,0.1)  !important; }
+[data-theme="light"] .bg-amber-900\/30,
+[data-theme="light"] .bg-amber-900\/40  { background-color: rgba(217,119,6,0.1)   !important; }
+[data-theme="light"] .bg-green-950\/20  { background-color: rgba(22,163,74,0.07)  !important; }
+
+/* ── text-white: tab active states in light mode ────────────────
+   Tabs combine border-purple-500 + text-white but have no fill bg.
+   White text on light bg = invisible. Target only the tab pattern. */
+[data-theme="light"] .border-b-2.text-white,
+[data-theme="light"] .border-b.border-purple-500.text-white,
+[data-theme="light"] .border-purple-500.text-white:not([class*="bg-"]) {
+  color: var(--accent) !important;
+}
+
+/* ── Console / terminal log area: always dark ────────────────── */
+.font-mono.text-xs { color: inherit; }
+
+/* ── amber/yellow badge spans ────────────────────────────────── */
+[data-theme="light"] .bg-amber-900 { background-color: rgba(217,119,6,0.12) !important; }
+[data-theme="light"] .bg-yellow-900 { background-color: rgba(202,138,4,0.1) !important; }
