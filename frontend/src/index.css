@@ -149,3 +149,72 @@ input:focus-visible, textarea:focus-visible {
 aside, main, .card, .card-hover, input, select, textarea {
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
+
+/* ── Tailwind gray → theme token bridge ─────────────────────────────
+   Pages use hardcoded Tailwind gray classes; these overrides remap
+   them to CSS variables so light/dark theme works everywhere.       */
+
+/* Backgrounds */
+.bg-gray-950 { background-color: var(--bg)        !important; }
+.bg-gray-900 { background-color: var(--surface)   !important; }
+.bg-gray-800 { background-color: var(--surface-2) !important; }
+.bg-gray-700 { background-color: var(--surface-2) !important; }
+.bg-black    { background-color: var(--bg)        !important; }
+.bg-white    { background-color: var(--surface)   !important; }
+
+/* Hover backgrounds */
+.hover\:bg-gray-900:hover { background-color: var(--surface)   !important; }
+.hover\:bg-gray-800:hover { background-color: var(--surface-2) !important; }
+.hover\:bg-gray-700:hover { background-color: var(--surface-2) !important; filter: brightness(0.85); }
+
+/* Borders */
+.border-gray-900 { border-color: var(--border)   !important; }
+.border-gray-800 { border-color: var(--border)   !important; }
+.border-gray-700 { border-color: var(--border-2) !important; }
+
+/* Text */
+.text-gray-100 { color: var(--text)   !important; }
+.text-gray-200 { color: var(--text)   !important; }
+.text-gray-300 { color: var(--text)   !important; }
+.text-gray-400 { color: var(--text-2) !important; }
+.text-gray-500 { color: var(--text-2) !important; }
+.text-gray-600 { color: var(--text-3) !important; }
+
+.hover\:text-gray-100:hover { color: var(--text)   !important; }
+.hover\:text-gray-200:hover { color: var(--text)   !important; }
+.hover\:text-gray-300:hover { color: var(--text)   !important; }
+
+/* Modal overlay stays dark in both modes */
+.bg-black\/70 { background-color: rgba(0,0,0,0.7) !important; }
+.bg-gray-950\/70 { background-color: rgba(0,0,0,0.5) !important; }
+.bg-gray-950\/80 { background-color: rgba(0,0,0,0.5) !important; }
+
+/* Dashed border utility */
+.border-dashed.border-gray-800 { border-color: var(--border-2) !important; }
+
+/* Progress bar tracks */
+.bg-gray-700.rounded-full { background-color: var(--surface-2) !important; }
+.bg-gray-800.rounded-full { background-color: var(--surface-2) !important; }
+
+/* Tab underline active: white text on purple border → keep white (it's on colored bg)
+   But standalone text-white without colored bg → map to --text in light mode */
+[data-theme="light"] .text-white:not(.bg-purple-600):not(.bg-purple-700):not(.bg-purple-500):not(.btn-primary):not([class*="bg-purple"]):not([class*="bg-indigo"]):not([class*="bg-green"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-blue"]) {
+  color: var(--text) !important;
+}
+
+/* Avatar placeholder circles */
+[data-theme="light"] .bg-gray-700 {
+  background-color: #E0E0EC !important;
+}
+
+/* Recharts / chart text visibility */
+[data-theme="light"] .recharts-text,
+[data-theme="light"] .recharts-cartesian-axis-tick-value {
+  fill: var(--text-2) !important;
+}
+[data-theme="light"] .recharts-cartesian-grid line {
+  stroke: var(--border) !important;
+}
+
+/* Focus ring */
+.focus\:border-purple-500:focus { border-color: var(--accent) !important; }
