@@ -145,8 +145,16 @@ async def _do_scan_stream(db: AsyncSession) -> AsyncGenerator[str, None]:
         yield _sse("error", {"msg": f"Tarama hatası: {e}"})
         return
 
+    scan_errors: list = resp.json().get("errors", [])
+    if scan_errors:
+        for err in scan_errors:
+            yield _sse("log", {"msg": f"  ⚠ {err}"})
+
     if not raw_sessions:
-        yield _sse("error", {"msg": "Tarayıcılarda Instagram session bulunamadı. instagram.com'da oturum aç."})
+        if scan_errors:
+            yield _sse("error", {"msg": "Tarayıcı cookie'leri okunamadı. Yukarıdaki uyarıya bakın."})
+        else:
+            yield _sse("error", {"msg": "Tarayıcılarda Instagram session bulunamadı. instagram.com'da oturum aç ve tekrar dene."})
         return
 
     yield _sse("log", {"msg": f"✓ {len(raw_sessions)} tarayıcı session'ı bulundu."})

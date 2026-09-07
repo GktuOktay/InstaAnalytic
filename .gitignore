@@ -46,3 +46,6 @@ docker-compose.override.yml
 *.log
 logs/
 tmp/
+
+# Host Agent binary (platforma özel, ayrı dağıtılır)
+scripts/bin/

@@ -58,6 +58,8 @@ def scan_cookies() -> list[dict]:
         try:
             jar = loader(domain_name="instagram.com")
             cookies = {c.name: c.value for c in jar}
+            # Şifre çözme başarısız olduğunda boş/None değerler gelebilir
+            cookies = {k: v for k, v in cookies.items() if v}
             if "sessionid" not in cookies:
                 continue
             sid = cookies["sessionid"]
@@ -146,7 +148,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/scan":
-            sessions = scan_cookies()
+            errors = []
+            sessions = []
+            try:
+                sessions = scan_cookies()
+            except Exception as e:
+                err_str = str(e).lower()
+                if "keychain" in err_str or "password" in err_str or "decrypt" in err_str:
+                    errors.append("Tarayıcı şifresi çözülemiyor. macOS Keychain erişimine izin verin: Sistem Tercihleri → Gizlilik → Tam Disk Erişimi")
+                else:
+                    errors.append(str(e))
             # Her session için username'i de çek
             for s in sessions:
                 if not s.get("username"):
@@ -157,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
                     )
                     s["username"] = uname
             self._headers(200)
-            self.wfile.write(json.dumps({"sessions": sessions}).encode())
+            self.wfile.write(json.dumps({"sessions": sessions, "errors": errors}).encode())
         elif self.path == "/resolve-username":
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
