@@ -5,28 +5,44 @@
 /* ── Inter font ──────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-/* ── Design tokens ───────────────────────────────────────────────── */
+/* ── Dark theme (default) ────────────────────────────────────────── */
 :root {
   --bg:        #07070F;
   --surface:   #0E0E1C;
   --surface-2: #141425;
   --border:    rgba(255,255,255,0.07);
-  --border-2:  rgba(255,255,255,0.12);
+  --border-2:  rgba(255,255,255,0.14);
   --text:      #E8E8F0;
   --text-2:    #7B7B9A;
   --text-3:    #3F3F5A;
-  --accent:    #6366F1;      /* indigo-500 */
-  --accent-2:  #8B5CF6;      /* violet-500 */
+  --accent:    #6366F1;
+  --accent-2:  #8B5CF6;
   --accent-glow: rgba(99,102,241,0.15);
+  --logo-grad: linear-gradient(135deg, #818CF8, #A78BFA);
+  --scrollbar: rgba(255,255,255,0.14);
+}
+
+/* ── Light theme ─────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:        #F4F4F8;
+  --surface:   #FFFFFF;
+  --surface-2: #F0F0F5;
+  --border:    rgba(0,0,0,0.08);
+  --border-2:  rgba(0,0,0,0.14);
+  --text:      #111118;
+  --text-2:    #5B5B78;
+  --text-3:    #A0A0BC;
+  --accent:    #4F52E8;
+  --accent-2:  #7C3AED;
+  --accent-glow: rgba(79,82,232,0.12);
+  --logo-grad: linear-gradient(135deg, #4F52E8, #7C3AED);
+  --scrollbar: rgba(0,0,0,0.14);
 }
 
 /* ── Base ────────────────────────────────────────────────────────── */
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-}
+html, body, #root { height: 100%; margin: 0; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -34,47 +50,64 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.2s, color 0.2s;
 }
 
-/* ── Custom scrollbar ────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 4px; height: 4px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background: var(--scrollbar); border-radius: 2px; }
 
 /* ── Utility classes ─────────────────────────────────────────────── */
 @layer components {
   .card {
-    @apply rounded-2xl;
+    border-radius: 18px;
     background: var(--surface);
     border: 1px solid var(--border);
   }
 
   .card-hover {
-    @apply card transition-all duration-200;
+    border-radius: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    transition: all 0.18s;
   }
   .card-hover:hover {
     border-color: var(--border-2);
-    box-shadow: 0 0 0 1px rgba(99,102,241,0.08), 0 8px 24px rgba(0,0,0,0.4);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
     transform: translateY(-1px);
   }
 
   .btn-primary {
-    @apply flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-150;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
     background: linear-gradient(135deg, var(--accent), var(--accent-2));
     color: #fff;
-    box-shadow: 0 0 0 0 var(--accent-glow);
   }
-  .btn-primary:hover {
-    box-shadow: 0 0 20px var(--accent-glow);
-    filter: brightness(1.1);
-  }
-  .btn-primary:disabled { opacity: 0.5; filter: none; }
+  .btn-primary:hover  { filter: brightness(1.08); box-shadow: 0 0 18px var(--accent-glow); }
+  .btn-primary:disabled { opacity: 0.5; filter: none; cursor: not-allowed; }
 
   .btn-ghost {
-    @apply flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors;
-    color: var(--text-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    background: none;
     border: 1px solid transparent;
+    cursor: pointer;
+    color: var(--text-2);
+    transition: all 0.12s;
   }
   .btn-ghost:hover {
     background: var(--surface-2);
@@ -91,7 +124,12 @@ body {
   }
 
   .tag {
-    @apply text-xs font-medium px-2 py-0.5 rounded-full;
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 99px;
   }
 }
 
@@ -99,7 +137,15 @@ body {
 input, textarea, select {
   outline: none;
   font-family: inherit;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 input:focus-visible, textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── Theme transition on all surfaces ───────────────────────────── */
+aside, main, .card, .card-hover, input, select, textarea {
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }

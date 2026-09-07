@@ -1,12 +1,14 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Image, Network,
-  History, MonitorDot, FileBarChart2,
+  History, MonitorDot, FileBarChart2, Moon, Sun,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
+import { useTheme } from '../contexts/ThemeContext'
 
 export default function Layout() {
   const { T, lang, setLang } = useLang()
+  const { theme, toggleTheme } = useTheme()
   const location = useLocation()
 
   const nav = [
@@ -51,24 +53,46 @@ export default function Layout() {
               </div>
             </div>
 
-            {/* Lang toggle */}
-            <button
-              onClick={() => setLang(lang === 'tr' ? 'en' : 'tr')}
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                padding: '4px 8px',
-                borderRadius: 8,
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              {lang === 'tr' ? 'EN' : 'TR'}
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {/* Theme toggle */}
+              <button
+                onClick={toggleTheme}
+                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                style={{
+                  width: 30, height: 30,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 8,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-2)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {theme === 'dark'
+                  ? <Sun size={13} />
+                  : <Moon size={13} />}
+              </button>
+
+              {/* Lang toggle */}
+              <button
+                onClick={() => setLang(lang === 'tr' ? 'en' : 'tr')}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  padding: '4px 8px',
+                  borderRadius: 8,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-2)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {lang === 'tr' ? 'EN' : 'TR'}
+              </button>
+            </div>
           </div>
         </div>
 
