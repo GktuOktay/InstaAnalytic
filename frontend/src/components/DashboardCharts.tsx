@@ -42,11 +42,11 @@ export default function DashboardCharts({ sessionId }: Props) {
 /* ─── Monthly area chart ───────────────────────────────── */
 function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly']; lang: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [hovered, setHovered] = useState<number | null>(null)
   const last  = monthly.slice(-8)
   const vals  = last.map(m => m.total_likes)
   const max   = Math.max(...vals, 1)
 
-  // Fixed logical canvas — SVG scales it proportionally via viewBox
   const VW = 500, VH = 100, PB = 22, PX = 8
   const chartH = VH - PB
 
@@ -55,7 +55,6 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
 
   const pts = last.map((m, i) => ({ x: x(i), y: y(m.total_likes) }))
 
-  // Smooth cubic bezier path
   const linePath = pts.reduce((acc, p, i) => {
     if (i === 0) return `M${p.x},${p.y}`
     const prev = pts[i - 1]
@@ -75,7 +74,7 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
       <div ref={containerRef}>
         <svg
           viewBox={`0 0 ${VW} ${VH}`}
-          style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
+          style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible', pointerEvents: 'all' }}
         >
           <defs>
             <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
@@ -84,7 +83,6 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
             </linearGradient>
           </defs>
 
-          {/* Gridlines */}
           {[0.25, 0.5, 0.75, 1].map(t => (
             <line key={t}
               x1={PX} y1={PB + (1 - t) * (chartH - PB)}
@@ -93,37 +91,64 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
             />
           ))}
 
-          {/* Area */}
           <path d={areaPath} fill="url(#ag)" />
-
-          {/* Line */}
           <path d={linePath} fill="none" stroke="#818CF8" strokeWidth={1.6}
             strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Points + labels */}
-          {pts.map((p, i) => (
-            <g key={i}>
-              <circle cx={p.x} cy={p.y} r={2.5}
-                fill={i === pts.length - 1 ? '#818CF8' : 'var(--surface)'}
-                stroke="#818CF8" strokeWidth={1.4} />
-              {i % tickEvery === 0 && (
-                <text x={p.x} y={VH - 4} textAnchor="middle"
-                  fontSize={9} fill="var(--text-3)">{fmtM(last[i].month)}</text>
-              )}
-              {i === pts.length - 1 && (
-                <g>
-                  <rect
-                    x={p.x - 18} y={p.y - 19} width={36} height={14}
-                    rx={4} fill="#818CF8" fillOpacity={0.15}
-                  />
-                  <text x={p.x} y={p.y - 9} textAnchor="middle"
-                    fontSize={9} fontWeight="700" fill="#818CF8">
-                    {vals[i].toLocaleString()}
+          {pts.map((p, i) => {
+            const isHov = hovered === i
+            const isLast = i === pts.length - 1
+            const labelVal = vals[i].toLocaleString()
+            const labelW = Math.max(labelVal.length * 6 + 14, 34)
+            const labelX = Math.min(Math.max(p.x, labelW / 2 + 2), VW - labelW / 2 - 2)
+            const labelY = p.y > 28 ? p.y - 18 : p.y + 22
+
+            return (
+              <g key={i}>
+                {/* Invisible hit area */}
+                <rect
+                  x={p.x - 20} y={0} width={40} height={VH - PB}
+                  fill="transparent"
+                  style={{ cursor: 'crosshair', pointerEvents: 'all' }}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                />
+                <circle cx={p.x} cy={p.y}
+                  r={isHov ? 4 : isLast ? 3 : 2.5}
+                  fill={isHov || isLast ? '#818CF8' : 'var(--surface)'}
+                  stroke="#818CF8" strokeWidth={1.4}
+                  style={{ transition: 'r 0.1s' }}
+                />
+                {/* Vertical guide on hover */}
+                {isHov && (
+                  <line x1={p.x} y1={PB} x2={p.x} y2={VH - PB}
+                    stroke="#818CF8" strokeWidth={0.8} strokeDasharray="3 2" strokeOpacity={0.4} />
+                )}
+                {i % tickEvery === 0 && (
+                  <text x={p.x} y={VH - 4} textAnchor="middle"
+                    fontSize={9} fill={isHov ? '#818CF8' : 'var(--text-3)'}>
+                    {fmtM(last[i].month)}
                   </text>
-                </g>
-              )}
-            </g>
-          ))}
+                )}
+                {/* Tooltip badge on hover or last point */}
+                {(isHov || isLast) && (
+                  <g>
+                    <rect
+                      x={labelX - labelW / 2} y={labelY - 11} width={labelW} height={14}
+                      rx={4}
+                      fill={isHov ? '#818CF8' : '#818CF8'}
+                      fillOpacity={isHov ? 0.9 : 0.15}
+                    />
+                    <text x={labelX} y={labelY - 1} textAnchor="middle"
+                      fontSize={9} fontWeight="700"
+                      fill={isHov ? '#fff' : '#818CF8'}>
+                      {labelVal}
+                    </text>
+                  </g>
+                )}
+              </g>
+            )
+          })}
         </svg>
       </div>
     </Card>
