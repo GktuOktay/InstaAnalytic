@@ -28,15 +28,31 @@ EXTRA_COOKIE_KEYS = ["csrftoken", "ds_user_id", "mid", "ig_did", "rur"]
 
 try:
     import browser_cookie3
-    BROWSERS = [
-        ("Chrome",  browser_cookie3.chrome),
-        ("Firefox", browser_cookie3.firefox),
-        ("Safari",  browser_cookie3.safari),
-    ]
 except ImportError:
     print("HATA: browser-cookie3 yüklü değil.")
     print("  pip3 install -r scripts/requirements.txt")
     sys.exit(1)
+
+# Desteklenen tüm tarayıcılar — önce en yaygın olanlar
+_ALL_BROWSERS = [
+    ("Chrome",   "chrome"),
+    ("Arc",      "arc"),
+    ("Brave",    "brave"),
+    ("Edge",     "edge"),
+    ("Firefox",  "firefox"),
+    ("Safari",   "safari"),
+    ("Opera",    "opera"),
+    ("Opera GX", "opera_gx"),
+    ("Chromium", "chromium"),
+    ("Vivaldi",  "vivaldi"),
+    ("LibreWolf","librewolf"),
+]
+
+BROWSERS = []
+for name, fn_name in _ALL_BROWSERS:
+    fn = getattr(browser_cookie3, fn_name, None)
+    if fn:
+        BROWSERS.append((name, fn))
 
 
 def parse_user_id_from_sessionid(sessionid: str) -> str | None:
@@ -50,15 +66,17 @@ def parse_user_id_from_sessionid(sessionid: str) -> str | None:
     return None
 
 
-def scan_cookies() -> list[dict]:
-    """Tüm tarayıcılarda Instagram session'larını tara."""
+def scan_cookies() -> tuple[list[dict], list[str]]:
+    """Tüm tarayıcılarda Instagram session'larını tara. (sessions, errors) döner."""
     found = []
     seen = set()
+    errors = []
+
     for browser_name, loader in BROWSERS:
         try:
             jar = loader(domain_name="instagram.com")
             cookies = {c.name: c.value for c in jar}
-            # Şifre çözme başarısız olduğunda boş/None değerler gelebilir
+            # Şifre çözme başarısız → boş/None değerleri at
             cookies = {k: v for k, v in cookies.items() if v}
             if "sessionid" not in cookies:
                 continue
@@ -74,9 +92,18 @@ def scan_cookies() -> list[dict]:
                 "browser": browser_name,
                 "user_id": uid,
             })
+            print(f"  ✓ {browser_name}: uid={uid}")
         except Exception as e:
-            print(f"  {browser_name}: {e}")
-    return found
+            err_str = str(e)
+            print(f"  {browser_name}: {err_str}")
+            # Keychain / şifre hatalarını kullanıcıya bildir
+            low = err_str.lower()
+            if any(k in low for k in ("keychain", "password", "decrypt", "permission", "denied", "locked")):
+                errors.append(
+                    f"{browser_name} cookie'leri okunamadı: Keychain/şifre erişimi reddedildi. "
+                    f"macOS → Sistem Ayarları → Gizlilik → Tam Disk Erişimi'nde InstaAnalytic'e izin verin."
+                )
+    return found, errors
 
 
 def resolve_username(session_id_cookie: str, extra_cookies: dict, user_id: str) -> str | None:
@@ -151,13 +178,9 @@ class Handler(BaseHTTPRequestHandler):
             errors = []
             sessions = []
             try:
-                sessions = scan_cookies()
+                sessions, errors = scan_cookies()
             except Exception as e:
-                err_str = str(e).lower()
-                if "keychain" in err_str or "password" in err_str or "decrypt" in err_str:
-                    errors.append("Tarayıcı şifresi çözülemiyor. macOS Keychain erişimine izin verin: Sistem Tercihleri → Gizlilik → Tam Disk Erişimi")
-                else:
-                    errors.append(str(e))
+                errors.append(str(e))
             # Her session için username'i de çek
             for s in sessions:
                 if not s.get("username"):
@@ -167,8 +190,13 @@ class Handler(BaseHTTPRequestHandler):
                         s.get("user_id", ""),
                     )
                     s["username"] = uname
+            scanned = [name for name, _ in BROWSERS]
             self._headers(200)
-            self.wfile.write(json.dumps({"sessions": sessions, "errors": errors}).encode())
+            self.wfile.write(json.dumps({
+                "sessions": sessions,
+                "errors": errors,
+                "scanned_browsers": scanned,
+            }).encode())
         elif self.path == "/resolve-username":
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}

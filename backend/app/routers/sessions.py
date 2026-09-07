@@ -145,7 +145,13 @@ async def _do_scan_stream(db: AsyncSession) -> AsyncGenerator[str, None]:
         yield _sse("error", {"msg": f"Tarama hatası: {e}"})
         return
 
-    scan_errors: list = resp.json().get("errors", [])
+    scan_data = resp.json()
+    scan_errors: list = scan_data.get("errors", [])
+    scanned_browsers: list = scan_data.get("scanned_browsers", [])
+
+    if scanned_browsers:
+        yield _sse("log", {"msg": f"Taranan tarayıcılar: {', '.join(scanned_browsers)}"})
+
     if scan_errors:
         for err in scan_errors:
             yield _sse("log", {"msg": f"  ⚠ {err}"})
@@ -154,7 +160,12 @@ async def _do_scan_stream(db: AsyncSession) -> AsyncGenerator[str, None]:
         if scan_errors:
             yield _sse("error", {"msg": "Tarayıcı cookie'leri okunamadı. Yukarıdaki uyarıya bakın."})
         else:
-            yield _sse("error", {"msg": "Tarayıcılarda Instagram session bulunamadı. instagram.com'da oturum aç ve tekrar dene."})
+            browsers_str = ", ".join(scanned_browsers) if scanned_browsers else "Chrome, Firefox, Safari"
+            yield _sse("error", {"msg": (
+                f"Tarayıcılarda Instagram session bulunamadı.\n"
+                f"Taranan: {browsers_str}\n"
+                f"→ instagram.com adresinde oturum açık olduğundan emin olun ve tekrar deneyin."
+            )})
         return
 
     yield _sse("log", {"msg": f"✓ {len(raw_sessions)} tarayıcı session'ı bulundu."})
