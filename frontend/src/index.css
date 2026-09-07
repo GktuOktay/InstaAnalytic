@@ -274,3 +274,15 @@ aside, main, .card, .card-hover, input, select, textarea {
 [data-theme="light"] .bg-red-900   { background-color: rgba(220,38,38,0.12) !important; }
 [data-theme="light"] .hover\:bg-green-800:hover { background-color: rgba(22,163,74,0.25) !important; }
 [data-theme="light"] .hover\:bg-red-800:hover   { background-color: rgba(220,38,38,0.2) !important; }
+
+/* ── Semantic text colors in light mode: ensure contrast on light bg */
+[data-theme="light"] .text-green-300 { color: #15803d !important; }
+[data-theme="light"] .text-green-400 { color: #16a34a !important; }
+[data-theme="light"] .text-red-300   { color: #dc2626 !important; }
+[data-theme="light"] .text-red-400   { color: #b91c1c !important; }
+[data-theme="light"] .text-amber-300 { color: #b45309 !important; }
+[data-theme="light"] .text-amber-400 { color: #92400e !important; }
+[data-theme="light"] .text-blue-300  { color: #1d4ed8 !important; }
+[data-theme="light"] .text-purple-400 { color: var(--accent) !important; }
+[data-theme="light"] .text-gray-400  { color: var(--text-2) !important; }
+[data-theme="light"] .text-gray-600  { color: var(--text-2) !important; }

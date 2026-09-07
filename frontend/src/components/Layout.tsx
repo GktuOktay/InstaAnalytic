@@ -117,14 +117,18 @@ export default function Layout() {
                   marginBottom: 2,
                   fontSize: 13,
                   fontWeight: isActive ? 600 : 400,
-                  color: isActive ? '#fff' : 'var(--text-2)',
+                  color: isActive ? (theme === 'light' ? 'var(--accent)' : '#fff') : 'var(--text-2)',
                   textDecoration: 'none',
                   transition: 'all 0.12s',
                   background: isActive
-                    ? 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))'
+                    ? theme === 'light'
+                      ? 'linear-gradient(135deg, rgba(79,82,232,0.12), rgba(124,58,237,0.08))'
+                      : 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))'
                     : 'transparent',
                   border: isActive
-                    ? '1px solid rgba(99,102,241,0.3)'
+                    ? theme === 'light'
+                      ? '1px solid rgba(79,82,232,0.25)'
+                      : '1px solid rgba(99,102,241,0.3)'
                     : '1px solid transparent',
                   position: 'relative',
                 }}
