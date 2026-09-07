@@ -133,7 +133,7 @@ body {
   }
 }
 
-/* ── Input base ──────────────────────────────────────────────────── */
+/* ── Input / Select base ─────────────────────────────────────────── */
 input, textarea, select {
   outline: none;
   font-family: inherit;
@@ -141,8 +141,21 @@ input, textarea, select {
   color: var(--text);
   border: 1px solid var(--border);
 }
+input::placeholder { color: var(--text-3); }
 input:focus-visible, textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* select and option always need explicit colors — browser ignores CSS on <option> in many
+   engines, so we force them via !important on the select itself */
+select {
+  background-color: var(--surface-2) !important;
+  color: var(--text) !important;
+  border-color: var(--border-2) !important;
+}
+option {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 /* ── Theme transition on all surfaces ───────────────────────────── */

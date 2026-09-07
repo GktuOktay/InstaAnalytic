@@ -50,11 +50,11 @@ function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
 function EngagementBar({ val }: { val: number }) {
   const pct = Math.min(val, 100)
   return (
-    <div style={{ width: 60, height: 4, background: '#1e2230', borderRadius: 2, overflow: 'hidden' }}>
+    <div style={{ width: 60, height: 4, background: 'var(--surface-2)', borderRadius: 2, overflow: 'hidden' }}>
       <div style={{
         height: '100%',
         width: `${pct}%`,
-        background: val >= 50 ? '#e09535' : val >= 10 ? '#5b8fe0' : '#3a3f55',
+        background: val >= 50 ? '#e09535' : val >= 10 ? '#5b8fe0' : 'var(--text-3)',
         borderRadius: 2,
         transition: 'width 0.3s',
       }} />
@@ -292,7 +292,7 @@ export default function UsersPage() {
           placeholder={T.common.search}
           className="w-52 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-500" />
         <select value={sort} onChange={e => { setSort(e.target.value as SortKey); setPage(1) }}
-          style={{ background: '#1a1e2b', border: '1px solid #252a3a', borderRadius: 8, color: '#c8ccf0', padding: '5px 10px', fontSize: 12 }}>
+          style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text)', padding: '5px 10px', fontSize: 12 }}>
           {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
 
@@ -323,11 +323,11 @@ export default function UsersPage() {
             minWidth: 480,
             padding: '5px 10px',
             fontSize: 10,
-            color: '#4a5070',
+            color: 'var(--text-3)',
             fontWeight: 600,
             letterSpacing: '0.06em',
             textTransform: 'uppercase',
-            borderBottom: '1px solid #1e2230',
+            borderBottom: '1px solid var(--border)',
             marginBottom: 4,
           }}>
             <button onClick={toggleSelectAll} style={{ background: 'none', border: 'none', color: '#4a5070', cursor: 'pointer', padding: 0 }}>
@@ -360,21 +360,21 @@ export default function UsersPage() {
                   gap: '0 10px',
                   minWidth: 480,
                   alignItems: 'center',
-                  background: isSelected ? '#1a1f35' : '#0f1119',
-                  border: `1px solid ${isSelected ? '#3a4470' : isGhost ? '#2a1a3a' : '#1e2230'}`,
+                  background: isSelected ? 'rgba(99,102,241,0.08)' : 'var(--surface)',
+                  border: `1px solid ${isSelected ? 'rgba(99,102,241,0.35)' : isGhost ? 'rgba(139,92,246,0.2)' : 'var(--border)'}`,
                   borderRadius: 10,
                   padding: '7px 10px',
                   transition: 'border-color 0.15s',
                 }}>
                   {/* Checkbox */}
-                  <button onClick={() => toggleSelect(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isSelected ? '#7c8fe0' : '#2a3050', padding: 0 }}>
+                  <button onClick={() => toggleSelect(u.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: isSelected ? 'var(--accent)' : 'var(--text-3)', padding: 0 }}>
                     {isSelected ? <CheckSquare size={13} /> : <Square size={13} />}
                   </button>
 
                   {/* Avatar */}
                   {u.profile_pic_url
                     ? <img src={proxyImg(u.profile_pic_url)} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} alt="" />
-                    : <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e2230', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#5d6585' }}>
+                    : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--text-2)' }}>
                         {u.username[0]?.toUpperCase()}
                       </div>
                   }
@@ -383,7 +383,7 @@ export default function UsersPage() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                       <a href={`https://www.instagram.com/${u.username}/`} target="_blank" rel="noreferrer"
-                        style={{ fontSize: 13, fontWeight: 500, color: '#c8ccf0', textDecoration: 'none' }}>
+                        style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', textDecoration: 'none' }}>
                         @{u.username}
                       </a>
                       {u.is_verified && <BadgeCheck size={12} style={{ color: '#60a5fa' }} />}
@@ -392,22 +392,22 @@ export default function UsersPage() {
                       {u.we_follow   && <span style={{ fontSize: 9, background: '#1a3a2a', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
                       {u.they_follow && <span style={{ fontSize: 9, background: '#1a2a3a', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
-                    {u.full_name && <p style={{ fontSize: 11, color: '#5d6585' }}>{u.full_name}</p>}
+                    {u.full_name && <p style={{ fontSize: 11, color: 'var(--text-2)' }}>{u.full_name}</p>}
                   </div>
 
                   {/* Like */}
-                  <span style={{ fontSize: 13, color: u.like_count > 0 ? '#e07070' : '#2a3050', textAlign: 'right', fontWeight: u.like_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: 13, color: u.like_count > 0 ? '#e07070' : 'var(--text-3)', textAlign: 'right', fontWeight: u.like_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                     {u.like_count || '—'}
                   </span>
 
                   {/* Yorum */}
-                  <span style={{ fontSize: 13, color: u.comment_count > 0 ? '#5b8fe0' : '#2a3050', textAlign: 'right', fontWeight: u.comment_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: 13, color: u.comment_count > 0 ? '#5b8fe0' : 'var(--text-3)', textAlign: 'right', fontWeight: u.comment_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                     {u.comment_count || '—'}
                   </span>
 
                   {/* Skor */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: u.engagement_score >= 50 ? '#e09535' : u.engagement_score > 0 ? '#7c8fe0' : '#2a3050', fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: u.engagement_score >= 50 ? '#e09535' : u.engagement_score > 0 ? 'var(--accent)' : 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
                       {u.engagement_score > 0 ? `%${u.engagement_score.toFixed(1)}` : '—'}
                     </span>
                     {u.engagement_score > 0 && <EngagementBar val={u.engagement_score} />}
@@ -446,12 +446,12 @@ export default function UsersPage() {
       {totalPages > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 20 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#13161f', border: '1px solid #252a3a', borderRadius: 8, color: '#8a93b8', fontSize: 13, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>
             <ChevronLeft size={14} /> {lang === 'tr' ? 'Önceki' : 'Prev'}
           </button>
-          <span style={{ fontSize: 13, color: '#5d6585' }}>{page} / {totalPages} · {filtered.length}</span>
+          <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{page} / {totalPages} · {filtered.length}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#13161f', border: '1px solid #252a3a', borderRadius: 8, color: '#8a93b8', fontSize: 13, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>
             {lang === 'tr' ? 'Sonraki' : 'Next'} <ChevronRight size={14} />
           </button>
         </div>

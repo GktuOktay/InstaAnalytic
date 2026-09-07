@@ -134,14 +134,14 @@ export default function ReportPage() {
   const maxFanTotal = Math.max(...(report?.top_fans.map(f => f.total) ?? [1]))
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif',
-      '--c-bg':      'transparent',
-      '--c-surface':  '#13161F',
-      '--c-surface2': '#1E2230',
-      '--c-border':   '#252A3A',
-      '--c-text':     '#E8EBF8',
-      '--c-muted':    '#5D6585',
-      '--c-soft':     '#8A93B8',
+    <div style={{ fontFamily: 'inherit',
+      '--c-bg':       'transparent',
+      '--c-surface':  'var(--surface)',
+      '--c-surface2': 'var(--surface-2)',
+      '--c-border':   'var(--border-2)',
+      '--c-text':     'var(--text)',
+      '--c-muted':    'var(--text-2)',
+      '--c-soft':     'var(--text-3)',
       '--c-amber':    '#E09535',
       '--c-blue':     '#5B8FE0',
       '--c-teal':     '#3CC9A0',
