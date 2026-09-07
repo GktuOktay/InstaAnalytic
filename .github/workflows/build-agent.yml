@@ -1,0 +1,81 @@
+name: Build Host Agent Binaries
+
+on:
+  push:
+    paths:
+      - 'scripts/host_agent.py'
+      - 'scripts/requirements.txt'
+      - '.github/workflows/build-agent.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14        # arm64
+            arch: arm64
+            out: host_agent-darwin-arm64
+          - os: macos-13        # x86_64
+            arch: amd64
+            out: host_agent-darwin-amd64
+          - os: ubuntu-22.04
+            arch: amd64
+            out: host_agent-linux-amd64
+          - os: windows-2022
+            arch: amd64
+            out: host_agent-windows-amd64.exe
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyinstaller browser-cookie3
+
+      - name: Build binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          pyinstaller --onefile --name ${{ matrix.out }} scripts/host_agent.py \
+            --distpath scripts/bin/ --workpath /tmp/build --specpath /tmp/ -y
+
+      - name: Build binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pyinstaller --onefile --name ${{ matrix.out }} scripts/host_agent.py `
+            --distpath scripts/bin/ --workpath $env:TEMP\build --specpath $env:TEMP -y
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: scripts/bin/${{ matrix.out }}
+          retention-days: 90
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: scripts/bin/
+          merge-multiple: true
+
+      - name: Commit binaries
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add scripts/bin/
+          git diff --cached --quiet || git commit -m "ci: host_agent binaries rebuilt [skip ci]"
+          git push
