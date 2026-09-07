@@ -234,8 +234,8 @@ export default function UsersPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 999,
-          background: toast.ok ? '#1a3a2a' : '#3a1a1a',
-          border: `1px solid ${toast.ok ? '#2d6a4a' : '#6a2d2d'}`,
+          background: toast.ok ? 'rgba(78,202,138,0.15)' : 'rgba(224,96,96,0.15)',
+          border: `1px solid ${toast.ok ? 'rgba(78,202,138,0.4)' : 'rgba(224,96,96,0.4)'}`,
           color: toast.ok ? '#4eca8a' : '#e06060',
           borderRadius: 10, padding: '10px 18px', fontSize: 13, fontWeight: 500,
           boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
@@ -388,9 +388,9 @@ export default function UsersPage() {
                       </a>
                       {u.is_verified && <BadgeCheck size={12} style={{ color: '#60a5fa' }} />}
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
-                      {isGhost && <span style={{ fontSize: 9, background: '#2a1a3a', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
-                      {u.we_follow   && <span style={{ fontSize: 9, background: '#1a3a2a', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
-                      {u.they_follow && <span style={{ fontSize: 9, background: '#1a2a3a', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
+                      {isGhost && <span style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
+                      {u.we_follow   && <span style={{ fontSize: 9, background: 'rgba(78,202,138,0.15)', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
+                      {u.they_follow && <span style={{ fontSize: 9, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
                     {u.full_name && <p style={{ fontSize: 11, color: 'var(--text-2)' }}>{u.full_name}</p>}
                   </div>
@@ -418,20 +418,20 @@ export default function UsersPage() {
                     {u.we_follow ? (
                       <button onClick={() => handleUnfollow(u)} disabled={!!actLoad}
                         title={T.users.action.unfollow}
-                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: '#2a1a1a', border: '1px solid #4a2a2a', color: '#e07070', opacity: actLoad ? 0.5 : 1 }}>
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(224,112,112,0.15)', border: '1px solid rgba(224,112,112,0.3)', color: '#e07070', opacity: actLoad ? 0.5 : 1 }}>
                         {actLoad === 'unfollow' ? <RefreshCw size={11} className="animate-spin" /> : <UserMinus size={11} />}
                       </button>
                     ) : (
                       <button onClick={() => handleFollow(u)} disabled={!!actLoad}
                         title={T.users.action.follow}
-                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: '#1a2a1a', border: '1px solid #2a4a2a', color: '#4eca8a', opacity: actLoad ? 0.5 : 1 }}>
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(78,202,138,0.15)', border: '1px solid rgba(78,202,138,0.3)', color: '#4eca8a', opacity: actLoad ? 0.5 : 1 }}>
                         {actLoad === 'follow' ? <RefreshCw size={11} className="animate-spin" /> : <UserPlus size={11} />}
                       </button>
                     )}
                     <button onClick={() => u.they_follow ? handleRemoveFollower(u) : undefined}
                       disabled={!!actLoad || !u.they_follow}
                       title={T.users.action.removeFollower}
-                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: u.they_follow ? 'pointer' : 'default', background: '#1a1a2a', border: '1px solid #2a2a4a', color: u.they_follow ? '#9b8fe0' : '#2a2a3a', opacity: actLoad ? 0.5 : 1 }}>
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: u.they_follow ? 'pointer' : 'default', background: 'rgba(155,143,224,0.15)', border: '1px solid rgba(155,143,224,0.3)', color: u.they_follow ? '#9b8fe0' : 'var(--text-3)', opacity: actLoad ? 0.5 : 1 }}>
                       {actLoad === 'remove_follower' ? <RefreshCw size={11} className="animate-spin" /> : <UserX size={11} />}
                     </button>
                   </div>

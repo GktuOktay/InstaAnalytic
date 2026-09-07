@@ -268,3 +268,9 @@ aside, main, .card, .card-hover, input, select, textarea {
 /* ── amber/yellow badge spans ────────────────────────────────── */
 [data-theme="light"] .bg-amber-900 { background-color: rgba(217,119,6,0.12) !important; }
 [data-theme="light"] .bg-yellow-900 { background-color: rgba(202,138,4,0.1) !important; }
+
+/* ── Solid semantic action button backgrounds in light mode ──── */
+[data-theme="light"] .bg-green-900 { background-color: rgba(22,163,74,0.15) !important; }
+[data-theme="light"] .bg-red-900   { background-color: rgba(220,38,38,0.12) !important; }
+[data-theme="light"] .hover\:bg-green-800:hover { background-color: rgba(22,163,74,0.25) !important; }
+[data-theme="light"] .hover\:bg-red-800:hover   { background-color: rgba(220,38,38,0.2) !important; }
