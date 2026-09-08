@@ -23,6 +23,14 @@ from app.services import instagram
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
+def _agent_headers() -> dict:
+    """Host agent isteklerine secret token ekle."""
+    h = {"Content-Type": "application/json"}
+    if settings.host_agent_secret:
+        h["X-Agent-Secret"] = settings.host_agent_secret
+    return h
+
+
 # ── Yardımcı ─────────────────────────────────────────────────────────────────
 
 async def _upsert_ig_user(db: AsyncSession, ig_user_id: int, username: str, user: dict) -> IgUser:
@@ -108,10 +116,11 @@ async def host_agent_status():
         async with httpx.AsyncClient(timeout=3) as client:
             r = await client.get(f"{settings.host_agent_url}/health")
             if r.status_code == 200:
-                return {"connected": True}
+                data = r.json()
+                return {"connected": True, "platform": data.get("platform", "unknown")}
     except Exception:
         pass
-    return {"connected": False}
+    return {"connected": False, "platform": None}
 
 
 def _sse(event: str, data: Any) -> str:
@@ -138,7 +147,7 @@ async def _do_scan_stream(db: AsyncSession) -> AsyncGenerator[str, None]:
 
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(f"{settings.host_agent_url}/scan")
+            resp = await client.post(f"{settings.host_agent_url}/scan", headers=_agent_headers())
             resp.raise_for_status()
             raw_sessions: list[dict] = resp.json().get("sessions", [])
     except Exception as e:
@@ -249,7 +258,7 @@ async def scan_browser_sessions(db: AsyncSession = Depends(get_db)):
     # 2. Cookie'leri tara
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(f"{settings.host_agent_url}/scan")
+            resp = await client.post(f"{settings.host_agent_url}/scan", headers=_agent_headers())
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:

@@ -11,12 +11,29 @@ import argparse
 import json
 import os
 import platform
+import secrets
 import sys
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 PORT = 8002
 HOST = "127.0.0.1"
+
+# Secret token — ilk çalıştırmada üretilir, .host_agent_secret dosyasına kaydedilir
+_SECRET_FILE = Path(os.path.expanduser("~/.instaanalytic_agent_secret"))
+
+
+def _load_or_create_secret() -> str:
+    if _SECRET_FILE.exists():
+        return _SECRET_FILE.read_text().strip()
+    token = secrets.token_hex(32)
+    _SECRET_FILE.write_text(token)
+    _SECRET_FILE.chmod(0o600)
+    return token
+
+
+AGENT_SECRET = _load_or_create_secret()
 
 EXTRA_COOKIE_KEYS = ["csrftoken", "ds_user_id", "mid", "ig_did", "rur"]
 
@@ -101,17 +118,38 @@ def scan_cookies() -> tuple[list[dict], list[str]]:
             err_str = str(e)
             print(f"  {browser_name}: {err_str}")
             low = err_str.lower()
-            if any(k in low for k in ("keychain", "password", "decrypt", "permission", "denied", "locked", "dpapi")):
+
+            is_permission = any(k in low for k in (
+                "keychain", "password", "decrypt", "permission",
+                "denied", "locked", "dpapi", "access", "erişim",
+            ))
+            is_not_installed = any(k in low for k in (
+                "no such file", "not found", "cannot find", "does not exist",
+                "filenotfound", "no module",
+            ))
+
+            if is_permission:
                 if _SYSTEM == "Darwin":
                     errors.append(
-                        f"{browser_name}: Keychain erişimi reddedildi. "
-                        "Sistem Ayarları → Gizlilik → Tam Disk Erişimi'nde InstaAnalytic'e izin verin."
+                        f"{browser_name}: Keychain erişimi reddedildi.\n"
+                        "→ Çözüm: Sistem Ayarları → Gizlilik ve Güvenlik → "
+                        "Tam Disk Erişimi → InstaAnalytic'i ekle\n"
+                        "→ Alternatif: Tarayıcıyı tamamen kapatıp tekrar deneyin."
                     )
                 elif _SYSTEM == "Windows":
                     errors.append(
-                        f"{browser_name}: Cookie şifresi çözülemiyor (DPAPI). "
-                        "Uygulamayı aynı Windows kullanıcısıyla çalıştırın."
+                        f"{browser_name}: Cookie şifresi çözülemiyor (DPAPI hatası).\n"
+                        "→ Çözüm: Uygulamayı oturum açtığınız Windows kullanıcısıyla çalıştırın.\n"
+                        "→ Alternatif: Uygulamayı 'Yönetici olarak çalıştır' seçeneğiyle açmayın."
                     )
+                else:
+                    errors.append(f"{browser_name}: Cookie erişimi reddedildi: {err_str}")
+            elif is_not_installed:
+                # Tarayıcı kurulu değil — sessizce atla, hata sayma
+                print(f"  {browser_name}: kurulu değil, atlanıyor.")
+            else:
+                # Beklenmedik hata — kısa bilgi ver, stack trace gösterme
+                errors.append(f"{browser_name}: Beklenmedik hata — {err_str[:120]}")
     return found, errors
 
 
@@ -124,11 +162,19 @@ def resolve_username(session_id_cookie: str, extra_cookies: dict, user_id: str) 
     cookies = {"sessionid": session_id_cookie, **extra_cookies}
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
-    # Windows'ta SSL doğrulamasını atla (sertifika mağazası sorunu)
+    # Windows: sistem sertifika mağazasını kullan, yoksa certifi'ye düş
     ctx = ssl.create_default_context()
     if _SYSTEM == "Windows":
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            # certifi yoksa sistem mağazasını dene; başarısız olursa doğrulamayı kapat
+            try:
+                ctx = ssl.create_default_context()
+            except Exception:
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
 
     def _get(url: str) -> bytes | None:
         try:
@@ -173,23 +219,40 @@ class Handler(BaseHTTPRequestHandler):
     def _headers(self, status: int, content_type: str = "application/json"):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # Yalnızca localhost'tan gelen isteklere izin ver
+        origin = self.headers.get("Origin", "")
+        if origin in ("http://localhost:8002", "http://127.0.0.1:8002", ""):
+            self.send_header("Access-Control-Allow-Origin", origin or "http://127.0.0.1:8002")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Agent-Secret")
         self.end_headers()
+
+    def _is_authorized(self) -> bool:
+        token = self.headers.get("X-Agent-Secret", "")
+        return secrets.compare_digest(token, AGENT_SECRET)
 
     def do_OPTIONS(self):
         self._headers(204)
 
     def do_GET(self):
         if self.path == "/health":
+            # Health endpoint: token gerektirmez (backend bağlantı kontrolü için)
             self._headers(200)
-            self.wfile.write(json.dumps({"status": "ok", "platform": _SYSTEM}).encode())
+            self.wfile.write(json.dumps({
+                "status": "ok",
+                "platform": _SYSTEM,
+                "secret_file": str(_SECRET_FILE),
+            }).encode())
         else:
             self._headers(404)
             self.wfile.write(b'{"error":"not found"}')
 
     def do_POST(self):
+        if not self._is_authorized():
+            self._headers(401)
+            self.wfile.write(b'{"error":"unauthorized"}')
+            return
+
         if self.path == "/scan":
             sessions, errors = [], []
             try:

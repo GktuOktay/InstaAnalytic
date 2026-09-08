@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str
     encryption_key: str
+    host_agent_secret: str = ""
     chrome_user_data_dir: str = ""
     environment: str = "development"
     log_level: str = "INFO"

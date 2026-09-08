@@ -1,5 +1,7 @@
 import json
 import logging
+import random
+import time
 import urllib.parse
 import httpx
 from instagrapi import Client
@@ -13,26 +15,60 @@ logger = logging.getLogger(__name__)
 
 PLAN_B_EXCEPTIONS = (ChallengeRequired, PleaseWaitFewMinutes, RateLimitError)
 
-_WEB_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "X-IG-App-ID": "936619743392459",
-    "X-IG-WWW-Claim": "0",
-    "X-Requested-With": "XMLHttpRequest",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Dest": "empty",
-}
+# Gerçek tarayıcı profillerini simüle eden User-Agent havuzu
+_WEB_USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+]
 
-_MOBILE_HEADERS = {
-    "User-Agent": "Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; OnePlus; 6T Dev; devitron; qcom; en_US; 314665256)",
-    "Accept": "*/*",
-    "Accept-Language": "en-US",
-    "X-IG-App-ID": "567067343352427",
-    "X-IG-Capabilities": "3brTvw==",
-    "X-IG-Connection-Type": "WIFI",
-}
+_MOBILE_USER_AGENTS = [
+    "Instagram 269.0.0.18.75 Android (26/8.0.0; 480dpi; 1080x1920; OnePlus; 6T Dev; devitron; qcom; en_US; 314665256)",
+    "Instagram 275.0.0.27.98 Android (28/9.0; 420dpi; 1080x2280; Samsung; SM-G960F; starlte; exynos9810; en_US; 321456789)",
+    "Instagram 263.0.0.19.109 Android (30/11.0; 440dpi; 1080x2400; Google; Pixel 5; redfin; redfin; en_US; 309876543)",
+]
+
+# Bant genişliği kısıtlama — istek başına min/max bekleme (saniye)
+_DELAY_MIN = 2.0
+_DELAY_MAX = 6.0
+
+
+def _random_delay():
+    """İstekler arasına insan benzeri rastgele gecikme ekle."""
+    time.sleep(random.uniform(_DELAY_MIN, _DELAY_MAX))
+
+
+def _web_headers() -> dict:
+    """Her çağrıda rastgele UA seçerek taze header dict döndür."""
+    return {
+        "User-Agent": random.choice(_WEB_USER_AGENTS),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": random.choice(["en-US,en;q=0.9", "en-GB,en;q=0.9,tr;q=0.8", "tr-TR,tr;q=0.9,en;q=0.8"]),
+        "X-IG-App-ID": "936619743392459",
+        "X-IG-WWW-Claim": "0",
+        "X-Requested-With": "XMLHttpRequest",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Dest": "empty",
+    }
+
+
+def _mobile_headers() -> dict:
+    return {
+        "User-Agent": random.choice(_MOBILE_USER_AGENTS),
+        "Accept": "*/*",
+        "Accept-Language": "en-US",
+        "X-IG-App-ID": "567067343352427",
+        "X-IG-Capabilities": "3brTvw==",
+        "X-IG-Connection-Type": "WIFI",
+    }
+
+
+# Geriye dönük uyumluluk için sabit dict aliasları (instagrapi client kullanımı için)
+_WEB_HEADERS = _web_headers()
+_MOBILE_HEADERS = _mobile_headers()
 
 
 def _parse_user_id_from_sessionid(sessionid: str) -> int | None:
@@ -55,11 +91,12 @@ def _fetch_user_info_by_id(user_id: int, cookies: dict) -> dict | None:
     ]
     for url in endpoints:
         try:
+            _random_delay()
             with httpx.Client(timeout=20, follow_redirects=False) as client:
                 resp = client.get(
                     url,
                     headers={
-                        **_MOBILE_HEADERS,
+                        **_mobile_headers(),
                         "Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
                     },
                     cookies=cookies,
@@ -86,12 +123,13 @@ def _fetch_current_user(cookies: dict) -> dict | None:
     for url in endpoints:
         try:
             headers = {
-                **_WEB_HEADERS,
+                **_web_headers(),
                 "X-CSRFToken": csrf,
                 "Referer": referer,
             }
             if "i.instagram.com" in url:
-                headers = {**_MOBILE_HEADERS, "X-CSRFToken": csrf}
+                headers = {**_mobile_headers(), "X-CSRFToken": csrf}
+            _random_delay()
             with httpx.Client(timeout=20, follow_redirects=False) as client:
                 resp = client.get(url, headers=headers, cookies=cookies)
                 if resp.status_code in (301, 302, 303, 400, 401, 403):
