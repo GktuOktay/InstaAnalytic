@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import health, sessions, analysis, tasks, actions, posts, users, graph, proxy, report
+from app.routers import health, sessions, analysis, tasks, actions, posts, users, graph, proxy, report, imports
 
 app = FastAPI(title="InstaAnalytic API", version="1.0.0")
 
@@ -22,3 +22,4 @@ app.include_router(users.router, prefix="/api")
 app.include_router(graph.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
 app.include_router(report.router, prefix="/api")
+app.include_router(imports.router, prefix="/api")

@@ -35,6 +35,7 @@ export default function PostsPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncingInteraction, setSyncingInteraction] = useState(false)
   const [syncingBulk, setSyncingBulk] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   const syncStatus = useTaskPoller(syncTaskId, () => {
     setSyncing(false); setSyncTaskId(null); loadData()
@@ -73,23 +74,31 @@ export default function PostsPage() {
     setComments(c)
   }
 
-  const handleSync = async () => {
-    setSyncing(true)
-    const resp = await postsApi.syncPosts(activeSession)
-    setSyncTaskId(resp.task_id)
+  // 429 (bütçe/cooldown) ve 409 (tarama zaten çalışıyor) kullanıcıya gösterilir
+  const startSync = async <R extends { task_id: string }>(
+    begin: () => void, fail: () => void, call: () => Promise<R>, done: (id: string) => void,
+  ) => {
+    setSyncError(null)
+    begin()
+    try {
+      done((await call()).task_id)
+    } catch (e: any) {
+      setSyncError(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
+      fail()
+    }
   }
 
-  const handleSyncInteractions = async (post: Post) => {
-    setSyncingInteraction(true)
-    const resp = await postsApi.syncInteractions(activeSession, post.shortcode)
-    setInteractionTaskId(resp.task_id)
-  }
+  const handleSync = () => startSync(
+    () => setSyncing(true), () => setSyncing(false),
+    () => postsApi.syncPosts(activeSession), setSyncTaskId)
 
-  const handleSyncAllInteractions = async () => {
-    setSyncingBulk(true)
-    const resp = await postsApi.syncAllInteractions(activeSession)
-    setBulkTaskId(resp.task_id)
-  }
+  const handleSyncInteractions = (post: Post) => startSync(
+    () => setSyncingInteraction(true), () => setSyncingInteraction(false),
+    () => postsApi.syncInteractions(activeSession, post.shortcode), setInteractionTaskId)
+
+  const handleSyncAllInteractions = () => startSync(
+    () => setSyncingBulk(true), () => setSyncingBulk(false),
+    () => postsApi.syncAllInteractions(activeSession), setBulkTaskId)
 
   const syncProgress = syncStatus?.status === 'PROGRESS' && syncStatus.progress
   const bulkProgress = bulkStatus?.status === 'PROGRESS' && bulkStatus.progress
@@ -115,6 +124,12 @@ export default function PostsPage() {
           </button>
         </div>
       </div>
+
+      {syncError && (
+        <div className="bg-red-900/30 border border-red-700 rounded-xl px-4 py-3 text-sm text-red-300 mb-4">
+          {syncError}
+        </div>
+      )}
 
       {syncing && (
         <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4">

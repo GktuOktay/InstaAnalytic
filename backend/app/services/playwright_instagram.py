@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 _IG_API  = "https://www.instagram.com/api/v1"
 _IG_HOME = "https://www.instagram.com"
 
+_RISK_STATUSES = (401, 403, 429)
+_RISK_MESSAGES = ("login_required", "checkpoint_required", "challenge_required", "feedback_required")
+
+
+def _is_risk(status: int, body) -> bool:
+    msg = body.get("message") if isinstance(body, dict) else None
+    return status in _RISK_STATUSES or (msg in _RISK_MESSAGES) or bool(isinstance(body, dict) and body.get("require_login"))
+
 _FETCH_JS = """
 async (url) => {
     const r = await fetch(url, {
@@ -289,7 +297,7 @@ def _extract_items_from_body(body: dict) -> tuple[list[dict], int]:
     return items, total
 
 
-def _fetch_posts_thread(cookies: dict, user_id: str, username: str, max_count: int, result_q: queue.Queue):
+def _fetch_posts_thread(cookies: dict, user_id: str, username: str, max_count: int, result_q: queue.Queue, governor=None):
     """
     Profil sayfasını aç, Instagram'ın GraphQL çağrılarını intercept et.
     Toplam gönderi sayısını profilden okuyup hepsi gelene kadar scroll yap.
@@ -298,10 +306,13 @@ def _fetch_posts_thread(cookies: dict, user_id: str, username: str, max_count: i
     page = ctx.new_page()
     captured: list[dict] = []
     profile_total: list[int] = [0]  # mutable container for closure
+    risk_hits: list[int] = []
 
     def on_response(resp):
         try:
             url = resp.url
+            if resp.status in _RISK_STATUSES and "instagram.com" in url and ("/api/" in url or "graphql" in url):
+                risk_hits.append(resp.status)
             ct = resp.headers.get("content-type", "")
             if "instagram.com" not in url or "json" not in ct:
                 return
@@ -324,6 +335,8 @@ def _fetch_posts_thread(cookies: dict, user_id: str, username: str, max_count: i
     try:
         profile_url = f"https://www.instagram.com/{username}/"
         logger.info("get_posts navigating to profile: %s", profile_url)
+        if governor:
+            governor.before_request()
         page.goto(profile_url, wait_until="domcontentloaded", timeout=45000)
         time.sleep(3)
 
@@ -336,8 +349,14 @@ def _fetch_posts_thread(cookies: dict, user_id: str, username: str, max_count: i
             if len(captured) >= target:
                 break
 
+            if governor:
+                if risk_hits:
+                    raise governor.report_failure(risk_hits[-1], "posts")
+                governor.before_request()          # her kaydırma ≈ 1 istek: bütçe + bekleme
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             time.sleep(2.5)
+            if governor and risk_hits:
+                raise governor.report_failure(risk_hits[-1], "posts")
 
             if len(captured) == prev_count:
                 stall_count += 1
@@ -474,14 +493,156 @@ def get_post_comments(cookies: dict, media_id: int) -> Generator[list[dict], Non
     t.join()
 
 
-def get_posts(cookies: dict, user_id: str, username: str = "", max_count: int = 0) -> Generator[list[dict], None, None]:
+def get_posts(cookies: dict, user_id: str, username: str = "", max_count: int = 0, governor=None) -> Generator[list[dict], None, None]:
     """Kullanıcının gönderilerini profil sayfası interception ile döndür."""
     q: queue.Queue = queue.Queue(maxsize=10)
     t = threading.Thread(
         target=_fetch_posts_thread,
-        args=(cookies, user_id, username, max_count, q),
+        args=(cookies, user_id, username, max_count, q, governor),
         daemon=True,
     )
+    t.start()
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+    t.join()
+
+
+# ── Bütçeli tarama (ScanGovernor kontrolünde) ─────────────────────────────────
+
+def _fetch_budgeted_thread(cookies: dict, endpoint: str, cursor: str | None, governor, result_q: queue.Queue):
+    """
+    Sayfalı listeyi governor bütçesi altında çek.
+    Kuyruğa: {"users": [...], "next_cursor": str|None}, bitince {"done": True},
+    risk/bütçe durumunda ScanPaused (exception) konur.
+    """
+    pw, browser, ctx = _make_ctx(cookies)
+    page = ctx.new_page()
+    try:
+        page.goto(_IG_HOME, wait_until="domcontentloaded", timeout=20000)
+        max_id = cursor
+        while True:
+            url = endpoint + (f"&max_id={max_id}" if max_id else "")
+            governor.before_request()                    # bütçe + bekleme; ScanPaused fırlatabilir
+            resp = page.evaluate(_FETCH_JS, url)
+            body = resp["body"] if isinstance(resp["body"], dict) else {}
+            if resp["status"] != 200 or body.get("require_login") or body.get("message") in ("login_required", "checkpoint_required"):
+                raise governor.report_failure(resp["status"], str(body.get("message", ""))[:60])
+            users = body.get("users", [])
+            next_max = body.get("next_max_id")
+            result_q.put({"users": users, "next_cursor": str(next_max) if next_max else None})
+            if not next_max:
+                result_q.put({"done": True})
+                break
+            max_id = str(next_max)
+    except Exception as e:
+        result_q.put(e)
+    finally:
+        result_q.put(None)
+        page.close()
+        browser.close()
+        pw.stop()
+
+
+def get_friendship_pages(cookies: dict, user_id: str, kind: str, cursor: str | None, governor, page_size: int = 50):
+    """kind: 'followers' | 'following'. Sayfa dict'lerini akıtır (bkz. _fetch_budgeted_thread)."""
+    endpoint = f"{_IG_API}/friendships/{user_id}/{kind}/?count={page_size}"
+    q: queue.Queue = queue.Queue(maxsize=4)
+    t = threading.Thread(target=_fetch_budgeted_thread, args=(cookies, endpoint, cursor, governor, q), daemon=True)
+    t.start()
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield item
+    t.join()
+
+
+# ── Kullanıcı adı -> ID (yalnızca aksiyon anında) ─────────────────────────────
+
+def _lookup_user_id_thread(cookies: dict, username: str) -> int | None:
+    pw, browser, ctx = _make_ctx(cookies)
+    page = ctx.new_page()
+    try:
+        page.goto(_IG_HOME, wait_until="domcontentloaded", timeout=20000)
+        resp = page.evaluate(_FETCH_JS, f"{_IG_API}/users/web_profile_info/?username={username}")
+        if resp["status"] != 200 or not isinstance(resp["body"], dict):
+            logger.warning("lookup_user_id %s -> HTTP %s", username, resp["status"])
+            return None
+        user = (resp["body"].get("data") or {}).get("user") or {}
+        return int(user["id"]) if user.get("id") else None
+    finally:
+        page.close()
+        browser.close()
+        pw.stop()
+
+
+def lookup_user_id(cookies: dict, username: str) -> int | None:
+    return _run_in_thread(_lookup_user_id_thread, cookies, username)
+
+
+# ── Bütçeli etkileşim taraması: tek tarayıcı, sırayla gönderiler ───────────────
+
+def _interactions_thread(cookies: dict, post_ids: list[int], governor, result_q: queue.Queue):
+    """
+    Kuyruğa: ("likers", pid, users) | ("comments", pid, comments) | ("done", pid, None).
+    Her sayfa governor bütçesinden geçer; risk sinyalinde ScanPaused kuyruğa konur.
+    """
+    pw, browser, ctx = _make_ctx(cookies)
+    page = ctx.new_page()
+    try:
+        page.goto(_IG_HOME, wait_until="domcontentloaded", timeout=20000)
+        csrftoken = cookies.get("csrftoken", "")
+
+        def fetch(url: str):
+            governor.before_request()
+            resp = page.evaluate(_CSRF_FETCH_JS, [url, csrftoken])
+            body = resp.get("body")
+            if _is_risk(resp["status"], body):
+                raise governor.report_failure(resp["status"], str(body.get("message", ""))[:60] if isinstance(body, dict) else "")
+            return resp["status"], body if isinstance(body, dict) else {}
+
+        for pid in post_ids:
+            max_id = None
+            while True:                                        # beğenenler
+                status, body = fetch(f"{_IG_API}/media/{pid}/likers/" + (f"?max_id={max_id}" if max_id else ""))
+                if status != 200:
+                    logger.warning("likers post=%s HTTP %s", pid, status)
+                    break
+                if body.get("users"):
+                    result_q.put(("likers", pid, body["users"]))
+                max_id = body.get("next_max_id")
+                if not max_id or not body.get("more_available"):
+                    break
+            min_id = None
+            while True:                                        # yorumlar
+                url = f"{_IG_API}/media/{pid}/comments/?can_support_threading=true&permalink_enabled=false"
+                status, body = fetch(url + (f"&min_id={min_id}" if min_id else ""))
+                if status != 200:
+                    logger.warning("comments post=%s HTTP %s", pid, status)
+                    break
+                if body.get("comments"):
+                    result_q.put(("comments", pid, body["comments"]))
+                min_id = body.get("next_min_id")
+                if not body.get("has_more_comments") or not min_id:
+                    break
+            result_q.put(("done", pid, None))
+    except Exception as e:
+        result_q.put(e)
+    finally:
+        result_q.put(None)
+        page.close(); browser.close(); pw.stop()
+
+
+def get_interactions(cookies: dict, post_ids: list[int], governor):
+    q: queue.Queue = queue.Queue(maxsize=8)
+    t = threading.Thread(target=_interactions_thread, args=(cookies, post_ids, governor, q), daemon=True)
     t.start()
     while True:
         item = q.get()

@@ -5,10 +5,8 @@ Her session için Redis'te ayrı bir FIFO kuyruk tutulur.
 Tüm işlemler process_action_queue task'ı tarafından sıralı olarak çalıştırılır.
 Aynı anda aynı session için yalnızca 1 worker aktif olur (Redis distributed lock).
 
-Limitler (varsayılan):
-  - İşlemler arası: 45–90 sn
-  - Saatlik limit: 50 işlem/saat
-  - Günlük limit: 200 işlem/gün
+Limitler session'ın risk profilinden gelir (app/services/risk_profiles.py):
+  güvenli / dengeli (varsayılan) / agresif — bekleme, saatlik ve günlük işlem limiti.
 """
 
 import json
@@ -27,10 +25,6 @@ _LOCK_KEY   = "action_lock:{session_id}"
 _RATE_HOUR  = "rate:action:{session_id}:hour"
 _RATE_DAY   = "rate:action:{session_id}:day"
 
-HOURLY_LIMIT = 50
-DAILY_LIMIT  = 200
-DELAY_MIN    = 45   # saniye
-DELAY_MAX    = 90
 
 
 def _get_db():
@@ -58,14 +52,19 @@ def _activate_plan_b(db, session_obj):
     db.commit()
 
 
-def _check_limits(r, session_id: str) -> tuple[bool, str]:
+def _profile(session_id: str):
+    from app.services.risk_profiles import load_profile_sync
+    return load_profile_sync(session_id)
+
+
+def _check_limits(r, session_id: str, prof) -> tuple[bool, str]:
     """Saatlik ve günlük limitleri kontrol et. (ok, reason) döner."""
     hour_count = int(r.get(_RATE_HOUR.format(session_id=session_id)) or 0)
     day_count  = int(r.get(_RATE_DAY.format(session_id=session_id)) or 0)
-    if hour_count >= HOURLY_LIMIT:
-        return False, f"saatlik limit ({HOURLY_LIMIT})"
-    if day_count >= DAILY_LIMIT:
-        return False, f"günlük limit ({DAILY_LIMIT})"
+    if hour_count >= prof.action_hourly:
+        return False, f"saatlik limit ({prof.action_hourly})"
+    if day_count >= prof.action_daily:
+        return False, f"günlük limit ({prof.action_daily})"
     return True, ""
 
 
@@ -105,13 +104,15 @@ def get_queue_status(session_id: str) -> dict:
     items = r.lrange(queue_key, 0, -1)
     hour_count = int(r.get(_RATE_HOUR.format(session_id=session_id)) or 0)
     day_count  = int(r.get(_RATE_DAY.format(session_id=session_id)) or 0)
+    prof = _profile(session_id)
     return {
         "queue_length": len(items),
         "processing": bool(r.exists(lock_key)),
         "hour_count": hour_count,
         "day_count": day_count,
-        "hourly_limit": HOURLY_LIMIT,
-        "daily_limit": DAILY_LIMIT,
+        "hourly_limit": prof.action_hourly,
+        "daily_limit": prof.action_daily,
+        "risk_profile": prof.key,
         "items": [json.loads(i) for i in items],
     }
 
@@ -147,6 +148,7 @@ def process_action_queue(self, session_id: str):
             _activate_plan_b(db, session)
 
         cookies = _load_cookies(session)
+        prof = _profile(session_id)
         processed = 0
         skipped = 0
         failed = 0
@@ -174,7 +176,7 @@ def process_action_queue(self, session_id: str):
             })
 
             # Limit kontrolü
-            ok, reason = _check_limits(r, session_id)
+            ok, reason = _check_limits(r, session_id, prof)
             if not ok:
                 logger.warning("Limit aşıldı (%s), bekleniyor...", reason)
                 # Öğeyi geri koy
@@ -189,6 +191,26 @@ def process_action_queue(self, session_id: str):
                 logger.info("Saatlik limit, %d sn bekleniyor...", wait)
                 time.sleep(min(wait, 300))  # max 5 dk bekle, sonra tekrar dene
                 continue
+
+            # ZIP'ten gelen kullanıcılarda gerçek ID yok: aksiyon anında çöz
+            from app.services.user_ids import is_placeholder, resolve_placeholder
+            if is_placeholder(ig_user_id):
+                from app.models.ig_user import IgUser
+                from app.services.playwright_instagram import lookup_user_id
+                ph = db.get(IgUser, ig_user_id)
+                real_id = None
+                try:
+                    real_id = lookup_user_id(cookies, ph.username) if ph else None
+                except Exception as e:
+                    logger.warning("ID çözümleme hatası (%s): %s", ph.username if ph else "?", e)
+                if not real_id:
+                    logger.warning("ID çözülemedi, atlandı: %s", ph.username if ph else ig_user_id)
+                    skipped += 1
+                    time.sleep(random.uniform(prof.action_delay_min, prof.action_delay_max))
+                    continue
+                resolve_placeholder(db, ig_user_id, real_id)
+                db.commit()
+                ig_user_id = real_id
 
             # Log kaydı oluştur
             log = ActionLog(
@@ -248,7 +270,7 @@ def process_action_queue(self, session_id: str):
             # Bir sonraki işlem öncesi rastgele bekleme
             remaining = r.llen(queue_key)
             if remaining > 0:
-                delay = random.uniform(DELAY_MIN, DELAY_MAX)
+                delay = random.uniform(prof.action_delay_min, prof.action_delay_max)
                 logger.info("Sonraki işlem için %.0f sn bekleniyor (%d kalan)...", delay, remaining)
                 r.expire(lock_key, 600)
                 time.sleep(delay)

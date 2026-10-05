@@ -74,6 +74,26 @@ instagrapi raises ChallengeRequired / RateLimitError
       → Same DB pipeline as Plan A
 ```
 
+### Hybrid veri alma (ZIP + bütçeli tarama)
+Hız/risk profili (güvenli · dengeli · agresif) session başına seçilir: `PUT /api/sessions/{id}/risk-profile`.
+Rehber ve profil tablosu: `docs/08-instagram-veri-rehberi.md`.
+
+```
+1) ZIP (önerilen, Instagram'a istek yok)
+   POST /api/sessions/{id}/import/zip  (followers_*.json + following.json)
+   → ig_users (ID yoksa negatif yer tutucu), relationships, import_snapshots (kim geldi/gitti)
+
+2) Canlı tarama (ScanGovernor, Redis)
+   POST /sync/followers|following → bütçe/cooldown/kilit kontrolü (429/409)
+   → sayfa başı: kayan 1sa/24sa bütçe + 4–9 sn bekleme + 10 sayfada bir uzun mola
+   → bütçe dolarsa 'paused' + cursor saklanır, süre dolunca otomatik devam
+   → 429/401/403/challenge: kademeli cooldown (30dk→2sa→12sa→24sa), otomatik devam YOK
+   GET /api/sessions/{id}/scan/status
+
+3) Aksiyon (tek session gerektiren nokta)
+   Yer tutucu ID'li kullanıcı → web_profile_info ile gerçek ID çözülür → follow/unfollow
+```
+
 ## Database Schema Summary
 
 | Table           | Purpose                                      |
