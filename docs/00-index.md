@@ -18,6 +18,7 @@
 | 05 | [05-api-endpoints.md](05-api-endpoints.md) | Tüm REST endpoint'leri, request/response örnekleri |
 | 06 | [06-instagram-api-strategy.md](06-instagram-api-strategy.md) | Plan A (instagrapi) ve Plan B (Playwright) detayları |
 | 07 | [07-development-phases.md](07-development-phases.md) | 8 fazlı geliştirme planı, tamamlanma kriterleri |
+| [08-instagram-veri-rehberi.md](08-instagram-veri-rehberi.md) | ZIP ile veri ekleme rehberi + risk profilleri (güvenli / dengeli / agresif) |
 
 ---
 

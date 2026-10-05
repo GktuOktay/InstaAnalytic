@@ -28,6 +28,19 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     return session
 
 
+def _ensure_scan_allowed(session: Session):
+    """Cooldown / bütçe / çalışan tarama varsa görevi kuyruğa ALMA."""
+    from datetime import datetime, timezone
+    from app.routers.imports import get_governor
+    st = get_governor(session).status()
+    if st["running"]:
+        raise HTTPException(409, "Bu hesap için bir tarama zaten çalışıyor")
+    if not st["can_scan"]:
+        when = datetime.fromtimestamp(st["next_available_at"], tz=timezone.utc).isoformat()
+        raise HTTPException(429, f"Tarama bütçesi/cooldown nedeniyle {when} tarihine kadar beklenmeli. "
+                                 "Bu arada Instagram ZIP'ini yükleyerek veri güncelleyebilirsin.")
+
+
 async def _create_job(db: AsyncSession, session_id: uuid.UUID, job_type: str) -> SyncJob:
     job = SyncJob(session_id=session_id, job_type=job_type)
     db.add(job)
@@ -38,7 +51,8 @@ async def _create_job(db: AsyncSession, session_id: uuid.UUID, job_type: str) ->
 
 @router.post("/sync/followers", response_model=SyncResponse)
 async def start_sync_followers(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = await _create_job(db, session_id, "followers")
     task = sync_followers.delay(str(session_id), str(job.id))
     job.celery_task_id = task.id
@@ -48,7 +62,8 @@ async def start_sync_followers(session_id: uuid.UUID, db: AsyncSession = Depends
 
 @router.post("/sync/following", response_model=SyncResponse)
 async def start_sync_following(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = await _create_job(db, session_id, "following")
     task = sync_following.delay(str(session_id), str(job.id))
     job.celery_task_id = task.id
