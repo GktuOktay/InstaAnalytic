@@ -1,322 +1,366 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { sessionsApi, Session } from '../api/sessions'
+import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { sessionsApi, Session, BrowserCandidate } from '../api/sessions'
+import { downloadCsv } from '../api/insights'
+import { validateUsername } from '../lib/validation'
 import { useSession } from '../contexts/SessionContext'
 import { useLang } from '../contexts/LangContext'
 import {
-  CheckCircle, XCircle, Trash2, RefreshCw, Wifi, WifiOff,
-  ScanLine, Copy, Check, Terminal, Pencil, X,
+  ShieldCheck, Globe, Check, Copy, Trash2, Download, AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
-const INSTALL_CMD = 'pip3 install -r scripts/requirements.txt'
-const LAUNCHAGENT_CMD = 'python3 scripts/host_agent.py --install-launchagent'
-const AGENT_CMD = 'python3 scripts/host_agent.py &'
+const AGENT_CMD = 'bash start.sh'
 
-interface LogLine {
-  text: string
-  type: 'info' | 'error' | 'done'
-}
+const errText = (e: any, fallback: string) => e?.response?.data?.detail ?? fallback
 
 export default function SessionPage() {
   const { T, lang } = useLang()
-  const { sessions, loading, refresh: refreshContext, setSessionsDirectly: setSessions } = useSession()
-  const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
-  const [scanning, setScanning] = useState(false)
-  const [logs, setLogs] = useState<LogLine[]>([])
-  const [verifyStatus, setVerifyStatus] = useState<Record<string, 'loading' | boolean>>({})
-  const [editingId,   setEditingId]   = useState<string | null>(null)
-  const [editValue,   setEditValue]   = useState('')
-  const [editSaving,  setEditSaving]  = useState(false)
-  const [copied, setCopied] = useState<string | null>(null)
-  const agentPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const logEndRef = useRef<HTMLDivElement>(null)
-  const esRef = useRef<EventSource | null>(null)
-
-  const load = useCallback(async () => {
-    await refreshContext()
-  }, [refreshContext])
-
-  const checkAgent = useCallback(async () => {
-    try {
-      const s = await sessionsApi.hostAgentStatus()
-      setAgentConnected(s.connected)
-    } catch {
-      setAgentConnected(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    checkAgent()
-    agentPollRef.current = setInterval(checkAgent, 5000)
-    return () => {
-      if (agentPollRef.current) clearInterval(agentPollRef.current)
-      esRef.current?.close()
-    }
-  }, [load, checkAgent])
-
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
-
-  const addLog = (text: string, type: LogLine['type'] = 'info') =>
-    setLogs(p => [...p, { text, type }])
-
-  const handleScan = () => {
-    if (scanning) return
-    setLogs([])
-    setScanning(true)
-
-    esRef.current?.close()
-    const es = new EventSource('/api/sessions/scan-browser/stream')
-    esRef.current = es
-
-    es.addEventListener('log', e => {
-      const d = JSON.parse(e.data)
-      addLog(d.msg, 'info')
-    })
-
-    es.addEventListener('error', e => {
-      const d = JSON.parse((e as MessageEvent).data)
-      addLog(d.msg, 'error')
-      es.close()
-      setScanning(false)
-    })
-
-    es.addEventListener('done', e => {
-      const d = JSON.parse(e.data)
-      addLog(lang === 'en' ? '─── Done ───' : '─── Tamamlandı ───', 'done')
-      setSessions(d.sessions)
-      setLoading(false)
-      es.close()
-      setScanning(false)
-    })
-
-    es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) return
-      addLog(T.session.disconnected, 'error')
-      es.close()
-      setScanning(false)
-    }
-  }
-
-  const copy = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(key)
-    setTimeout(() => setCopied(null), 2000)
-  }
-
-  const startEdit = (s: Session) => {
-    setEditingId(s.id)
-    setEditValue(s.ig_username)
-  }
-
-  const saveEdit = async () => {
-    if (!editingId || !editValue.trim()) return
-    setEditSaving(true)
-    try {
-      await sessionsApi.updateUsername(editingId, editValue.trim().replace(/^@/, ''))
-      await load()
-      setEditingId(null)
-    } catch (e: any) {
-      alert(e?.response?.data?.detail ?? T.session.saveError)
-    } finally {
-      setEditSaving(false)
-    }
-  }
-
-  const handleDelete = async (id: string) => {
-    await sessionsApi.delete(id)
-    await load()
-  }
-
-  const handleVerify = async (id: string) => {
-    setVerifyStatus(p => ({ ...p, [id]: 'loading' }))
-    const result = await sessionsApi.verify(id)
-    setVerifyStatus(p => ({ ...p, [id]: result.valid }))
-  }
+  const L = T.connect
+  const S = T.safety
+  const { sessions, loading, refresh } = useSession()
+  const [showBrowser, setShowBrowser] = useState(false)
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">{T.session.title}</h1>
-      <p className="text-sm text-gray-500 mb-8">
-        {lang === 'en' ? 'Scan your Instagram session from the browser in one click.' : 'Tarayıcıdan Instagram oturumunu tek tıkla tara.'}
-      </p>
+      <h1 className="text-2xl font-bold mb-1">{L.title}</h1>
+      <p className="text-sm text-gray-500 mb-6">{L.subtitle}</p>
 
-      {/* Host Agent durumu + Tara butonu */}
-      <div className={`rounded-2xl border p-5 mb-5 ${agentConnected ? 'bg-green-950/20 border-green-800/50' : 'bg-gray-900 border-gray-800'}`}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            {agentConnected === null
-              ? <RefreshCw size={15} className="animate-spin text-gray-400" />
-              : agentConnected
-                ? <Wifi size={15} className="text-green-400" />
-                : <WifiOff size={15} className="text-red-400" />
-            }
-            <span className="font-semibold text-sm">
-              Host Agent{' '}
-              <span className={agentConnected ? 'text-green-400' : agentConnected === false ? 'text-red-400' : 'text-gray-500'}>
-                {agentConnected === null
-                ? (lang === 'en' ? 'checking…' : 'kontrol ediliyor…')
-                : agentConnected
-                  ? (lang === 'en' ? 'running' : 'çalışıyor')
-                  : (lang === 'en' ? 'not running' : 'çalışmıyor')
-              }
-              </span>
-            </span>
-          </div>
+      <ZipCard onCreated={refresh} />
 
-          {agentConnected && (
-            <button
-              onClick={handleScan}
-              disabled={scanning}
-              className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 rounded-xl text-sm font-semibold transition-colors"
-            >
-              <ScanLine size={15} className={scanning ? 'animate-pulse' : ''} />
-              {scanning ? T.session.scanning : T.session.scan}
-            </button>
-          )}
-        </div>
-
-        {/* Kurulum adımları — agent yoksa */}
-        {agentConnected === false && (
-          <div className="space-y-3 mt-2">
-            <p className="text-xs text-gray-400">
-              {lang === 'en' ? 'Install once — starts automatically on every login.' : 'Bir kez kur — sonra her login\'de otomatik başlar.'}
-            </p>
-            <CodeLine cmd={INSTALL_CMD} id="install" copied={copied} onCopy={copy} />
-            <CodeLine cmd={LAUNCHAGENT_CMD} id="la" copied={copied} onCopy={copy} />
-            <p className="text-xs text-gray-600">{lang === 'en' ? '— For this session only:' : '— Sadece bu oturum için:'}</p>
-            <CodeLine cmd={AGENT_CMD} id="agent" copied={copied} onCopy={copy} />
-            <p className="text-xs text-gray-600 mt-1">{T.session.autoUpdate}</p>
-          </div>
-        )}
-
-        {/* Canlı konsol */}
-        {logs.length > 0 && (
-          <div className="mt-4 bg-black rounded-xl border border-gray-800 overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800 bg-gray-900">
-              <Terminal size={12} className="text-gray-500" />
-              <span className="text-xs text-gray-500 font-mono">{T.session.scanOutput}</span>
-              {scanning && <span className="ml-auto w-2 h-2 rounded-full bg-green-400 animate-pulse" />}
-            </div>
-            <div className="p-3 font-mono text-xs space-y-0.5 max-h-64 overflow-y-auto">
-              {logs.map((l, i) => (
-                <div key={i} className={
-                  l.type === 'error' ? 'text-red-400'
-                  : l.type === 'done' ? 'text-purple-400 font-semibold'
-                  : l.text.startsWith('✓') ? 'text-green-400'
-                  : l.text.startsWith('✗') ? 'text-red-400'
-                  : l.text.startsWith('  →') ? 'text-yellow-400'
-                  : 'text-gray-300'
-                }>
-                  {l.text}
-                </div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-          </div>
-        )}
+      <div className="rounded-2xl border border-gray-800 bg-gray-900 mb-8">
+        <button
+          onClick={() => setShowBrowser(v => !v)}
+          className="w-full flex items-center justify-between p-5 text-left"
+          aria-expanded={showBrowser}
+        >
+          <span className="flex items-center gap-2 font-semibold text-sm">
+            <Globe size={16} className="text-gray-400" /> {L.browserTitle}
+          </span>
+          {showBrowser ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+        {showBrowser && <BrowserFlow onConnected={refresh} />}
       </div>
 
-      {/* Session listesi */}
       <h2 className="font-semibold mb-3">{T.session.saved}</h2>
       {loading ? (
         <p className="text-gray-600 text-sm">{T.common.loading}</p>
       ) : sessions.length === 0 ? (
         <div className="text-center py-10 text-gray-600 border border-dashed border-gray-800 rounded-xl text-sm">
-          {lang === 'en' ? 'No sessions yet — scan above' : 'Henüz session yok — yukarıdan tara'}
+          {lang === 'en' ? 'Nothing connected yet — start above.' : 'Henüz bağlı bir şey yok — yukarıdan başla.'}
         </div>
       ) : (
-        <div className="space-y-2">
-          {sessions.map(s => (
-            <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                {editingId === s.id ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-400">@</span>
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value.replace(/^@/, ''))}
-                      onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null) }}
-                      className="bg-gray-800 border border-purple-600 rounded-lg px-2 py-0.5 text-sm focus:outline-none w-40"
-                    />
-                    <button onClick={saveEdit} disabled={editSaving}
-                      className="p-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 text-white text-xs disabled:opacity-50">
-                      {editSaving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                    </button>
-                    <button onClick={() => setEditingId(null)} className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400">
-                      <X size={13} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold">@{s.ig_username}</span>
-                    {s.ig_username.startsWith('user_') && (
-                      <span className="text-xs bg-amber-900 text-amber-400 px-2 py-0.5 rounded-full">
-                        {lang === 'en' ? 'Username unknown' : 'Kullanıcı adı bilinmiyor'}
-                      </span>
-                    )}
-                    {s.plan_b_active && (
-                      <span className="text-xs bg-yellow-900 text-yellow-400 px-2 py-0.5 rounded-full">Plan B</span>
-                    )}
-                    {verifyStatus[s.id] === 'loading' && <RefreshCw size={14} className="animate-spin text-gray-500" />}
-                    {verifyStatus[s.id] === true  && <CheckCircle size={14} className="text-green-400" />}
-                    {verifyStatus[s.id] === false && <XCircle size={14} className="text-red-400" />}
-                  </div>
-                )}
-                {editingId !== s.id && (
-                  <p className="text-xs text-gray-500">
-                    {lang === 'en' ? 'Added' : 'Eklendi'}: {new Date(s.created_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}
-                    {s.last_verified_at && ` · ${lang === 'en' ? 'Verified' : 'Doğrulandı'}: ${new Date(s.last_verified_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}`}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => startEdit(s)} title={T.session.editUsername}
-                  className="p-2 text-gray-400 hover:text-purple-400 hover:bg-gray-800 rounded-lg">
-                  <Pencil size={13} />
-                </button>
-                <button onClick={() => handleVerify(s.id)} title={T.session.validate}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg">
-                  <RefreshCw size={14} />
-                </button>
-                <button
-                  onClick={async () => {
-                    const updated = await sessionsApi.togglePlanB(s.id)
-                    setSessions(prev => prev.map(x => x.id === s.id ? updated : x))
-                  }}
-                  title={s.plan_b_active ? T.session.planBOff : T.session.planBOn}
-                  className={`p-2 rounded-lg text-xs font-semibold transition-colors ${
-                    s.plan_b_active
-                      ? 'bg-yellow-700 hover:bg-yellow-600 text-yellow-100'
-                      : 'text-gray-500 hover:text-yellow-400 hover:bg-gray-800'
-                  }`}>
-                  B
-                </button>
-                <button onClick={() => handleDelete(s.id)} title="Sil"
-                  className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="space-y-3">
+          {sessions.map(s => <SessionCard key={s.id} s={s} onChanged={refresh} S={S} />)}
         </div>
       )}
     </div>
   )
 }
 
-function CodeLine({ cmd, id, copied, onCopy }: {
-  cmd: string; id: string; copied: string | null
-  onCopy: (text: string, id: string) => void
-}) {
+/* ── ZIP (önerilen) ─────────────────────────────────────────────────────── */
+
+function ZipCard({ onCreated }: { onCreated: () => Promise<void> }) {
+  const { T, lang } = useLang()
+  const L = T.connect
+  const [open, setOpen] = useState(false)
+  const [username, setUsername] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  const create = async () => {
+    if (busy) return
+    const v = validateUsername(username, lang)
+    if (!v.ok) { setError(v.message); return }
+    const u = v.value
+    setBusy(true); setError(null)
+    try {
+      await sessionsApi.createZipOnly(u)
+      setDone(true)
+      await onCreated()
+    } catch (e: any) {
+      setError(errText(e, T.session.saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 font-mono text-xs">
-      <span className="text-green-400 select-none">$</span>
-      <span className="flex-1 text-gray-300 select-all">{cmd}</span>
-      <button onClick={() => onCopy(cmd, id)} className="text-gray-500 hover:text-gray-300 shrink-0">
-        {copied === id ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+    <div className="rounded-2xl border border-green-800/50 bg-green-950/20 p-5 mb-3">
+      <div className="flex items-center gap-2 mb-1">
+        <ShieldCheck size={18} className="text-green-400" />
+        <h2 className="font-semibold">{L.zipTitle}</h2>
+        <span className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">{L.zipBadge}</span>
+      </div>
+      <p className="text-sm text-gray-400 mb-4">{L.zipDesc}</p>
+
+      {done ? (
+        <div className="flex items-center justify-between gap-3 bg-gray-900 border border-gray-800 rounded-xl p-3">
+          <span className="text-sm text-green-300 flex items-center gap-2"><Check size={15} /> {L.zipNext}</span>
+          <Link to="/followers" className="shrink-0 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-sm font-semibold">
+            {T.nav.followers} →
+          </Link>
+        </div>
+      ) : !open ? (
+        <button onClick={() => setOpen(true)} className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-sm font-semibold">
+          {L.zipCta}
+        </button>
+      ) : (
+        <div>
+          <label className="text-xs text-gray-400 block mb-1" htmlFor="ig-user">{L.zipUser}</label>
+          <div className="flex gap-2">
+            <div className="flex items-center flex-1 bg-gray-950 border border-gray-700 focus-within:border-purple-500 rounded-xl px-3">
+              <span className="text-gray-500">@</span>
+              <input
+                id="ig-user" autoFocus value={username} autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                onChange={e => setUsername(e.target.value.replace(/^@/, ''))}
+                onKeyDown={e => e.key === 'Enter' && create()}
+                className="flex-1 bg-transparent py-2.5 px-1 text-sm focus:outline-none"
+              />
+            </div>
+            <button onClick={create} disabled={busy || !username.trim()}
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl text-sm font-semibold">
+              {busy ? <RefreshCw size={15} className="animate-spin" /> : L.zipCreate}
+            </button>
+          </div>
+          {error && <p role="alert" className="text-sm text-red-400 mt-2">{error}</p>}
+        </div>
+      )}
+      <ZipHowTo />
+    </div>
+  )
+}
+
+function ZipHowTo() {
+  const { T, lang } = useLang()
+  const [open, setOpen] = useState(false)
+  const steps = lang === 'en'
+    ? ['Instagram → Profile → ☰ → Accounts Center', 'Your information and permissions → Download your information', 'Choose "Some of your information" → tick only "Followers and following"', 'Download to device · Date range: All time · Format: JSON', 'When the email arrives, download the ZIP and upload it as is (do not unzip)']
+    : ['Instagram → Profil → ☰ → Hesap merkezi', 'Bilgilerin ve izinlerin → Bilgilerini indir', '"Bilgilerinin bir kısmı" → yalnızca "Takipçiler ve takip edilenler"', 'Cihaza indir · Tarih aralığı: Tüm zamanlar · Biçim: JSON', 'E-posta gelince ZIP\'i indir ve olduğu gibi yükle (açma)']
+  return (
+    <div className="mt-4">
+      <button onClick={() => setOpen(v => !v)} className="text-xs text-gray-400 hover:text-gray-200 underline underline-offset-2">
+        {T.connect.zipHow}
       </button>
+      {open && (
+        <ol className="mt-2 text-sm text-gray-300 list-decimal pl-5 space-y-1">
+          {steps.map(x => <li key={x}>{x}</li>)}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+/* ── Tarayıcıdan bağlan (gelişmiş) ──────────────────────────────────────── */
+
+function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
+  const { T } = useLang()
+  const L = T.connect
+  const [agent, setAgent] = useState<'checking' | 'off' | 'old' | 'ok'>('checking')
+  const [browsers, setBrowsers] = useState<string[]>([])
+  const [picked, setPicked] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [cands, setCands] = useState<BrowserCandidate[] | null>(null)
+  const [chosen, setChosen] = useState<string[]>([])
+  const [notes, setNotes] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const check = useCallback(async () => {
+    try {
+      setBrowsers(await sessionsApi.browsers())
+      setAgent('ok')
+    } catch (e: any) {
+      setAgent(e?.response?.status === 409 ? 'old' : 'off')
+    }
+  }, [])
+
+  useEffect(() => {
+    check()
+    const iv = setInterval(() => agent !== 'ok' && check(), 4000)
+    return () => clearInterval(iv)
+  }, [check, agent])
+
+  const toggle = (list: string[], set: (v: string[]) => void, v: string) =>
+    set(list.includes(v) ? list.filter(x => x !== v) : [...list, v])
+
+  const find = async () => {
+    setBusy(true); setError(null); setCands(null)
+    try {
+      const r = await sessionsApi.scanBrowsers(picked)
+      setCands(r.candidates)
+      setChosen(r.candidates.filter(c => !c.already_saved).map(c => c.candidate_id))
+      setNotes(r.errors)
+    } catch (e: any) {
+      setError(errText(e, T.session.saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const connect = async () => {
+    setBusy(true); setError(null)
+    try {
+      await sessionsApi.confirmBrowser(chosen)
+      setCands(null); setPicked([])
+      await onConnected()
+    } catch (e: any) {
+      setError(errText(e, T.session.saveError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="px-5 pb-5 border-t border-gray-800 pt-4">
+      <p className="text-sm text-gray-400 mb-3">{L.browserDesc}</p>
+      <p className="text-xs text-amber-400 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2 mb-4 flex gap-2">
+        <AlertTriangle size={14} className="shrink-0 mt-0.5" /> {L.browserWarn}
+      </p>
+
+      {agent !== 'ok' ? (
+        <div className="text-sm">
+          <p className="text-gray-300 mb-2">{agent === 'old' ? L.agentOld : `${L.agentOff} ${L.agentOffHint}`}</p>
+          <div className="flex items-center gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 font-mono text-xs">
+            <span className="text-green-400">$</span>
+            <span className="flex-1 select-all">{AGENT_CMD}</span>
+            <button
+              aria-label="copy"
+              onClick={() => { navigator.clipboard.writeText(AGENT_CMD); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+              className="text-gray-500 hover:text-gray-300"
+            >
+              {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+            </button>
+          </div>
+        </div>
+      ) : !cands ? (
+        <>
+          <p className="text-sm font-medium mb-2">{L.pickBrowsers}</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {browsers.map(b => (
+              <label key={b} className={`cursor-pointer select-none px-3 py-1.5 rounded-lg border text-sm ${
+                picked.includes(b) ? 'bg-purple-900/40 border-purple-500 text-purple-200' : 'border-gray-700 text-gray-300 hover:border-gray-500'}`}>
+                <input type="checkbox" className="sr-only" checked={picked.includes(b)} onChange={() => toggle(picked, setPicked, b)} />
+                {b}
+              </label>
+            ))}
+          </div>
+          <button onClick={find} disabled={busy || picked.length === 0}
+            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl text-sm font-semibold flex items-center gap-2">
+            {busy && <RefreshCw size={14} className="animate-spin" />} {busy ? L.finding : L.find}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium mb-2">{L.foundTitle}</p>
+          {cands.length === 0 && <p className="text-sm text-gray-400 mb-3">{L.noneFound}</p>}
+          <div className="space-y-2 mb-3">
+            {cands.map(c => (
+              <label key={c.candidate_id} className={`flex items-center gap-3 p-3 rounded-xl border ${
+                c.already_saved ? 'border-gray-800 opacity-60' : 'border-gray-700 cursor-pointer hover:border-gray-500'}`}>
+                <input type="checkbox" disabled={c.already_saved} checked={chosen.includes(c.candidate_id)}
+                  onChange={() => toggle(chosen, setChosen, c.candidate_id)} />
+                <span className="font-semibold">@{c.ig_username}</span>
+                {c.full_name && <span className="text-sm text-gray-500">{c.full_name}</span>}
+                <span className="ml-auto text-xs text-gray-500">{c.already_saved ? L.alreadySaved : c.browser}</span>
+              </label>
+            ))}
+          </div>
+          {notes.map(n => <p key={n} className="text-xs text-amber-400 mb-1 whitespace-pre-line">⚠ {n}</p>)}
+          <p className="text-xs text-gray-500 mb-3">{L.expiresNote}</p>
+          <div className="flex gap-2">
+            <button onClick={connect} disabled={busy || chosen.length === 0}
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl text-sm font-semibold">
+              {L.connectSel}
+            </button>
+            <button onClick={() => setCands(null)} className="px-4 py-2.5 rounded-xl text-sm text-gray-400 hover:bg-gray-800">
+              {T.common.cancel ?? '✕'}
+            </button>
+          </div>
+        </>
+      )}
+      {error && <p role="alert" className="text-sm text-red-400 mt-3">{error}</p>}
+    </div>
+  )
+}
+
+/* ── Kayıtlı profil kartı + güvenlik paneli ─────────────────────────────── */
+
+function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise<void>; S: any }) {
+  const { lang } = useLang()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const locale = lang === 'en' ? 'en-US' : 'tr-TR'
+  const paused = s.paused_until && new Date(s.paused_until) > new Date()
+  const isZip = s.source === 'zip'
+
+  const run = async (fn: () => Promise<unknown>, after?: () => Promise<void>) => {
+    setBusy(true); setMsg(null)
+    try { await fn(); await (after ?? onChanged)() } catch (e: any) { setMsg(errText(e, 'Hata')) } finally { setBusy(false) }
+  }
+
+  const toggleActions = () => {
+    if (!s.allow_actions && !confirm(S.actionsConfirm)) return
+    run(() => sessionsApi.setAllowActions(s.id, !s.allow_actions))
+  }
+  const purge = () => confirm(S.purgeConfirm) && run(() => sessionsApi.purge(s.id))
+  const remove = () => run(() => sessionsApi.delete(s.id))
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-semibold">@{s.ig_username}</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full ${isZip ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-300'}`}>
+          {isZip ? 'ZIP' : (lang === 'en' ? 'Browser' : 'Tarayıcı')}
+        </span>
+        <button onClick={remove} disabled={busy} title={S.remove} aria-label={S.remove}
+          className="ml-auto p-2 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-lg">
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">
+        {lang === 'en' ? 'Added' : 'Eklendi'}: {new Date(s.created_at).toLocaleDateString(locale)}
+      </p>
+
+      {paused && (
+        <div role="alert" className="flex gap-2 text-sm text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2 mb-3">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">{S.paused}</p>
+            <p className="text-xs text-amber-400/80">{s.paused_reason} · {S.pausedUntil}: {new Date(s.paused_until!).toLocaleString(locale)}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-gray-800 pt-3">
+        <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">{S.title}</p>
+
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm font-medium">{S.actionsLabel}</p>
+            <p className="text-xs text-gray-500">{isZip ? S.zipOnly : s.allow_actions ? S.actionsOn : S.actionsOff}</p>
+          </div>
+          {!isZip && (
+            <button onClick={toggleActions} disabled={busy} role="switch" aria-checked={s.allow_actions}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                s.allow_actions ? 'bg-amber-700 hover:bg-amber-600 text-amber-50' : 'bg-gray-800 hover:bg-gray-700 text-gray-200'}`}>
+              {s.allow_actions ? S.turnOff : S.turnOn}
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => run(() => downloadCsv(`/sessions/${s.id}/export/relationships.csv`, 'takip-durumu.csv'))}
+            disabled={busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs">
+            <Download size={13} /> {S.exportCsv}
+          </button>
+          <button onClick={purge} disabled={busy}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-red-300 hover:bg-red-950/40 border border-red-900/50">
+            <Trash2 size={13} /> {S.purge}
+          </button>
+        </div>
+        {msg && <p role="alert" className="text-xs text-red-400 mt-2">{msg}</p>}
+      </div>
     </div>
   )
 }

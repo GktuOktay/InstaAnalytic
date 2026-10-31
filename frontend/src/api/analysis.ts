@@ -51,11 +51,17 @@ export interface GoldenHourSlot {
   hour: number
   avg_engagement: number
   post_count: number
+  lift: number
+  confidence: 'low' | 'ok' | 'high'
 }
 
 export interface GoldenHourResponse {
   slots: GoldenHourSlot[]
+  hours: { hour: number; avg_engagement: number; post_count: number; lift: number; confidence: 'low' | 'ok' | 'high' }[]
   timezone: string
+  total_posts: number
+  overall_avg: number
+  enough_data: boolean
 }
 
 export const analysisApi = {

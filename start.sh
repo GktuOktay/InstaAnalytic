@@ -83,6 +83,13 @@ ENV
   echo ""
 fi
 
+# Eksik güvenlik değerlerini (Redis/API/Flower parolaları) tamamla ve CREDENTIALS.md'yi güncelle
+if command -v python3 &>/dev/null; then
+  python3 "$SCRIPT_DIR/scripts/init_env.py"
+else
+  echo "  ⚠ python3 bulunamadı: scripts/init_env.py çalıştırılamadı (API_TOKEN/REDIS_PASSWORD eksik kalır)."
+fi
+
 # ── 3. Host Agent binary ──────────────────────────────────────────────────────
 echo "► Host Agent kontrol ediliyor…"
 mkdir -p "$SCRIPT_DIR/scripts/bin"

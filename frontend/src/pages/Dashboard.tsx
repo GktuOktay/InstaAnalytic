@@ -7,6 +7,7 @@ import { sessionsApi, Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { analysisApi, AnalysisSummary } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
+import SetupGuide from '../components/SetupGuide'
 import {
   Users, Image, Network, History, FileBarChart2, CheckCircle,
   XCircle, RefreshCw, Wifi, WifiOff, ScanLine, Copy, Check,
@@ -46,6 +47,8 @@ export default function Dashboard() {
 
   return (
     <div style={{ width: '100%' }}>
+
+      <SetupGuide hasData={!!summary && (summary.total_followers ?? 0) > 0} />
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>

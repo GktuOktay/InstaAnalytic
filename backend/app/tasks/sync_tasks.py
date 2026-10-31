@@ -108,102 +108,187 @@ def _activate_plan_b(db, session_obj):
     logger.info("Plan B aktif edildi: %s", session_obj.ig_username)
 
 
-# ── sync_followers ─────────────────────────────────────────────────────────────
+# ── Bütçeli takipçi / takip taraması ───────────────────────────────────────────
+
+def _make_governor(session_id: str):
+    import redis
+    from app.core.config import settings
+    from app.services.scan_governor import ScanGovernor
+    from app.services.risk_profiles import load_profile_sync
+    return ScanGovernor(redis.from_url(settings.redis_url), session_id, load_profile_sync(session_id).scan)
+
+
+def _heal_placeholders(db, user_dicts: list[dict]):
+    """ZIP'ten gelen yer tutucu (negatif ID) kayıtlarını gerçek ID'ye bağla."""
+    from sqlalchemy import select, func
+    from app.models.ig_user import IgUser
+    from app.services.user_ids import resolve_placeholder
+    by_name = {}
+    for u in user_dicts:
+        uid = int(u.get("pk") or u.get("id") or 0)
+        if uid and u.get("username"):
+            by_name[str(u["username"]).lower()] = uid
+    if not by_name:
+        return
+    rows = db.execute(
+        select(IgUser.id, func.lower(IgUser.username))
+        .where(IgUser.id < 0, func.lower(IgUser.username).in_(list(by_name)))
+    ).all()
+    for old_id, lname in rows:
+        resolve_placeholder(db, old_id, by_name[lname])
+
+
+def _finish_scan(db, session_id: str, kind: str, flag: str, seen: set[int]) -> dict:
+    """Tam tarama bitti: görülmeyenleri 'artık değil' yap, farkı snapshot olarak kaydet."""
+    import uuid
+    from sqlalchemy import select, update
+    from app.core.config import settings
+    from app.models.ig_user import IgUser
+    from app.models.relationship import Relationship
+    from app.models.import_snapshot import ImportSnapshot
+
+    sid = uuid.UUID(session_id)
+    col = getattr(Relationship, flag)
+    prev = set(db.execute(select(Relationship.ig_user_id).where(Relationship.session_id == sid, col.is_(True))).scalars().all())
+    lost = prev - seen
+    gained = seen - prev
+    sweep_skipped = bool(len(prev) > 20 and len(seen) < settings.scan_min_sweep_ratio * len(prev))
+    if sweep_skipped:
+        logger.warning("Süpürme atlandı: %d kayıt görüldü, önceki %d (eşik %.0f%%)", len(seen), len(prev), settings.scan_min_sweep_ratio * 100)
+    elif lost:
+        db.execute(update(Relationship).where(
+            Relationship.session_id == sid, Relationship.ig_user_id.in_(list(lost))
+        ).values({flag: False, "last_checked_at": datetime.now(timezone.utc)}))
+
+    def names(ids):
+        ids = list(ids)[:500]
+        return db.execute(select(IgUser.username).where(IgUser.id.in_(ids))).scalars().all() if ids else []
+
+    snap = ImportSnapshot(session_id=sid, source="scan")
+    if kind == "followers":
+        snap.followers_count, snap.followers_gained, snap.followers_lost = len(seen), names(gained), names(lost)
+    else:
+        snap.following_count, snap.following_gained, snap.following_lost = len(seen), names(gained), names(lost)
+    db.add(snap)
+    db.commit()
+    return {"gained": len(gained), "lost": 0 if sweep_skipped else len(lost), "sweep_skipped": sweep_skipped}
+
+
+def _run_budgeted_scan(task, session_id: str, job_id: str, kind: str):
+    """
+    followers/following taraması — ScanGovernor bütçesi altında, kaldığı yerden devam eder.
+    Bütçe dolarsa 'paused' döner (saat/gün dolmasında otomatik devam planlanır);
+    Instagram risk sinyali verirse cooldown'a girer ve otomatik devam ETMEZ.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from app.core.config import settings
+    from app.models.session import Session
+    from app.models.sync_job import SyncJob
+    from app.services.scan_governor import ScanPaused
+    from app.services.playwright_instagram import get_friendship_pages
+
+    flag = "they_follow" if kind == "followers" else "we_follow"
+    gov = _make_governor(session_id)
+    if not gov.acquire_lock():
+        return {"status": "already_running"}
+
+    db = _get_sync_db()
+    job = None
+    try:
+        session = db.get(Session, uuid.UUID(session_id))
+        if not session:
+            raise ValueError("Session bulunamadı")
+        job = db.get(SyncJob, uuid.UUID(job_id))
+        if not session.plan_b_active:
+            _activate_plan_b(db, session)
+        if job:
+            job.status = "running"; job.error_msg = None; db.commit()
+
+        gov.check()   # tarayıcı açmadan önce bütçe/cooldown kontrolü
+        cursor = gov.get_cursor(kind)
+        if cursor is None:
+            gov.clear_scan(kind)          # taze tarama: eski 'görülenler' kalıntısını temizle
+        cookies = _load_cookies(session)
+        total = len(gov.seen(kind))
+        finished = False
+
+        task.update_state(state="PROGRESS", meta={"current": total, "total": total, "step": kind, "plan": "B", "resumed": cursor is not None})
+        for page in get_friendship_pages(cookies, str(session.ig_user_id), kind, cursor, gov, settings.scan_page_size):
+            if page.get("done"):
+                finished = True
+                continue
+            ids = []
+            for user_dict in page["users"]:
+                ig_uid = _upsert_ig_user(db, user_dict)
+                if ig_uid:
+                    ids.append(ig_uid)
+                    _upsert_relationship(db, session_id, ig_uid, **{flag: True})
+            _heal_placeholders(db, page["users"])
+            db.commit()
+            gov.add_seen(kind, ids)
+            if page["next_cursor"]:
+                gov.set_cursor(kind, page["next_cursor"])
+            total += len(ids)
+            if job:
+                job.processed_items = total; db.commit()
+            task.update_state(state="PROGRESS", meta={"current": total, "total": total, "step": kind, "plan": "B"})
+
+        if not finished:
+            raise RuntimeError("Tarama beklenmedik şekilde yarıda kaldı")
+        summary = _finish_scan(db, session_id, kind, flag, gov.seen(kind))
+        gov.clear_scan(kind)
+        gov.report_clean_finish()
+        if job:
+            job.status = "completed"; job.processed_items = total
+            job.finished_at = datetime.now(timezone.utc); db.commit()
+        return {"status": "completed", "total": total, "plan": "B", **summary}
+
+    except ScanPaused as p:
+        db.rollback()
+        resume_iso = datetime.fromtimestamp(p.resume_at, tz=timezone.utc).isoformat() if p.resume_at else None
+        if job:
+            job.status = "paused"
+            job.error_msg = f"{p.reason} (devam: {resume_iso or 'elle başlat'})"
+            db.commit()
+        if p.auto_resume and p.resume_at:
+            task.apply_async(args=[session_id, job_id], eta=datetime.fromtimestamp(p.resume_at + 30, tz=timezone.utc))
+        logger.warning("Tarama duraklatıldı (%s): %s", kind, p.reason)
+        return {"status": "paused", "reason": p.reason, "resume_at": resume_iso, "auto_resume": p.auto_resume, "total": total if 'total' in locals() else 0}
+
+    except Exception as e:
+        logger.exception("sync_%s failed", kind)
+        db.rollback()
+        if job:
+            job.status = "failed"; job.error_msg = str(e); db.commit()
+        raise
+    finally:
+        db.close()
+        gov.release_lock()
+
 
 @celery_app.task(bind=True, name="sync_followers")
 def sync_followers(self, session_id: str, job_id: str):
-    from app.models.session import Session
-    from app.models.sync_job import SyncJob
-    from app.services.instagram import PLAN_B_EXCEPTIONS
-    import uuid
+    return _run_budgeted_scan(self, session_id, job_id, "followers")
 
-    db = _get_sync_db()
-    try:
-        session = db.get(Session, uuid.UUID(session_id))
-        if not session:
-            raise ValueError("Session bulunamadı")
-
-        job = db.get(SyncJob, uuid.UUID(job_id))
-        cookies = _load_cookies(session)
-
-        # ── Plan B (Playwright) ────────────────────────────────────────────────
-        if not session.plan_b_active:
-            _activate_plan_b(db, session)
-
-        from app.services.playwright_instagram import get_followers as pw_followers
-        self.update_state(state="PROGRESS", meta={"current": 0, "total": 0, "step": "followers", "plan": "B"})
-
-        user_id_str = str(session.ig_user_id)
-        total = 0
-        for batch in pw_followers(cookies, user_id_str):
-            for user_dict in batch:
-                ig_uid = _upsert_ig_user(db, user_dict)
-                if ig_uid:
-                    _upsert_relationship(db, session_id, ig_uid, they_follow=True)
-                    total += 1
-            db.commit()
-            self.update_state(state="PROGRESS", meta={"current": total, "total": total, "step": "followers", "plan": "B"})
-
-        if job: job.status = "completed"; job.processed_items = total; job.finished_at = datetime.now(timezone.utc); db.commit()
-        return {"status": "completed", "total": total, "plan": "B"}
-
-    except Exception as e:
-        logger.exception("sync_followers failed")
-        db.rollback()
-        if 'job' in locals() and job:
-            job.status = "failed"; job.error_msg = str(e); db.commit()
-        raise
-    finally:
-        db.close()
-
-
-# ── sync_following ─────────────────────────────────────────────────────────────
 
 @celery_app.task(bind=True, name="sync_following")
 def sync_following(self, session_id: str, job_id: str):
-    from app.models.session import Session
-    from app.models.sync_job import SyncJob
-    from app.services.instagram import PLAN_B_EXCEPTIONS
-    import uuid
+    return _run_budgeted_scan(self, session_id, job_id, "following")
 
-    db = _get_sync_db()
-    try:
-        session = db.get(Session, uuid.UUID(session_id))
-        if not session:
-            raise ValueError("Session bulunamadı")
 
-        job = db.get(SyncJob, uuid.UUID(job_id))
-        cookies = _load_cookies(session)
-
-        # ── Plan B (Playwright) ────────────────────────────────────────────────
-        if not session.plan_b_active:
-            _activate_plan_b(db, session)
-
-        from app.services.playwright_instagram import get_following as pw_following
-        self.update_state(state="PROGRESS", meta={"current": 0, "total": 0, "step": "following", "plan": "B"})
-
-        user_id_str = str(session.ig_user_id)
-        total = 0
-        for batch in pw_following(cookies, user_id_str):
-            for user_dict in batch:
-                ig_uid = _upsert_ig_user(db, user_dict)
-                if ig_uid:
-                    _upsert_relationship(db, session_id, ig_uid, we_follow=True)
-                    total += 1
-            db.commit()
-            self.update_state(state="PROGRESS", meta={"current": total, "total": total, "step": "following", "plan": "B"})
-
-        if job: job.status = "completed"; job.processed_items = total; job.finished_at = datetime.now(timezone.utc); db.commit()
-        return {"status": "completed", "total": total, "plan": "B"}
-
-    except Exception as e:
-        logger.exception("sync_following failed")
-        db.rollback()
-        if 'job' in locals() and job:
-            job.status = "failed"; job.error_msg = str(e); db.commit()
-        raise
-    finally:
-        db.close()
+def _handle_pause(task, db, job, p, session_id: str, job_id: str, total: int = 0):
+    """ScanPaused -> job'u 'paused' yap; yalnızca bütçe dolmasında otomatik devam planla."""
+    resume_iso = datetime.fromtimestamp(p.resume_at, tz=timezone.utc).isoformat() if p.resume_at else None
+    db.rollback()
+    if job:
+        job.status = "paused"
+        job.error_msg = f"{p.reason} (devam: {resume_iso or 'elle başlat'})"
+        db.commit()
+    if p.auto_resume and p.resume_at:
+        task.apply_async(args=[session_id, job_id], eta=datetime.fromtimestamp(p.resume_at + 30, tz=timezone.utc))
+    logger.warning("%s duraklatıldı: %s", task.name, p.reason)
+    return {"status": "paused", "reason": p.reason, "resume_at": resume_iso, "auto_resume": p.auto_resume, "total": total}
 
 
 # ── sync_posts (Plan A only — Playwright video/resim scraping karmaşık) ────────
@@ -215,17 +300,27 @@ def sync_posts(self, session_id: str, job_id: str):
     from app.models.sync_job import SyncJob
     import uuid
 
+    from app.services.scan_governor import ScanPaused
+    gov = _make_governor(session_id)
+    if not gov.acquire_lock():
+        return {"status": "already_running"}
+
     db = _get_sync_db()
+    job = None
+    total = 0
     try:
         session = db.get(Session, uuid.UUID(session_id))
         if not session:
             raise ValueError("Session bulunamadı")
 
         job = db.get(SyncJob, uuid.UUID(job_id))
+        if job:
+            job.status = "running"; job.error_msg = None; db.commit()
 
         if not session.plan_b_active:
             _activate_plan_b(db, session)
 
+        gov.check()
         cookies = _load_cookies(session)
         ig_user_id = str(session.ig_user_id)
 
@@ -235,7 +330,7 @@ def sync_posts(self, session_id: str, job_id: str):
         ig_username = session.ig_username or ""
         total = 0
         i = 0
-        for batch in get_posts(cookies, ig_user_id, ig_username):
+        for batch in get_posts(cookies, ig_user_id, ig_username, governor=gov):
             for media in batch:
                 # Post ID — API v1: "3672...\_525...", graphql: pure numeric string
                 raw_id = str(media.get("id") or media.get("pk") or "")
@@ -361,82 +456,110 @@ def sync_posts(self, session_id: str, job_id: str):
         db.commit()
         if job: job.status = "completed"; job.processed_items = total; job.finished_at = datetime.now(timezone.utc); db.commit()
 
-        # Her gönderi için beğeni/yorum sync task'ı tetikle
-        from app.models.post import Post as PostModel
-        from sqlalchemy import select as sa_select
-        all_posts = db.execute(
-            sa_select(PostModel.id).where(PostModel.session_id == uuid.UUID(session_id))
-        ).scalars().all()
-        for pid in all_posts:
-            fake_job_id = str(uuid.uuid4())
-            sync_post_interactions.delay(session_id, pid, fake_job_id)
-        logger.info("sync_posts: queued interaction sync for %d posts", len(all_posts))
+        gov.report_clean_finish()
+        # Beğeni/yorum taraması tek bir bütçeli görevde, sırayla ve en yeni N gönderi için çalışır.
+        # Önce kilidi bırak ki o görev alabilsin.
+        gov.release_lock()
+        sync_all_interactions.delay(session_id, str(uuid.uuid4()))
+        logger.info("sync_posts: sync_all_interactions kuyruğa alındı")
 
         return {"status": "completed", "total": total, "plan": "B"}
+
+    except ScanPaused as p:
+        return _handle_pause(sync_posts, db, job, p, session_id, job_id, total)
 
     except Exception as e:
         logger.exception("sync_posts failed")
         db.rollback()
-        if 'job' in locals() and job:
+        if job:
             job.status = "failed"; job.error_msg = str(e); db.commit()
         raise
     finally:
         db.close()
+        gov.release_lock()
 
 
-# ── sync_post_interactions ─────────────────────────────────────────────────────
+# ── Etkileşimler (beğeni/yorum): tek tarayıcı, bütçeli, sıralı ────────────────
 
-@celery_app.task(bind=True, name="sync_post_interactions")
-def sync_post_interactions(self, session_id: str, post_id: int, job_id: str):
+def _run_interactions(task, session_id: str, job_id: str, post_ids: list[int] | None):
+    """
+    post_ids verilirse yeni iş listesi kurulur; None ise yarım kalan liste devam ettirilir.
+    Her gönderi bittiğinde listeden düşülür; bütçe dolarsa kaldığı gönderiden devam edilir.
+    """
+    import uuid
+    from sqlalchemy import select as sa_select
+    from app.core.config import settings
     from app.models.session import Session
+    from app.models.post import Post
     from app.models.interaction import Interaction
     from app.models.sync_job import SyncJob
-    import uuid
+    from app.services.scan_governor import ScanPaused
+    from app.services.playwright_instagram import get_interactions
+
+    kind = "interactions"
+    gov = _make_governor(session_id)
+    if not gov.acquire_lock():
+        return {"status": "already_running"}
 
     db = _get_sync_db()
+    job, done_posts, n_likes, n_comments = None, 0, 0, 0
     try:
         session = db.get(Session, uuid.UUID(session_id))
         if not session:
             raise ValueError("Session bulunamadı")
-
+        try:
+            job = db.get(SyncJob, uuid.UUID(job_id))
+        except ValueError:
+            job = None
+        if job:
+            job.status = "running"; job.error_msg = None; db.commit()
         if not session.plan_b_active:
             _activate_plan_b(db, session)
 
+        if post_ids is not None:
+            gov.set_pending(kind, post_ids)
+        todo = gov.pending(kind)
+        if not todo and post_ids is None:
+            # yeni tur: profildeki sayıda en yeni gönderi
+            from app.services.risk_profiles import load_profile_sync
+            max_posts = load_profile_sync(session_id).interactions_max_posts
+            todo = db.execute(
+                sa_select(Post.id).where(Post.session_id == uuid.UUID(session_id))
+                .order_by(Post.taken_at.desc().nullslast()).limit(max_posts)
+            ).scalars().all()
+            gov.set_pending(kind, list(todo))
+        if not todo:
+            if job:
+                job.status = "completed"; job.finished_at = datetime.now(timezone.utc); db.commit()
+            return {"status": "completed", "posts": 0}
+
+        gov.check()
         cookies = _load_cookies(session)
+        total_posts = len(todo)
+        task.update_state(state="PROGRESS", meta={"current": 0, "total": total_posts, "step": kind, "plan": "B"})
+        sid = uuid.UUID(session_id)
 
-        like_count = 0
-        comment_count = 0
+        for what, pid, payload in get_interactions(cookies, list(todo), gov):
+            if what == "done":
+                db.commit()
+                gov.pop_pending(kind, pid)
+                done_posts += 1
+                if job:
+                    job.processed_items = done_posts; db.commit()
+                task.update_state(state="PROGRESS", meta={"current": done_posts, "total": total_posts, "step": kind, "plan": "B"})
+                continue
 
-        # Likers
-        try:
-            from app.services.playwright_instagram import get_post_likers
-            for batch in get_post_likers(cookies, post_id):
-                for user_info in batch:
+            if what == "likers":
+                for user_info in payload:
                     uid = int(user_info.get("pk") or user_info.get("id") or 0)
                     if not uid:
                         continue
                     _upsert_ig_user(db, user_info)
-                    existing = db.query(Interaction).filter_by(
-                        ig_user_id=uid, post_id=post_id, interaction_type="like"
-                    ).first()
-                    if not existing:
-                        db.add(Interaction(
-                            session_id=uuid.UUID(session_id), ig_user_id=uid,
-                            post_id=post_id, interaction_type="like",
-                        ))
-                    like_count += 1
-            db.commit()
-            logger.info("sync_post_interactions: %d likers for post %s", like_count, post_id)
-        except Exception as e:
-            logger.warning("Likers fetch error for post %s: %s", post_id, e)
-
-        time.sleep(random.uniform(1.5, 3.0))
-
-        # Comments
-        try:
-            from app.services.playwright_instagram import get_post_comments
-            for batch in get_post_comments(cookies, post_id):
-                for comment in batch:
+                    if not db.query(Interaction).filter_by(ig_user_id=uid, post_id=pid, interaction_type="like").first():
+                        db.add(Interaction(session_id=sid, ig_user_id=uid, post_id=pid, interaction_type="like"))
+                    n_likes += 1
+            else:
+                for comment in payload:
                     user = comment.get("user", {})
                     uid = int(user.get("pk") or user.get("id") or 0)
                     if not uid:
@@ -444,81 +567,43 @@ def sync_post_interactions(self, session_id: str, post_id: int, job_id: str):
                     _upsert_ig_user(db, user)
                     text = comment.get("text", "")
                     ts = comment.get("created_at") or comment.get("created_at_utc")
-                    interacted_at = datetime.fromtimestamp(float(ts), tz=timezone.utc) if ts else None
-                    existing = db.query(Interaction).filter_by(
-                        ig_user_id=uid, post_id=post_id, interaction_type="comment",
-                        content=text,
-                    ).first()
-                    if not existing:
-                        db.add(Interaction(
-                            session_id=uuid.UUID(session_id), ig_user_id=uid,
-                            post_id=post_id, interaction_type="comment",
-                            content=text, interacted_at=interacted_at,
-                        ))
-                    comment_count += 1
+                    when = datetime.fromtimestamp(float(ts), tz=timezone.utc) if ts else None
+                    # tabloda (ig_user_id, post_id, tür) benzersiz: kullanıcı başına ilk yorum saklanır
+                    if not db.query(Interaction).filter_by(ig_user_id=uid, post_id=pid, interaction_type="comment").first():
+                        db.add(Interaction(session_id=sid, ig_user_id=uid, post_id=pid, interaction_type="comment",
+                                           content=text, interacted_at=when))
+                    n_comments += 1
             db.commit()
-            logger.info("sync_post_interactions: %d comments for post %s", comment_count, post_id)
-        except Exception as e:
-            logger.warning("Comments fetch error for post %s: %s", post_id, e)
 
-        return {"status": "completed", "post_id": post_id, "likes": like_count, "comments": comment_count}
-
-    except Exception as e:
-        logger.exception("sync_post_interactions failed")
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-# ── sync_all_interactions ──────────────────────────────────────────────────────
-
-@celery_app.task(bind=True, name="sync_all_interactions")
-def sync_all_interactions(self, session_id: str, job_id: str):
-    """Tüm gönderiler için like/yorum senkronizasyonu başlatır."""
-    from app.models.session import Session
-    from app.models.post import Post as PostModel
-    from app.models.sync_job import SyncJob
-    from sqlalchemy import select as sa_select
-    import uuid
-
-    db = _get_sync_db()
-    try:
-        session = db.get(Session, uuid.UUID(session_id))
-        if not session:
-            raise ValueError("Session bulunamadı")
-
-        job = db.get(SyncJob, uuid.UUID(job_id))
-
-        if not session.plan_b_active:
-            _activate_plan_b(db, session)
-
-        all_post_ids = db.execute(
-            sa_select(PostModel.id).where(PostModel.session_id == uuid.UUID(session_id))
-        ).scalars().all()
-
-        total = len(all_post_ids)
-        self.update_state(state="PROGRESS", meta={"current": 0, "total": total, "step": "queuing"})
-
-        for i, pid in enumerate(all_post_ids):
-            fake_job_id = str(uuid.uuid4())
-            sync_post_interactions.delay(session_id, pid, fake_job_id)
-            self.update_state(state="PROGRESS", meta={"current": i + 1, "total": total, "step": "queuing"})
-
+        gov.clear_scan(kind)
+        gov.report_clean_finish()
         if job:
-            job.status = "completed"
-            job.processed_items = total
-            job.finished_at = datetime.now(timezone.utc)
-            db.commit()
+            job.status = "completed"; job.processed_items = done_posts
+            job.finished_at = datetime.now(timezone.utc); db.commit()
+        return {"status": "completed", "posts": done_posts, "likes": n_likes, "comments": n_comments}
 
-        logger.info("sync_all_interactions: queued %d interaction tasks", total)
-        return {"status": "completed", "queued": total}
+    except ScanPaused as p:
+        db.commit()   # o ana kadar yazılanlar (tamamlanmış sayfalar) korunur
+        return _handle_pause(task, db, job, p, session_id, job_id, done_posts)
 
     except Exception as e:
-        logger.exception("sync_all_interactions failed")
+        logger.exception("interactions sync failed")
         db.rollback()
-        if 'job' in locals() and job:
+        if job:
             job.status = "failed"; job.error_msg = str(e); db.commit()
         raise
     finally:
         db.close()
+        gov.release_lock()
+
+
+@celery_app.task(bind=True, name="sync_post_interactions")
+def sync_post_interactions(self, session_id: str, post_id: int, job_id: str):
+    """Tek gönderi (elle tetikleme)."""
+    return _run_interactions(self, session_id, job_id, [int(post_id)])
+
+
+@celery_app.task(bind=True, name="sync_all_interactions")
+def sync_all_interactions(self, session_id: str, job_id: str):
+    """En yeni N gönderi için beğeni/yorum; yarım kalmışsa kaldığı yerden devam eder."""
+    return _run_interactions(self, session_id, job_id, None)

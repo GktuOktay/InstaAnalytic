@@ -17,3 +17,8 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
 )
+
+celery_app.conf.beat_schedule = {
+    "resume-action-queues": {"task": "resume_action_queues", "schedule": 15 * 60},
+    "expire-stale-sessions": {"task": "expire_stale_sessions", "schedule": 24 * 3600},
+}

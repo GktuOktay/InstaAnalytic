@@ -49,3 +49,6 @@ tmp/
 
 # Host Agent build temp files
 /tmp/instapp_build/
+
+# Erişim bilgileri belgesi (gizli)
+CREDENTIALS.md

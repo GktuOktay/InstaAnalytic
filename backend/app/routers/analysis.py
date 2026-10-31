@@ -13,7 +13,7 @@ from app.models.relationship import Relationship
 from app.models.sync_job import SyncJob
 from app.schemas.analysis import (
     RelationshipUser, AnalysisSummary, SyncResponse, TaskStatus,
-    GoldenHourSlot, GoldenHourResponse,
+    GoldenHourSlot, GoldenHourHour, GoldenHourResponse,
 )
 from app.tasks.sync_tasks import sync_followers, sync_following
 from app.tasks.celery_app import celery_app
@@ -28,6 +28,19 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     return session
 
 
+def _ensure_scan_allowed(session: Session):
+    """Cooldown / bütçe / çalışan tarama varsa görevi kuyruğa ALMA."""
+    from datetime import datetime, timezone
+    from app.routers.imports import get_governor
+    st = get_governor(session).status()
+    if st["running"]:
+        raise HTTPException(409, "Bu hesap için bir tarama zaten çalışıyor")
+    if not st["can_scan"]:
+        when = datetime.fromtimestamp(st["next_available_at"], tz=timezone.utc).isoformat()
+        raise HTTPException(429, f"Tarama bütçesi/cooldown nedeniyle {when} tarihine kadar beklenmeli. "
+                                 "Bu arada Instagram ZIP'ini yükleyerek veri güncelleyebilirsin.")
+
+
 async def _create_job(db: AsyncSession, session_id: uuid.UUID, job_type: str) -> SyncJob:
     job = SyncJob(session_id=session_id, job_type=job_type)
     db.add(job)
@@ -38,7 +51,8 @@ async def _create_job(db: AsyncSession, session_id: uuid.UUID, job_type: str) ->
 
 @router.post("/sync/followers", response_model=SyncResponse)
 async def start_sync_followers(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = await _create_job(db, session_id, "followers")
     task = sync_followers.delay(str(session_id), str(job.id))
     job.celery_task_id = task.id
@@ -48,7 +62,8 @@ async def start_sync_followers(session_id: uuid.UUID, db: AsyncSession = Depends
 
 @router.post("/sync/following", response_model=SyncResponse)
 async def start_sync_following(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = await _create_job(db, session_id, "following")
     task = sync_following.delay(str(session_id), str(job.id))
     job.celery_task_id = task.id
@@ -161,36 +176,55 @@ async def following(session_id: uuid.UUID, page: int = 1, limit: int = 50, db: A
     return await _paginated_rel(db, session_id, we_follow=True, they_follow=None, page=page, limit=limit)
 
 
+def _confidence(n: int) -> str:
+    return "high" if n >= 6 else "ok" if n >= 3 else "low"
+
+
 @router.get("/analysis/golden-hour", response_model=GoldenHourResponse)
-async def golden_hour(session_id: uuid.UUID, tz: str = "Europe/Istanbul", db: AsyncSession = Depends(get_db)):
+async def golden_hour(
+    session_id: uuid.UUID,
+    tz: str = "Europe/Istanbul",
+    media_type: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     await _get_session(session_id, db)
 
-    # Group posts by local day-of-week and hour, aggregate avg engagement
     local_ts = sa.func.timezone(tz, Post.taken_at)
     day_col = sa.cast(sa.func.extract("DOW", local_ts), sa.Integer)
     hour_col = sa.cast(sa.func.extract("HOUR", local_ts), sa.Integer)
     engagement = sa.cast(Post.like_count + Post.comment_count, Float)
 
-    q = (
-        select(
-            day_col.label("day_of_week"),
-            hour_col.label("hour"),
-            func.avg(engagement).label("avg_engagement"),
-            func.count().label("post_count"),
-        )
-        .where(and_(Post.session_id == session_id, Post.taken_at.is_not(None)))
-        .group_by(day_col, hour_col)
-        .order_by(day_col, hour_col)
-    )
+    where = [Post.session_id == session_id, Post.taken_at.is_not(None)]
+    if media_type:
+        where.append(Post.media_type == media_type)
 
-    rows = (await db.execute(q)).all()
-    slots = [
-        GoldenHourSlot(
-            day_of_week=int(r.day_of_week),
-            hour=int(r.hour),
-            avg_engagement=round(float(r.avg_engagement), 1),
-            post_count=int(r.post_count),
+    total_posts, overall = (await db.execute(
+        select(func.count(), func.coalesce(func.avg(engagement), 0)).where(and_(*where))
+    )).one()
+    overall = float(overall) or 1.0
+
+    def agg(*group):
+        return (
+            select(*group, func.avg(engagement).label("avg_engagement"), func.count().label("post_count"))
+            .where(and_(*where)).group_by(*group).order_by(*group)
         )
-        for r in rows
-    ]
-    return GoldenHourResponse(slots=slots, timezone=tz)
+
+    slots_rows = (await db.execute(agg(day_col.label("day_of_week"), hour_col.label("hour")))).all()
+    hour_rows = (await db.execute(agg(hour_col.label("hour")))).all()
+    types = [r[0] for r in (await db.execute(
+        select(Post.media_type).where(and_(Post.session_id == session_id, Post.media_type.is_not(None))).distinct()
+    )).all()]
+
+    return GoldenHourResponse(
+        slots=[GoldenHourSlot(
+            day_of_week=int(r.day_of_week), hour=int(r.hour), avg_engagement=round(float(r.avg_engagement), 1),
+            post_count=int(r.post_count), lift=round(float(r.avg_engagement) / overall, 2),
+            confidence=_confidence(int(r.post_count)),
+        ) for r in slots_rows],
+        hours=[GoldenHourHour(
+            hour=int(r.hour), avg_engagement=round(float(r.avg_engagement), 1), post_count=int(r.post_count),
+            lift=round(float(r.avg_engagement) / overall, 2), confidence=_confidence(int(r.post_count)),
+        ) for r in hour_rows],
+        timezone=tz, total_posts=int(total_posts), overall_avg=round(overall, 1),
+        media_types=sorted(types), enough_data=int(total_posts) >= 15,
+    )

@@ -1,0 +1,8 @@
+# Üretim benzeri çalıştırma:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Geliştirme kolaylıkları (--reload, kaynak kodu bind mount'u) kapatılır.
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes: !override []
+  worker:
+    volumes: !override []

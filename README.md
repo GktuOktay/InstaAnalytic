@@ -110,9 +110,8 @@ Full Turkish / English interface. One toggle, instant switch.
 git clone https://github.com/GktuOktay/InstaAnalytic.git
 cd InstaAnalytic
 
-# Copy and configure environment
-cp .env.example .env
-# Open .env — set CHROME_USER_DATA_DIR to your Chrome profile path
+# Generate secure secrets (.env + CREDENTIALS.md with all logins; both git-ignored)
+python3 scripts/init_env.py
 
 # Launch everything
 docker compose up -d
@@ -174,7 +173,11 @@ Full docs → [docs/](docs/)
 
 ### Security Model
 
-- **Session tokens** stored AES-256 encrypted in PostgreSQL — never in plaintext
+- **Session tokens** stored Fernet-encrypted (AES-128-CBC + HMAC) in PostgreSQL — never in plaintext; key rotation supported
+- **Read-only by default** — ZIP mode never contacts Instagram; follow/unfollow actions are off until you enable them per profile, with an automatic circuit breaker
+- **Local-only ports + auth** — all services bind to 127.0.0.1; API requires a token, Redis and Flower require passwords
+- **You choose the browser** — nothing is read from browsers until you pick one and approve the account found
+- **Your data, your control** — one-click "delete all my data" and CSV export
 - **`.env`** never committed — use `.env.example` as your template
 - **Backend** is Docker-internal only — not exposed to the internet by default
 - **Rate limiting** via Redis sliding-window — protects your account from Instagram bans
@@ -198,7 +201,7 @@ Found a bug? [Open an issue](https://github.com/GktuOktay/InstaAnalytic/issues/n
 
 ### Roadmap
 
-- [ ] Export reports to CSV / PDF
+- [x] Export reports to CSV (follow status, follower scores) · [ ] PDF
 - [ ] Scheduled auto-sync (cron)
 - [ ] Story / Reel engagement tracking
 - [ ] Multi-account support
@@ -251,9 +254,8 @@ InstaAnalytic, **kendi sunucunuzda** çalışan, açık kaynaklı bir Instagram 
 git clone https://github.com/GktuOktay/InstaAnalytic.git
 cd InstaAnalytic
 
-# Ortam değişkenlerini yapılandır
-cp .env.example .env
-# .env dosyasını aç — CHROME_USER_DATA_DIR'i Chrome profil yoluna ayarla
+# Güvenli parolaları üret (.env + tüm girişleri içeren CREDENTIALS.md; ikisi de git'e girmez)
+python3 scripts/init_env.py
 
 # Tüm servisleri başlat
 docker compose up -d

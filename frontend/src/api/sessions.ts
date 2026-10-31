@@ -5,6 +5,10 @@ export interface Session {
   ig_user_id: number
   ig_username: string
   plan_b_active: boolean
+  allow_actions: boolean
+  source: 'browser' | 'zip'
+  paused_until: string | null
+  paused_reason: string | null
   created_at: string
   last_used_at: string | null
   last_verified_at: string | null
@@ -16,6 +20,14 @@ export interface VerifyResult {
   error: string | null
 }
 
+export interface BrowserCandidate {
+  candidate_id: string
+  browser: string
+  ig_username: string
+  full_name: string | null
+  already_saved: boolean
+}
+
 export const sessionsApi = {
   list: () => api.get<Session[]>('/sessions').then(r => r.data),
   create: (ig_username: string, session_id_cookie: string, extra_cookies?: Record<string, string>) =>
@@ -25,6 +37,14 @@ export const sessionsApi = {
   updateUsername: (id: string, ig_username: string) =>
     api.patch<Session>(`/sessions/${id}/username`, { ig_username }).then(r => r.data),
   hostAgentStatus: () => api.get<{ connected: boolean }>('/sessions/host-agent-status').then(r => r.data),
-  scanBrowser: () => api.post<Session[]>('/sessions/scan-browser').then(r => r.data),
+  browsers: () => api.get<{ browsers: string[] }>('/sessions/browsers').then(r => r.data.browsers),
+  scanBrowsers: (browsers: string[]) =>
+    api.post<{ candidates: BrowserCandidate[]; errors: string[] }>('/sessions/scan-browser', { browsers }, { timeout: 45000 }).then(r => r.data),
+  confirmBrowser: (candidate_ids: string[]) =>
+    api.post<Session[]>('/sessions/scan-browser/confirm', { candidate_ids }).then(r => r.data),
+  createZipOnly: (ig_username: string) => api.post<Session>('/sessions/zip-only', { ig_username }).then(r => r.data),
+  setAllowActions: (id: string, allow_actions: boolean) =>
+    api.post<Session>(`/sessions/${id}/allow-actions`, { allow_actions }).then(r => r.data),
+  purge: (id: string) => api.delete(`/sessions/${id}/purge`).then(r => r.data),
   togglePlanB: (id: string) => api.post<Session>(`/sessions/${id}/toggle-plan-b`).then(r => r.data),
 }

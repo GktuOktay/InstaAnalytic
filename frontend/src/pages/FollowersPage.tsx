@@ -6,6 +6,8 @@ import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { useLang } from '../contexts/LangContext'
+import ImportScanPanel from '../components/ImportScanPanel'
+import RiskProfilePicker from '../components/RiskProfilePicker'
 import { RefreshCw, Lock, BadgeCheck, Users, UserMinus, UserPlus, CheckSquare, Square } from 'lucide-react'
 
 type Tab = 'not_following_back' | 'not_followed_back' | 'mutual' | 'followers' | 'following'
@@ -37,6 +39,7 @@ export default function FollowersPage() {
   const [bulkDelay,     setBulkDelay]     = useState({ min: 45, max: 90, limit: 50 })
   const [error,         setError]         = useState<string | null>(null)
   const [queueLength,   setQueueLength]   = useState(0)
+  const [profileTick,   setProfileTick]   = useState(0)
 
   // ── fetchTab tanımı ────────────────────────────────────────────────────────
   const fetchTab = useCallback((): Promise<RelationshipUser[]> => {
@@ -94,10 +97,17 @@ export default function FollowersPage() {
   // ── Aksiyon handler'lar ────────────────────────────────────────────────────
   const handleSync = async (type: 'followers' | 'following') => {
     setSyncing(true)
-    const resp = type === 'followers'
-      ? await analysisApi.syncFollowers(activeSession)
-      : await analysisApi.syncFollowing(activeSession)
-    setSyncTaskId(resp.task_id)
+    setError(null)
+    try {
+      const resp = type === 'followers'
+        ? await analysisApi.syncFollowers(activeSession)
+        : await analysisApi.syncFollowing(activeSession)
+      setSyncTaskId(resp.task_id)
+    } catch (e: any) {
+      // 429: bütçe/cooldown, 409: tarama zaten çalışıyor
+      setError(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
+      setSyncing(false)
+    }
   }
 
   const handleSingleAction = async (uid: number, action: 'follow' | 'unfollow') => {
@@ -200,6 +210,9 @@ export default function FollowersPage() {
           </button>
         </div>
       </div>
+
+      <ImportScanPanel sessionId={activeSession} refreshKey={`${syncTaskId}-${profileTick}`} onImported={loadData} />
+      <RiskProfilePicker sessionId={activeSession} onChanged={() => setProfileTick(t => t + 1)} />
 
       {/* Hata */}
       {error && (

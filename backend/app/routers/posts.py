@@ -15,6 +15,11 @@ from app.tasks.sync_tasks import sync_posts, sync_post_interactions, sync_all_in
 router = APIRouter(prefix="/sessions/{session_id}", tags=["posts"])
 
 
+def _ensure_scan_allowed(session: Session):
+    from app.routers.analysis import _ensure_scan_allowed as check
+    check(session)
+
+
 async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     session = await db.get(Session, session_id)
     if not session:
@@ -24,7 +29,8 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
 
 @router.post("/sync/posts", response_model=SyncResponse)
 async def start_sync_posts(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = SyncJob(session_id=session_id, job_type="posts")
     db.add(job)
     await db.commit()
@@ -37,8 +43,9 @@ async def start_sync_posts(session_id: uuid.UUID, db: AsyncSession = Depends(get
 
 @router.post("/sync/interactions-bulk", response_model=SyncResponse)
 async def start_sync_interactions_bulk(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    """Tüm gönderiler için like/yorum senkronizasyonu başlatır."""
-    await _get_session(session_id, db)
+    """Son N gönderi için like/yorum senkronizasyonu başlatır (bütçeli)."""
+    session = await _get_session(session_id, db)
+    _ensure_scan_allowed(session)
     job = SyncJob(session_id=session_id, job_type="interactions_bulk")
     db.add(job)
     await db.commit()
@@ -51,10 +58,11 @@ async def start_sync_interactions_bulk(session_id: uuid.UUID, db: AsyncSession =
 
 @router.post("/sync/post-interactions/{shortcode}", response_model=SyncResponse)
 async def start_sync_interactions(session_id: uuid.UUID, shortcode: str, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    session = await _get_session(session_id, db)
     post = (await db.execute(select(Post).where(Post.shortcode == shortcode, Post.session_id == session_id))).scalar_one_or_none()
     if not post:
         raise HTTPException(404, "Gönderi bulunamadı")
+    _ensure_scan_allowed(session)
     job = SyncJob(session_id=session_id, job_type="interactions")
     db.add(job)
     await db.commit()

@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# apt'ı HTTPS'e çevir: bazı ağlar HTTP paket indirmelerini 403 ile engelliyor
+RUN [ -f /etc/apt/sources.list.d/debian.sources ] && sed -i 's#http://#https://#g' /etc/apt/sources.list.d/debian.sources || true
+
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \

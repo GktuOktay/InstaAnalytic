@@ -5,10 +5,8 @@ Her session için Redis'te ayrı bir FIFO kuyruk tutulur.
 Tüm işlemler process_action_queue task'ı tarafından sıralı olarak çalıştırılır.
 Aynı anda aynı session için yalnızca 1 worker aktif olur (Redis distributed lock).
 
-Limitler (varsayılan):
-  - İşlemler arası: 45–90 sn
-  - Saatlik limit: 50 işlem/saat
-  - Günlük limit: 200 işlem/gün
+Limitler session'ın risk profilinden gelir (app/services/risk_profiles.py):
+  güvenli / dengeli (varsayılan) / agresif — bekleme, saatlik ve günlük işlem limiti.
 """
 
 import json
@@ -27,10 +25,6 @@ _LOCK_KEY   = "action_lock:{session_id}"
 _RATE_HOUR  = "rate:action:{session_id}:hour"
 _RATE_DAY   = "rate:action:{session_id}:day"
 
-HOURLY_LIMIT = 50
-DAILY_LIMIT  = 200
-DELAY_MIN    = 45   # saniye
-DELAY_MAX    = 90
 
 
 def _get_db():
@@ -58,14 +52,33 @@ def _activate_plan_b(db, session_obj):
     db.commit()
 
 
-def _check_limits(r, session_id: str) -> tuple[bool, str]:
-    """Saatlik ve günlük limitleri kontrol et. (ok, reason) döner."""
+def _enabled_at(session_id: str):
+    import uuid
+    db = _get_db()
+    try:
+        from app.models.session import Session
+        s = db.get(Session, uuid.UUID(str(session_id)))
+        return s.actions_enabled_at if s else None
+    finally:
+        db.close()
+
+
+def _profile(session_id: str):
+    from app.services.risk_profiles import load_profile_sync
+    return load_profile_sync(session_id)
+
+
+def _check_limits(r, session_id: str, prof, enabled_at=None, now=None) -> tuple[bool, str]:
+    """Saatlik ve günlük limitleri kontrol et. (ok, reason) döner.
+    Profil ne olursa olsun sert tavan ve ısınma süresi uygulanır (risk_profiles.effective_action_limits)."""
+    from app.services.risk_profiles import effective_action_limits
+    hourly, daily, _, _ = effective_action_limits(prof, enabled_at, now or datetime.now(timezone.utc))
     hour_count = int(r.get(_RATE_HOUR.format(session_id=session_id)) or 0)
     day_count  = int(r.get(_RATE_DAY.format(session_id=session_id)) or 0)
-    if hour_count >= HOURLY_LIMIT:
-        return False, f"saatlik limit ({HOURLY_LIMIT})"
-    if day_count >= DAILY_LIMIT:
-        return False, f"günlük limit ({DAILY_LIMIT})"
+    if hour_count >= hourly:
+        return False, f"saatlik limit ({hourly})"
+    if day_count >= daily:
+        return False, f"günlük limit ({daily})"
     return True, ""
 
 
@@ -105,15 +118,36 @@ def get_queue_status(session_id: str) -> dict:
     items = r.lrange(queue_key, 0, -1)
     hour_count = int(r.get(_RATE_HOUR.format(session_id=session_id)) or 0)
     day_count  = int(r.get(_RATE_DAY.format(session_id=session_id)) or 0)
+    prof = _profile(session_id)
+    from app.services.risk_profiles import effective_action_limits, in_quiet_hours
+    now = datetime.now(timezone.utc)
+    eff_hourly, eff_daily, _, _ = effective_action_limits(prof, _enabled_at(session_id), now)
     return {
+        "quiet_hours": in_quiet_hours(now),
         "queue_length": len(items),
         "processing": bool(r.exists(lock_key)),
         "hour_count": hour_count,
         "day_count": day_count,
-        "hourly_limit": HOURLY_LIMIT,
-        "daily_limit": DAILY_LIMIT,
+        "hourly_limit": eff_hourly,
+        "daily_limit": eff_daily,
+        "risk_profile": prof.key,
         "items": [json.loads(i) for i in items],
     }
+
+
+_BLOCK_SIGNALS = ("challenge", "action_blocked", "feedback_required", "checkpoint", "429", "too many requests", "login_required")
+_MAX_CONSECUTIVE_FAILURES = 3
+_PAUSE_HOURS = 6
+
+
+def _pause_session(db, session, r, queue_key: str, reason: str) -> None:
+    """Devre kesici: kuyruğu boşalt, işlemleri _PAUSE_HOURS saat durdur. Kullanıcı Oturum sayfasında görür."""
+    from datetime import timedelta
+    session.paused_until = datetime.now(timezone.utc) + timedelta(hours=_PAUSE_HOURS)
+    session.paused_reason = reason[:200]
+    r.delete(queue_key)
+    db.commit()
+    logger.error("Session %s duraklatıldı (%dsa): %s", session.id, _PAUSE_HOURS, reason)
 
 
 @celery_app.task(bind=True, name="process_action_queue")
@@ -125,6 +159,7 @@ def process_action_queue(self, session_id: str):
     from app.models.session import Session
     from app.models.relationship import Relationship
     from app.models.action_log import ActionLog
+    from app.services.risk_profiles import effective_action_limits, in_quiet_hours
     import uuid
 
     r = _get_redis()
@@ -143,10 +178,22 @@ def process_action_queue(self, session_id: str):
         if not session:
             return {"status": "session_not_found"}
 
+        # İkinci güvenlik kapısı: API'den sonra kullanıcı işlemleri kapatmış olabilir
+        now = datetime.now(timezone.utc)
+        if not session.allow_actions or session.source == "zip":
+            r.delete(queue_key)
+            return {"status": "actions_disabled"}
+        if session.paused_until and session.paused_until > now:
+            r.delete(queue_key)
+            return {"status": "paused", "reason": session.paused_reason}
+
         if not session.plan_b_active:
             _activate_plan_b(db, session)
 
         cookies = _load_cookies(session)
+        consecutive_failures = 0
+        enabled_at = session.actions_enabled_at
+        prof = _profile(session_id)
         processed = 0
         skipped = 0
         failed = 0
@@ -173,8 +220,14 @@ def process_action_queue(self, session_id: str):
                 "failed": failed,
             })
 
+            # Sessiz saatler: insan uyurken işlem yapılmaz; kuyruk korunur, beat görevi sabah devam ettirir
+            if in_quiet_hours(datetime.now(timezone.utc)):
+                r.lpush(queue_key, raw)
+                logger.info("Sessiz saatler: kuyruk bekletiliyor (%d öğe)", r.llen(queue_key))
+                return {"status": "quiet_hours", "processed": processed, "queued": r.llen(queue_key)}
+
             # Limit kontrolü
-            ok, reason = _check_limits(r, session_id)
+            ok, reason = _check_limits(r, session_id, prof, enabled_at)
             if not ok:
                 logger.warning("Limit aşıldı (%s), bekleniyor...", reason)
                 # Öğeyi geri koy
@@ -189,6 +242,27 @@ def process_action_queue(self, session_id: str):
                 logger.info("Saatlik limit, %d sn bekleniyor...", wait)
                 time.sleep(min(wait, 300))  # max 5 dk bekle, sonra tekrar dene
                 continue
+
+            # ZIP'ten gelen kullanıcılarda gerçek ID yok: aksiyon anında çöz
+            from app.services.user_ids import is_placeholder, resolve_placeholder
+            if is_placeholder(ig_user_id):
+                from app.models.ig_user import IgUser
+                from app.services.playwright_instagram import lookup_user_id
+                ph = db.get(IgUser, ig_user_id)
+                real_id = None
+                try:
+                    real_id = lookup_user_id(cookies, ph.username) if ph else None
+                except Exception as e:
+                    logger.warning("ID çözümleme hatası (%s): %s", ph.username if ph else "?", e)
+                if not real_id:
+                    logger.warning("ID çözülemedi, atlandı: %s", ph.username if ph else ig_user_id)
+                    skipped += 1
+                    _, _, dmin, dmax = effective_action_limits(prof, enabled_at, datetime.now(timezone.utc))
+                    time.sleep(random.uniform(dmin, dmax))
+                    continue
+                resolve_placeholder(db, ig_user_id, real_id)
+                db.commit()
+                ig_user_id = real_id
 
             # Log kaydı oluştur
             log = ActionLog(
@@ -215,6 +289,11 @@ def process_action_queue(self, session_id: str):
                     success = pw_remove(cookies, ig_user_id)
             except Exception as e:
                 logger.warning("Playwright action hata (%s): %s", action_type, e)
+                if any(k in str(e).lower() for k in _BLOCK_SIGNALS):
+                    _pause_session(db, session, r, queue_key, f"Instagram uyarısı: {str(e)[:120]}")
+                    log.status = "failed"
+                    db.commit()
+                    return {"status": "paused", "reason": session.paused_reason}
 
             # Sonucu kaydet
             if success:
@@ -222,6 +301,7 @@ def process_action_queue(self, session_id: str):
                 log.executed_at = datetime.now(timezone.utc)
                 _increment_counters(r, session_id)
                 processed += 1
+                consecutive_failures = 0
 
                 rel = db.get(Relationship, (uuid.UUID(session_id), ig_user_id))
                 if rel:
@@ -244,11 +324,19 @@ def process_action_queue(self, session_id: str):
                 log.executed_at = datetime.now(timezone.utc)
                 db.commit()
                 failed += 1
+                consecutive_failures += 1
+                # Devre kesici: üst üste başarısızlık = Instagram işlemleri engelliyor olabilir; ısrar etme
+                if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                    _pause_session(db, session, r, queue_key,
+                                   f"Üst üste {consecutive_failures} işlem başarısız oldu")
+                    return {"status": "paused", "reason": session.paused_reason,
+                            "processed": processed, "failed": failed}
 
             # Bir sonraki işlem öncesi rastgele bekleme
             remaining = r.llen(queue_key)
             if remaining > 0:
-                delay = random.uniform(DELAY_MIN, DELAY_MAX)
+                _, _, dmin, dmax = effective_action_limits(prof, enabled_at, datetime.now(timezone.utc))
+                delay = random.uniform(dmin, dmax)
                 logger.info("Sonraki işlem için %.0f sn bekleniyor (%d kalan)...", delay, remaining)
                 r.expire(lock_key, 600)
                 time.sleep(delay)
@@ -297,3 +385,48 @@ def single_follow(self, session_id: str, ig_user_id: int):
 @celery_app.task(bind=True, name="single_unfollow")
 def single_unfollow(self, session_id: str, ig_user_id: int):
     return queue_action(session_id, "unfollow", ig_user_id)
+
+
+@celery_app.task(name="resume_action_queues")
+def resume_action_queues():
+    """Sessiz saatlerde / limit dolunca bekleyen kuyrukları, koşullar uygunsa yeniden başlat."""
+    from app.services.risk_profiles import in_quiet_hours
+    if in_quiet_hours(datetime.now(timezone.utc)):
+        return {"resumed": 0, "reason": "quiet_hours"}
+    r = _get_redis()
+    resumed = 0
+    for key in r.scan_iter(match="action_queue:*"):
+        sid = key.decode().split(":", 1)[1] if isinstance(key, bytes) else key.split(":", 1)[1]
+        if r.llen(key) and not r.exists(_LOCK_KEY.format(session_id=sid)):
+            process_action_queue.delay(sid)
+            resumed += 1
+    return {"resumed": resumed}
+
+
+@celery_app.task(name="expire_stale_sessions")
+def expire_stale_sessions():
+    """
+    Eski tarayıcı oturumlarının çerezlerini siler. Profil ve analiz verisi KALIR; profil ZIP moduna
+    döner (Instagram'a bağlantı yok), kullanıcı isterse yeniden bağlar.
+    """
+    from datetime import timedelta
+    from sqlalchemy import select
+    from app.core.config import settings
+    from app.core.security import encrypt
+    from app.models.session import Session
+    db = _get_db()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=settings.session_ttl_days)
+        rows = db.execute(select(Session).where(Session.source == "browser")).scalars().all()
+        expired = 0
+        for s in rows:
+            last = s.last_used_at or s.last_verified_at or s.created_at
+            if last and last < cutoff:
+                s.session_data = encrypt(json.dumps({"cookies": {}}))
+                s.source, s.allow_actions, s.actions_enabled_at = "zip", False, None
+                s.paused_until, s.paused_reason = None, None
+                expired += 1
+        db.commit()
+        return {"expired": expired}
+    finally:
+        db.close()
