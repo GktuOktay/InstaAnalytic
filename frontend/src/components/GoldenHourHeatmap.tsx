@@ -12,9 +12,9 @@ function buildGrid(slots: GoldenHourSlot[]) {
 
 function cellStyle(ratio: number): React.CSSProperties {
   if (ratio <= 0) return { background: 'var(--surface-2)', border: '1px solid var(--border)' }
-  if (ratio >= 0.8) return { background: '#6366F1', border: '1px solid #818CF8' }
-  if (ratio >= 0.55) return { background: '#3730A3', border: '1px solid #4338CA' }
-  if (ratio >= 0.3)  return { background: '#1E1B4B', border: '1px solid #312E81' }
+  if (ratio >= 0.8) return { background: '#E8613A', border: '1px solid #F08A67' }
+  if (ratio >= 0.55) return { background: '#3730A3', border: '1px solid #A8341A' }
+  if (ratio >= 0.3)  return { background: '#1E1B4B', border: '1px solid #5E2415' }
   return { background: 'var(--surface-2)', border: '1px solid var(--border)', opacity: 0.6 }
 }
 
@@ -64,7 +64,7 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
           <p style={{ fontSize: 12, color: 'var(--text-2)' }}>{t.subtitle}</p>
         </div>
         <div style={{ display: 'flex', gap: 12, fontSize: 10.5, color: 'var(--text-3)' }}>
-          {[['#6366F1', t.best], ['#3730A3', t.good], ['var(--surface-2)', t.low]].map(([c, l]) => (
+          {[['#E8613A', t.best], ['#3730A3', t.good], ['var(--surface-2)', t.low]].map(([c, l]) => (
             <span key={l as string} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: c as string, border: '1px solid var(--border-2)', display: 'inline-block' }} />
               {l}
@@ -84,8 +84,8 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
         {top3.map((s, i) => (
           <div key={i} style={{
             flex: 1, padding: '9px 12px', borderRadius: 10,
-            background: i === 0 ? 'rgba(99,102,241,0.08)' : 'var(--surface-2)',
-            border: `1px solid ${i === 0 ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
+            background: i === 0 ? 'rgba(232,97,58,0.08)' : 'var(--surface-2)',
+            border: `1px solid ${i === 0 ? 'rgba(232,97,58,0.3)' : 'var(--border)'}`,
           }}>
             <p style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 4 }}>
               {['🥇', '🥈', '🥉'][i]} {t.days[s.day_of_week]} {hourLabel(s.hour)}
@@ -155,7 +155,7 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
           <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>
             {t.days[tooltip.slot.day_of_week]} {hourLabel(tooltip.slot.hour)}
           </p>
-          <p style={{ color: '#A5B4FC' }}>
+          <p style={{ color: '#F7BBA3' }}>
             {t.avgEng}: <strong>{tooltip.slot.avg_engagement.toFixed(1)}</strong>
           </p>
           <p style={{ color: 'var(--text-3)' }}>{tooltip.slot.post_count} {t.posts}{tooltip.slot.confidence === 'low' ? ` · ${t.lowConf}` : ''}</p>

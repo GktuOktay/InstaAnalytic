@@ -1,7 +1,8 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
-import SessionPage from './pages/SessionPage'
+import SettingsPage from './pages/SettingsPage'
+import StartPage from './pages/StartPage'
 import FollowersPage from './pages/FollowersPage'
 import ActionLogPage from './pages/ActionLogPage'
 import PostsPage from './pages/PostsPage'
@@ -15,7 +16,9 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
-        <Route path="session" element={<SessionPage />} />
+        <Route path="start" element={<StartPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="session" element={<Navigate to="/settings" replace />} />
         <Route path="followers" element={<FollowersPage />} />
         <Route path="posts" element={<PostsPage />} />
         <Route path="users" element={<UsersPage />} />

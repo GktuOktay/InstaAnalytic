@@ -2,41 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Inter font ──────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Yazı tipi paketten gelir (@fontsource, main.tsx): dışarıya istek atılmaz. */
 
-/* ── Dark theme (default) ────────────────────────────────────────── */
+/* ── Koyu tema (varsayılan): sıcak kömür tonları ─────────────────── */
 :root {
-  --bg:        #07070F;
-  --surface:   #0E0E1C;
-  --surface-2: #141425;
-  --border:    rgba(255,255,255,0.07);
-  --border-2:  rgba(255,255,255,0.14);
-  --text:      #EEEEF5;
-  --text-2:    #9898B8;
-  --text-3:    #5A5A7E;
-  --accent:    #6366F1;
-  --accent-2:  #8B5CF6;
-  --accent-glow: rgba(99,102,241,0.15);
-  --logo-grad: linear-gradient(135deg, #818CF8, #A78BFA);
-  --scrollbar: rgba(255,255,255,0.14);
+  --bg:        #14120E;
+  --surface:   #1C1A15;
+  --surface-2: #25221C;
+  --border:    rgba(255,240,215,0.09);
+  --border-2:  rgba(255,240,215,0.17);
+  --text:      #F2EDE3;
+  --text-2:    #ABA392;
+  --text-3:    #766F61;
+  --accent:    #E8613A;
+  --accent-2:  #D2461F;
+  --accent-glow: rgba(232,97,58,0.12);
+  --scrollbar: rgba(255,240,215,0.16);
 }
 
-/* ── Light theme ─────────────────────────────────────────────────── */
+/* ── Açık tema: kâğıt tonları ────────────────────────────────────── */
 [data-theme="light"] {
-  --bg:        #F4F4F8;
-  --surface:   #FFFFFF;
-  --surface-2: #F0F0F5;
-  --border:    rgba(0,0,0,0.08);
-  --border-2:  rgba(0,0,0,0.14);
-  --text:      #111118;
-  --text-2:    #5B5B78;
-  --text-3:    #A0A0BC;
-  --accent:    #4F52E8;
-  --accent-2:  #7C3AED;
-  --accent-glow: rgba(79,82,232,0.12);
-  --logo-grad: linear-gradient(135deg, #4F52E8, #7C3AED);
-  --scrollbar: rgba(0,0,0,0.14);
+  --bg:        #F6F1E7;
+  --surface:   #FFFCF6;
+  --surface-2: #EFE8DA;
+  --border:    rgba(50,36,10,0.10);
+  --border-2:  rgba(50,36,10,0.18);
+  --text:      #1F1B14;
+  --text-2:    #5F5748;
+  --text-3:    #8F8674;
+  --accent:    #C8431B;
+  --accent-2:  #A8341A;
+  --accent-glow: rgba(200,67,27,0.10);
+  --scrollbar: rgba(50,36,10,0.18);
 }
 
 /* ── Base ────────────────────────────────────────────────────────── */
@@ -45,7 +42,8 @@
 html, body, #root { height: 100%; margin: 0; }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Instrument Sans Variable', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -61,21 +59,19 @@ body {
 /* ── Utility classes ─────────────────────────────────────────────── */
 @layer components {
   .card {
-    border-radius: 18px;
+    border-radius: 12px;
     background: var(--surface);
     border: 1px solid var(--border);
   }
 
   .card-hover {
-    border-radius: 18px;
+    border-radius: 12px;
     background: var(--surface);
     border: 1px solid var(--border);
     transition: all 0.18s;
   }
   .card-hover:hover {
     border-color: var(--border-2);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    transform: translateY(-1px);
   }
 
   .btn-primary {
@@ -89,10 +85,10 @@ body {
     border: none;
     cursor: pointer;
     transition: all 0.15s;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    background: var(--accent);
     color: #fff;
   }
-  .btn-primary:hover  { filter: brightness(1.08); box-shadow: 0 0 18px var(--accent-glow); }
+  .btn-primary:hover  { background: var(--accent-2); }
   .btn-primary:disabled { opacity: 0.5; filter: none; cursor: not-allowed; }
 
   .btn-ghost {
@@ -133,7 +129,8 @@ body {
   }
 }
 
-/* ── Input / Select base ─────────────────────────────────────────── */
+/* Taban stiller @layer base içinde: Tailwind sınıfları (bg-transparent, border-0...) bunları ezebilsin. */
+@layer base {
 input, textarea, select {
   outline: none;
   font-family: inherit;
@@ -144,6 +141,8 @@ input, textarea, select {
 input::placeholder { color: var(--text-3); }
 input:focus-visible, textarea:focus-visible {
   box-shadow: 0 0 0 2px var(--accent);
+}
+
 }
 
 /* select and option always need explicit colors — browser ignores CSS on <option> in many
@@ -217,7 +216,7 @@ aside, main, .card, .card-hover, input, select, textarea {
 
 /* Avatar placeholder circles */
 [data-theme="light"] .bg-gray-700 {
-  background-color: #E0E0EC !important;
+  background-color: #E4DAC6 !important;
 }
 
 /* Recharts / chart text visibility */
@@ -234,11 +233,11 @@ aside, main, .card, .card-hover, input, select, textarea {
 
 /* ── Opacity-variant gray backgrounds ────────────────────────────
    Tailwind generates .bg-gray-950\/70 etc. — bridge them to theme  */
-.bg-gray-950\/70 { background-color: rgba(7,7,15,0.7)   !important; }
-.bg-gray-950\/80 { background-color: rgba(7,7,15,0.8)   !important; }
+.bg-gray-950\/70 { background-color: rgba(20,18,14,0.7)   !important; }
+.bg-gray-950\/80 { background-color: rgba(20,18,14,0.8)   !important; }
 .bg-gray-900\/40 { background-color: var(--surface-2)   !important; opacity: 0.9; }
-[data-theme="light"] .bg-gray-950\/70 { background-color: rgba(180,180,200,0.55) !important; }
-[data-theme="light"] .bg-gray-950\/80 { background-color: rgba(180,180,200,0.65) !important; }
+[data-theme="light"] .bg-gray-950\/70 { background-color: rgba(120,105,80,0.55) !important; }
+[data-theme="light"] .bg-gray-950\/80 { background-color: rgba(120,105,80,0.65) !important; }
 
 /* ── Semantic color badge backgrounds in light mode ─────────────
    *-900/30 and *-900/50 are near-black tints — remap to soft tints */
@@ -248,7 +247,7 @@ aside, main, .card, .card-hover, input, select, textarea {
 [data-theme="light"] .bg-red-900\/50    { background-color: rgba(220,38,38,0.1)   !important; }
 [data-theme="light"] .bg-yellow-900\/30 { background-color: rgba(202,138,4,0.1)   !important; }
 [data-theme="light"] .bg-blue-900\/30   { background-color: rgba(37,99,235,0.1)   !important; }
-[data-theme="light"] .bg-purple-900\/30 { background-color: rgba(99,102,241,0.1)  !important; }
+[data-theme="light"] .bg-purple-900\/30 { background-color: rgba(232,97,58,0.1)  !important; }
 [data-theme="light"] .bg-amber-900\/30,
 [data-theme="light"] .bg-amber-900\/40  { background-color: rgba(217,119,6,0.1)   !important; }
 [data-theme="light"] .bg-green-950\/20  { background-color: rgba(22,163,74,0.07)  !important; }
@@ -286,3 +285,24 @@ aside, main, .card, .card-hover, input, select, textarea {
 [data-theme="light"] .text-purple-400 { color: var(--accent) !important; }
 [data-theme="light"] .text-gray-400  { color: var(--text-2) !important; }
 [data-theme="light"] .text-gray-600  { color: var(--text-2) !important; }
+
+/* ── Toast bildirimleri ──────────────────────────────────────────── */
+.toast-stack {
+  position: fixed; right: 16px; bottom: 16px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(380px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-2); border-left: 4px solid var(--accent);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  font-size: 13px; line-height: 1.45;
+  animation: toast-in 160ms ease-out;
+}
+.toast p { flex: 1; margin: 0; }
+.toast button { color: var(--text-2); padding: 2px; border-radius: 6px; background: none; border: 0; cursor: pointer; }
+.toast button:hover { color: var(--text); background: var(--surface-2); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

@@ -47,8 +47,8 @@ export const color = {
   border2:  'var(--border-2)',
   accent:   'var(--accent)',
   // Semantic — only for data viz, badges
-  indigo:   '#818CF8',
-  indigoDim: '#312E81',
+  indigo:   '#F08A67',
+  indigoDim: '#5E2415',
   teal:     '#34D399',
   blue:     '#60A5FA',
   amber:    '#FBBF24',

@@ -134,3 +134,81 @@ async def test_outdated_agent_is_refused(client, monkeypatch, fake_redis_async):
     _fake_agent(monkeypatch, version=1)
     r = await client.post("/api/sessions/scan-browser", json={"browsers": ["Chrome"]})
     assert r.status_code == 409
+
+
+async def test_zip_import_runs_in_background_with_progress(client, make_session, monkeypatch):
+    import asyncio, io, json, zipfile
+    s = await make_session()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("connections/followers_and_following/followers_1.json", json.dumps(
+            [{"string_list_data": [{"value": f"u{i}", "timestamp": 1700000000}]} for i in range(50)]))
+        z.writestr("media/a.jpg", b"x" * 1000)
+    r = await client.post(f"/api/sessions/{s.id}/import/zip", files={"files": ("e.zip", buf.getvalue(), "application/zip")})
+    assert r.status_code == 202
+    job_id = r.json()["job_id"]
+    job = None
+    for _ in range(100):
+        job = (await client.get(f"/api/sessions/{s.id}/import/jobs/{job_id}")).json()
+        if job["stage"] in ("done", "error"):
+            break
+        await asyncio.sleep(0.1)
+    assert job["stage"] == "done", job
+    assert job["scanned"] == job["total"] == 2 and job["followers_found"] == 50
+    assert job["result"]["followers"]["count"] == 50
+    assert "session_id" not in job
+    # başka profilin iş kimliğiyle erişilemez
+    other = await make_session()
+    assert (await client.get(f"/api/sessions/{other.id}/import/jobs/{job_id}")).status_code == 404
+    assert (await client.get(f"/api/sessions/{s.id}/import/active")).json() == {"job_id": None}
+
+
+async def test_zip_import_reports_error_for_bad_file(client, make_session):
+    import asyncio
+    s = await make_session()
+    r = await client.post(f"/api/sessions/{s.id}/import/zip", files={"files": ("e.zip", b"nope", "application/zip")})
+    job_id = r.json()["job_id"]
+    for _ in range(50):
+        job = (await client.get(f"/api/sessions/{s.id}/import/jobs/{job_id}")).json()
+        if job["stage"] == "error":
+            break
+        await asyncio.sleep(0.1)
+    assert job["stage"] == "error" and "ZIP" in job["error"]
+
+
+async def test_data_status_reports_ranges_and_range_warning(client, make_session, db):
+    from datetime import datetime, timezone
+    from app.models.ig_user import IgUser
+    from app.models.relationship import Relationship
+    s = await make_session()
+    other = await make_session(username="other")
+    for uid in (1, 2, 3):
+        db.add(IgUser(id=uid, username=f"u{uid}"))
+    await db.flush()
+    d = lambda y: datetime(y, 6, 1, tzinfo=timezone.utc)
+    db.add_all([
+        Relationship(session_id=s.id, ig_user_id=1, they_follow=True, they_follow_since=d(2026)),
+        Relationship(session_id=s.id, ig_user_id=2, we_follow=True, we_follow_since=d(2013)),
+        Relationship(session_id=s.id, ig_user_id=3, we_follow=True, we_follow_since=d(2020)),
+        Relationship(session_id=other.id, ig_user_id=1, they_follow=True, they_follow_since=d(2015)),   # başka profil karışmamalı
+    ])
+    await db.commit()
+    r = (await client.get(f"/api/sessions/{s.id}/data-status")).json()
+    assert r["followers"]["count"] == 1 and r["following"]["count"] == 2
+    assert r["followers"]["oldest"].startswith("2026") and r["following"]["oldest"].startswith("2013")
+    assert "followers_range_short" in r["warnings"]
+    assert r["last_import_at"] is None and r["imports"] == 0
+
+
+async def test_zip_profiles_can_never_start_instagram_scans(client, make_session, monkeypatch):
+    from app.routers import analysis, posts
+    started = []
+    for mod, names in ((analysis, ("sync_followers", "sync_following")), (posts, ("sync_posts", "sync_all_interactions"))):
+        for n in names:
+            monkeypatch.setattr(getattr(mod, n), "delay", lambda *a, **k: started.append(a))
+    s = await make_session(source="zip")
+    for path in ("sync/followers", "sync/following", "sync/posts", "sync/interactions-bulk"):
+        r = await client.post(f"/api/sessions/{s.id}/{path}")
+        assert r.status_code == 400, path
+        assert "ZIP" in r.json()["detail"]
+    assert started == []          # Celery'ye hiçbir görev gönderilmedi

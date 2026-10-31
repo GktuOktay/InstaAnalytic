@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Image, Network,
-  History, MonitorDot, FileBarChart2, Moon, Sun, Flame,
+  History, MonitorDot, FileBarChart2, Moon, Sun, Flame, Settings,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -22,6 +22,7 @@ export default function Layout() {
     { to: '/users',     label: T.nav.users,      icon: Network         },
     { to: '/monitor',   label: T.nav.monitor,    icon: MonitorDot      },
     { to: '/actions',   label: T.nav.actions,    icon: History         },
+    { to: '/settings',  label: T.nav.settings,   icon: Settings        },
   ]
 
   return (
@@ -45,9 +46,7 @@ export default function Layout() {
                 fontSize: 15,
                 fontWeight: 700,
                 letterSpacing: '-0.02em',
-                background: 'linear-gradient(135deg, #6366F1, #A78BFA)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
+                color: 'var(--text)',
               }}>
                 InstaAnalytic
               </div>
@@ -125,13 +124,13 @@ export default function Layout() {
                   transition: 'all 0.12s',
                   background: isActive
                     ? theme === 'light'
-                      ? 'linear-gradient(135deg, rgba(79,82,232,0.12), rgba(124,58,237,0.08))'
-                      : 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.15))'
+                      ? 'rgba(200,67,27,0.10)'
+                      : 'rgba(232,97,58,0.14)'
                     : 'transparent',
                   border: isActive
                     ? theme === 'light'
-                      ? '1px solid rgba(79,82,232,0.25)'
-                      : '1px solid rgba(99,102,241,0.3)'
+                      ? '1px solid rgba(200,67,27,0.25)'
+                      : '1px solid rgba(232,97,58,0.3)'
                     : '1px solid transparent',
                   position: 'relative',
                 }}

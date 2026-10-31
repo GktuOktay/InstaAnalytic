@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ShieldCheck, Gauge, Flame } from 'lucide-react'
 import { riskApi, RiskKey, RiskProfileState } from '../api/risk'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 
 interface Props {
   sessionId: string
@@ -20,7 +21,7 @@ export default function RiskProfilePicker({ sessionId, onChanged }: Props) {
   const [state, setState] = useState<RiskProfileState | null>(null)
   const [pending, setPending] = useState<RiskKey | null>(null)   // onay bekleyen agresif seçim
   const [ack, setAck] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   const load = useCallback(() => {
     if (sessionId) riskApi.get(sessionId).then(setState).catch(() => {})
@@ -28,13 +29,12 @@ export default function RiskProfilePicker({ sessionId, onChanged }: Props) {
   useEffect(load, [load])
 
   const apply = async (key: RiskKey, acknowledge = false) => {
-    setError(null)
     try {
       await riskApi.set(sessionId, key, acknowledge)
       setPending(null); setAck(false)
       load(); onChanged?.()
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? R.saveError)
+      toast.error(e?.response?.data?.detail ?? R.saveError)
     }
   }
 
@@ -69,10 +69,10 @@ export default function RiskProfilePicker({ sessionId, onChanged }: Props) {
               <p className="text-xs text-gray-400 mb-2">{txt.tagline}</p>
               <ul className="text-xs text-gray-300 space-y-0.5 mb-2">
                 <li>{R.scan}: {p.scan_pages_per_hour} {R.pagesHour} · {p.scan_pages_per_day} {R.pagesDay} (~{p.scan_users_per_day.toLocaleString()} {R.usersDay})</li>
-                <li>{R.delay}: {p.scan_delay[0]}–{p.scan_delay[1]} sn</li>
+                <li>{R.delay}: {p.scan_delay[0]}-{p.scan_delay[1]} sn</li>
                 <li>{R.cooldown}: {p.cooldown_minutes[0]} dk</li>
                 <li>{R.actions}: {p.action_hourly}{R.perHour} · {p.action_daily}{R.perDay}</li>
-                <li>{R.actionDelay}: {p.action_delay[0]}–{p.action_delay[1]} sn</li>
+                <li>{R.actionDelay}: {p.action_delay[0]}-{p.action_delay[1]} sn</li>
                 <li>{R.interactions}: {p.interactions_max_posts}</li>
               </ul>
               <p className={`text-xs mb-1 ${p.key === 'aggressive' ? 'text-red-300' : 'text-gray-400'}`}>{txt.risk}</p>
@@ -94,7 +94,6 @@ export default function RiskProfilePicker({ sessionId, onChanged }: Props) {
           </button>
         </div>
       )}
-      {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
     </div>
   )
 }

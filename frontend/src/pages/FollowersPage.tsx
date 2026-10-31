@@ -1,13 +1,13 @@
 import { proxyImg } from '../utils/imgProxy'
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Session } from '../api/sessions'
 import { analysisApi, RelationshipUser, AnalysisSummary } from '../api/analysis'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { useLang } from '../contexts/LangContext'
-import ImportScanPanel from '../components/ImportScanPanel'
-import RiskProfilePicker from '../components/RiskProfilePicker'
+import { useToast } from '../contexts/ToastContext'
 import { RefreshCw, Lock, BadgeCheck, Users, UserMinus, UserPlus, CheckSquare, Square } from 'lucide-react'
 
 type Tab = 'not_following_back' | 'not_followed_back' | 'mutual' | 'followers' | 'following'
@@ -24,6 +24,7 @@ export default function FollowersPage() {
     { key: 'following',          label: T.followers.allFollowing           },
   ]
   const [activeSession, setActiveSession] = useState<string>('')
+  const isZipProfile = sessions.find(x => x.id === activeSession)?.source === 'zip'   // ZIP profili Instagram'a istek atmaz
   const [tab,           setTab]           = useState<Tab>('not_following_back')
   const [summary,       setSummary]       = useState<AnalysisSummary | null>(null)
   const [users,         setUsers]         = useState<RelationshipUser[]>([])
@@ -37,9 +38,8 @@ export default function FollowersPage() {
   const [queuedActions, setQueuedActions] = useState<Set<number>>(new Set())
   const [showBulkModal, setShowBulkModal] = useState(false)
   const [bulkDelay,     setBulkDelay]     = useState({ min: 45, max: 90, limit: 50 })
-  const [error,         setError]         = useState<string | null>(null)
+  const toast = useToast()
   const [queueLength,   setQueueLength]   = useState(0)
-  const [profileTick,   setProfileTick]   = useState(0)
 
   // ── fetchTab tanımı ────────────────────────────────────────────────────────
   const fetchTab = useCallback((): Promise<RelationshipUser[]> => {
@@ -55,7 +55,6 @@ export default function FollowersPage() {
   // ── loadData — fetchTab'dan sonra ─────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!activeSession) return
-    setError(null)
     try {
       const [sum, list] = await Promise.all([
         analysisApi.summary(activeSession),
@@ -65,7 +64,7 @@ export default function FollowersPage() {
       setUsers(list)
       setSelected(new Set())
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? e?.message ?? 'Veri yüklenemedi')
+      toast.error(e?.response?.data?.detail ?? e?.message ?? 'Veri yüklenemedi')
     }
   }, [activeSession, fetchTab])
 
@@ -97,7 +96,6 @@ export default function FollowersPage() {
   // ── Aksiyon handler'lar ────────────────────────────────────────────────────
   const handleSync = async (type: 'followers' | 'following') => {
     setSyncing(true)
-    setError(null)
     try {
       const resp = type === 'followers'
         ? await analysisApi.syncFollowers(activeSession)
@@ -105,7 +103,7 @@ export default function FollowersPage() {
       setSyncTaskId(resp.task_id)
     } catch (e: any) {
       // 429: bütçe/cooldown, 409: tarama zaten çalışıyor
-      setError(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
+      toast.error(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
       setSyncing(false)
     }
   }
@@ -177,7 +175,7 @@ export default function FollowersPage() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500">
         <p className="mb-2">{T.followers.noSession}</p>
-        <a href="/session" className="text-purple-400 hover:underline text-sm">{T.followers.addSession}</a>
+        <a href="/settings" className="text-purple-400 hover:underline text-sm">{T.followers.addSession}</a>
       </div>
     )
   }
@@ -200,6 +198,8 @@ export default function FollowersPage() {
               {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
             </select>
           )}
+          {!isZipProfile && (
+            <>
           <button onClick={() => handleSync('followers')} disabled={syncing || !activeSession}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
             <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.monitor.types.followerSync}
@@ -208,18 +208,15 @@ export default function FollowersPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
             <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.monitor.types.followingSync}
           </button>
+            </>
+          )}
         </div>
       </div>
 
-      <ImportScanPanel sessionId={activeSession} refreshKey={`${syncTaskId}-${profileTick}`} onImported={loadData} />
-      <RiskProfilePicker sessionId={activeSession} onChanged={() => setProfileTick(t => t + 1)} />
+      <p className="text-xs text-gray-500 mb-4">
+        {T.settings.movedHint} <Link to="/settings" className="text-purple-400 hover:underline">{T.nav.settings}</Link>
+      </p>
 
-      {/* Hata */}
-      {error && (
-        <div className="bg-red-900/30 border border-red-700 rounded-xl px-4 py-3 text-sm text-red-300 mb-4">
-          {error}
-        </div>
-      )}
 
       {/* Sync ilerleme */}
       {syncing && (
@@ -352,7 +349,7 @@ export default function FollowersPage() {
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="flex items-center gap-1 text-xs text-gray-600">
-                      <Users size={11} />{u.follower_count?.toLocaleString() ?? '—'}
+                      <Users size={11} />{u.follower_count?.toLocaleString() ?? '-'}
                     </span>
                     <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
                       {isQueued
@@ -384,7 +381,7 @@ export default function FollowersPage() {
       {showBulkModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
           onClick={() => setShowBulkModal(false)}>
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-96"
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96"
             onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">{T.followers.bulkUnfollow}</h2>
             <p className="text-sm text-gray-500 mb-5">{selected.size} kullanıcı seçildi</p>

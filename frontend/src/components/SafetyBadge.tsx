@@ -16,7 +16,7 @@ export default function SafetyBadge() {
     : (en ? `Actions ON (${active.length})` : `İşlemler AÇIK (${active.length})`)
   const Icon = safe && !paused ? ShieldCheck : ShieldAlert
   return (
-    <Link to="/session" title={label} aria-label={label}
+    <Link to="/settings" title={label} aria-label={label}
       style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 10px 10px', padding: '7px 10px', borderRadius: 10,
         fontSize: 11, border: `1px solid ${safe && !paused ? 'rgba(34,197,94,.35)' : 'rgba(245,158,11,.45)'}`,
         color: safe && !paused ? '#86EFAC' : '#FCD34D', textDecoration: 'none' }}>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import GoldenHourHeatmap from '../components/GoldenHourHeatmap'
 import DashboardCharts from '../components/DashboardCharts'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import api from '../api/client'
 import { sessionsApi, Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
@@ -44,6 +44,7 @@ export default function Dashboard() {
   }, [sessions, sessionsLoading])
 
   const hasSessions = sessions.length > 0
+  if (!sessionsLoading && !hasSessions) return <Navigate to="/start" replace />   // ilk açılış: kurulum sihirbazı
 
   return (
     <div style={{ width: '100%' }}>
@@ -57,7 +58,7 @@ export default function Dashboard() {
             {hasSessions ? (
               <>
                 <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 20 }}>@</span>
-                <span style={{ background: 'var(--logo-grad)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                <span>
                   {sessions[0].ig_username}
                 </span>
               </>
@@ -65,7 +66,7 @@ export default function Dashboard() {
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-3)', letterSpacing: '0.01em' }}>
             {hasSessions
-              ? (lang === 'tr' ? 'Instagram analitik paneli' : 'Instagram analytics')
+              ? (lang === 'tr' ? 'Genel görünüm' : 'Overview')
               : 'InstaAnalytic'}
           </p>
         </div>
@@ -98,9 +99,9 @@ export default function Dashboard() {
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 12,
             fontSize: 12, fontWeight: 500, cursor: 'pointer',
-            background: showSession ? 'rgba(99,102,241,0.1)' : 'var(--surface)',
-            border: showSession ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--border)',
-            color: showSession ? '#A5B4FC' : 'var(--text-2)',
+            background: showSession ? 'rgba(232,97,58,0.1)' : 'var(--surface)',
+            border: showSession ? '1px solid rgba(232,97,58,0.3)' : '1px solid var(--border)',
+            color: showSession ? '#F7BBA3' : 'var(--text-2)',
             transition: 'all 0.15s',
           }}>
             <Settings size={12} />
@@ -125,7 +126,7 @@ export default function Dashboard() {
           {summary ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
               <StatCard icon={Users}      label={lang === 'tr' ? 'Takipçi'            : 'Followers'}          value={summary.total_followers}    color="#60A5FA" glow="" onClick={() => navigate('/followers')} />
-              <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'              : 'Following'}          value={summary.total_following}    color="#818CF8" glow="" onClick={() => navigate('/followers')} />
+              <StatCard icon={TrendingUp} label={lang === 'tr' ? 'Takip'              : 'Following'}          value={summary.total_following}    color="#F08A67" glow="" onClick={() => navigate('/followers')} />
               <StatCard icon={UserCheck}  label={lang === 'tr' ? 'Karşılıklı'         : 'Mutual'}             value={summary.mutual}             color="#34D399" glow="" onClick={() => navigate('/followers')} />
               <StatCard icon={UserX}      label={lang === 'tr' ? 'Geri Takip Etmeyen' : 'Not Following Back'} value={summary.not_following_back} color="#F472B6" glow="" onClick={() => navigate('/followers')} />
             </div>
@@ -137,7 +138,7 @@ export default function Dashboard() {
               <AlertCircle size={15} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
               {lang === 'tr' ? 'İstatistik için önce Takipçi Analizi\'nden senkronizasyon yap.' : 'Run a sync in Follower Analysis to populate stats.'}
               <button onClick={() => navigate('/followers')} style={{
-                marginLeft: 'auto', fontSize: 13, color: '#818CF8',
+                marginLeft: 'auto', fontSize: 13, color: '#F08A67',
                 cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
                 {lang === 'tr' ? 'Analize git →' : 'Go →'}
               </button>
@@ -269,11 +270,11 @@ function OnboardingView({ lang, T, setSessions }: {
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{
           width: 64, height: 64, borderRadius: 20, margin: '0 auto 20px',
-          background: 'rgba(99,102,241,0.1)',
-          border: '1px solid rgba(99,102,241,0.25)',
+          background: 'rgba(232,97,58,0.1)',
+          border: '1px solid rgba(232,97,58,0.25)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          <AlertCircle size={26} style={{ color: '#818CF8' }} />
+          <AlertCircle size={26} style={{ color: '#F08A67' }} />
         </div>
         <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
           {lang === 'tr' ? 'Henüz oturum yok' : 'No session yet'}
@@ -334,7 +335,7 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
       padding: 20,
       borderRadius: 18,
       background: 'var(--surface)',
-      border: '1px solid rgba(99,102,241,0.25)',
+      border: '1px solid rgba(232,97,58,0.25)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{T.session.title}</span>
@@ -503,12 +504,12 @@ function AgentSetup({ lang, T, setSessions, agentConnected: initialConnected }: 
       {agentConnected === false && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <p style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 4 }}>
-            {lang === 'tr' ? 'Bir kez kur, sonra otomatik başlar:' : 'Install once — starts automatically:'}
+            {lang === 'tr' ? 'Bir kez kur, sonra otomatik başlar:' : 'Install once and it starts on its own:'}
           </p>
           <CodeLine cmd={INSTALL_CMD} id="install" copied={copied} onCopy={copy} />
           <CodeLine cmd={LAUNCH_CMD}  id="la"      copied={copied} onCopy={copy} />
           <p style={{ fontSize: 11, color: 'var(--text-3)', margin: '4px 0' }}>
-            {lang === 'tr' ? '— Sadece bu oturum için:' : '— For this session only:'}
+            {lang === 'tr' ? 'Sadece bu oturum için:' : 'For this session only:'}
           </p>
           <CodeLine cmd={AGENT_CMD}   id="agent"   copied={copied} onCopy={copy} />
         </div>
@@ -525,7 +526,7 @@ function AgentSetup({ lang, T, setSessions, agentConnected: initialConnected }: 
             {logs.map((l, i) => (
               <div key={i} style={{
                 color: l.type === 'error' ? '#F87171'
-                  : l.type === 'done' ? '#A78BFA'
+                  : l.type === 'done' ? '#F4A58A'
                   : l.text.startsWith('✓') ? '#34D399'
                   : l.text.startsWith('✗') ? '#F87171'
                   : 'var(--text-2)',

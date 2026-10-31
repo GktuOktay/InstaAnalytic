@@ -19,6 +19,8 @@ def _get_sync_db():
 
 
 def _load_cookies(session_obj) -> dict:
+    if session_obj.source == "zip":     # savunma: ZIP profili asla Instagram'a istek atamaz (API zaten reddeder)
+        raise ValueError("ZIP profili: oturum çerezi yok, Instagram'a istek atılmaz")
     data = json.loads(decrypt(session_obj.session_data))
     return data.get("cookies", {})
 
@@ -199,6 +201,8 @@ def _run_budgeted_scan(task, session_id: str, job_id: str, kind: str):
         session = db.get(Session, uuid.UUID(session_id))
         if not session:
             raise ValueError("Session bulunamadı")
+        if session.source == "zip":
+            raise ValueError("ZIP profili: Instagram'a istek atılmaz")
         job = db.get(SyncJob, uuid.UUID(job_id))
         if not session.plan_b_active:
             _activate_plan_b(db, session)

@@ -29,7 +29,9 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
 
 
 def _ensure_scan_allowed(session: Session):
-    """Cooldown / bütçe / çalışan tarama varsa görevi kuyruğa ALMA."""
+    """ZIP profili / cooldown / bütçe / çalışan tarama varsa görevi kuyruğa ALMA."""
+    if session.source == "zip":
+        raise HTTPException(400, "ZIP profili Instagram'a hiç istek atmaz. Veriyi güncellemek için Ayarlar'dan yeni ZIP yükle.")
     from datetime import datetime, timezone
     from app.routers.imports import get_governor
     st = get_governor(session).status()

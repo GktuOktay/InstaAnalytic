@@ -3,13 +3,14 @@ import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { LangProvider } from '../contexts/LangContext'
 import { SessionProvider } from '../contexts/SessionContext'
+import { ToastProvider } from '../contexts/ToastContext'
 
 export function renderApp(ui: ReactElement, { route = '/', lang = 'tr' } = {}) {
   localStorage.setItem('lang', lang)
   return render(
     <LangProvider>
       <MemoryRouter initialEntries={[route]}>
-        <SessionProvider>{ui}</SessionProvider>
+        <SessionProvider><ToastProvider>{ui}</ToastProvider></SessionProvider>
       </MemoryRouter>
     </LangProvider>,
   )

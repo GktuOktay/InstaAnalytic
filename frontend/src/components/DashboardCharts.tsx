@@ -70,7 +70,7 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
   const tickEvery = last.length > 5 ? 2 : 1
 
   return (
-    <Card title={lang === 'tr' ? 'Aylık Like Trendi' : 'Monthly Likes'} accent="#818CF8">
+    <Card title={lang === 'tr' ? 'Aylık Like Trendi' : 'Monthly Likes'} accent="#F08A67">
       <div ref={containerRef}>
         <svg
           viewBox={`0 0 ${VW} ${VH}`}
@@ -78,8 +78,8 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
         >
           <defs>
             <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#818CF8" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="#818CF8" stopOpacity="0"   />
+              <stop offset="0%"   stopColor="#F08A67" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#F08A67" stopOpacity="0"   />
             </linearGradient>
           </defs>
 
@@ -92,7 +92,7 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
           ))}
 
           <path d={areaPath} fill="url(#ag)" />
-          <path d={linePath} fill="none" stroke="#818CF8" strokeWidth={1.6}
+          <path d={linePath} fill="none" stroke="#F08A67" strokeWidth={1.6}
             strokeLinecap="round" strokeLinejoin="round" />
 
           {pts.map((p, i) => {
@@ -115,18 +115,18 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
                 />
                 <circle cx={p.x} cy={p.y}
                   r={isHov ? 4 : isLast ? 3 : 2.5}
-                  fill={isHov || isLast ? '#818CF8' : 'var(--surface)'}
-                  stroke="#818CF8" strokeWidth={1.4}
+                  fill={isHov || isLast ? '#F08A67' : 'var(--surface)'}
+                  stroke="#F08A67" strokeWidth={1.4}
                   style={{ transition: 'r 0.1s' }}
                 />
                 {/* Vertical guide on hover */}
                 {isHov && (
                   <line x1={p.x} y1={PB} x2={p.x} y2={VH - PB}
-                    stroke="#818CF8" strokeWidth={0.8} strokeDasharray="3 2" strokeOpacity={0.4} />
+                    stroke="#F08A67" strokeWidth={0.8} strokeDasharray="3 2" strokeOpacity={0.4} />
                 )}
                 {i % tickEvery === 0 && (
                   <text x={p.x} y={VH - 4} textAnchor="middle"
-                    fontSize={9} fill={isHov ? '#818CF8' : 'var(--text-3)'}>
+                    fontSize={9} fill={isHov ? '#F08A67' : 'var(--text-3)'}>
                     {fmtM(last[i].month)}
                   </text>
                 )}
@@ -136,12 +136,12 @@ function MonthlyArea({ monthly, lang }: { monthly: InteractionReport['monthly'];
                     <rect
                       x={labelX - labelW / 2} y={labelY - 11} width={labelW} height={14}
                       rx={4}
-                      fill={isHov ? '#818CF8' : '#818CF8'}
+                      fill={isHov ? '#F08A67' : '#F08A67'}
                       fillOpacity={isHov ? 0.9 : 0.15}
                     />
                     <text x={labelX} y={labelY - 1} textAnchor="middle"
                       fontSize={9} fontWeight="700"
-                      fill={isHov ? '#fff' : '#818CF8'}>
+                      fill={isHov ? '#fff' : '#F08A67'}>
                       {labelVal}
                     </text>
                   </g>
@@ -163,11 +163,11 @@ function FollowerDonut({ breakdown, lang }: { breakdown: InteractionReport['foll
   const C = 2 * Math.PI * R
 
   return (
-    <Card title={lang === 'tr' ? 'Like Kaynağı' : 'Audience'} accent="#6366F1">
+    <Card title={lang === 'tr' ? 'Like Kaynağı' : 'Audience'} accent="#E8613A">
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
         <svg viewBox="0 0 104 104" style={{ width: '100%', maxWidth: 120, display: 'block' }}>
           <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-2)" strokeWidth={SW} />
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#818CF8"
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#F08A67"
             strokeWidth={SW}
             strokeDasharray={`${pct * C} ${C}`}
             transform={`rotate(-90 ${CX} ${CY})`}
@@ -183,8 +183,8 @@ function FollowerDonut({ breakdown, lang }: { breakdown: InteractionReport['foll
         </svg>
 
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <MiniBar color="#818CF8" label={lang === 'tr' ? 'Takipçi'   : 'Follower'}     value={breakdown.follower_likes}  total={total} />
-          <MiniBar color="#4F46E5" label={lang === 'tr' ? 'Dışarıdan' : 'Non-follower'} value={breakdown.outsider_likes} total={total} />
+          <MiniBar color="#F08A67" label={lang === 'tr' ? 'Takipçi'   : 'Follower'}     value={breakdown.follower_likes}  total={total} />
+          <MiniBar color="#C8431B" label={lang === 'tr' ? 'Dışarıdan' : 'Non-follower'} value={breakdown.outsider_likes} total={total} />
         </div>
       </div>
     </Card>
@@ -239,7 +239,7 @@ function TopFansCard({ fans, lang }: { fans: InteractionReport['top_fans']; lang
             <div style={{ height: 3, borderRadius: 3, background: 'var(--border-2)', overflow: 'hidden', marginLeft: 30 }}>
               <div style={{
                 height: '100%', width: `${(f.total / max) * 100}%`, borderRadius: 3,
-                background: i === 0 ? 'linear-gradient(90deg, #F59E0B, #FBBF24)' : 'linear-gradient(90deg, #4F46E5, #818CF8)',
+                background: i === 0 ? '#D9A441' : '#E8613A',
                 transition: 'width 0.6s ease',
               }} />
             </div>
@@ -253,7 +253,7 @@ function TopFansCard({ fans, lang }: { fans: InteractionReport['top_fans']; lang
 /* ─── KPI mini ─────────────────────────────────────────── */
 function KpiMini({ kpi, lang }: { kpi: InteractionReport['kpi']; lang: string }) {
   const items = [
-    { label: lang === 'tr' ? 'Ort. Like'    : 'Avg Likes',    value: kpi.avg_likes.toFixed(1),    color: '#818CF8' },
+    { label: lang === 'tr' ? 'Ort. Like'    : 'Avg Likes',    value: kpi.avg_likes.toFixed(1),    color: '#F08A67' },
     { label: lang === 'tr' ? 'Ort. Yorum'   : 'Avg Comments', value: kpi.avg_comments.toFixed(1), color: '#34D399' },
     { label: lang === 'tr' ? 'Benzersiz Kişi': 'Unique',       value: kpi.unique_interactors.toLocaleString(), color: '#60A5FA' },
     { label: lang === 'tr' ? 'En Yüksek'    : 'Peak Likes',   value: kpi.max_likes.toLocaleString(), color: '#FBBF24' },

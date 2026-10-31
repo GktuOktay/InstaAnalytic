@@ -1,23 +1,31 @@
+import asyncio
+import os
+from datetime import datetime
+import tempfile
 import uuid
 
 import redis
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.base import get_db
 from app.models.import_snapshot import ImportSnapshot
+from app.models.relationship import Relationship
+from app.models.sync_job import SyncJob
 from app.models.session import Session
-from app.services.import_service import apply_export
-from app.services.ig_export import ExportError, parse_export_zip
+from app.services import import_jobs
 from app.services.risk_profiles import PROFILES, get_profile
 from app.services.scan_governor import ScanGovernor
 
 router = APIRouter(prefix="/sessions/{session_id}", tags=["import"])
 
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+# Sınır yalnızca disk koruması. Arayüz ZIP'i tarayıcıda açıp yalnızca JSON gönderdiği için normalde KB–MB düzeyinde gelir;
+# tarayıcı açamazsa tam paket de (diske akıtılarak) kabul edilir. Asıl güvenlik sınırı ig_export.MAX_*_BYTES (açılmış JSON).
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024
+MAX_FILES = 50
 
 
 def get_governor(session: Session) -> ScanGovernor:
@@ -31,22 +39,105 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     return session
 
 
-@router.post("/import/zip")
-async def import_zip(session_id: uuid.UUID, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
-    """Instagram 'Download your information' ZIP'ini (JSON) yükle. Instagram'a istek ATMAZ."""
-    await _get_session(session_id, db)
-    chunks, size = [], 0
-    while chunk := await file.read(1024 * 1024):
-        size += len(chunk)
-        if size > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, "Dosya çok büyük (en fazla 100 MB)")
-        chunks.append(chunk)
+def _spool_to_disk(src, limit: int) -> tuple[str, int]:
+    """Yüklenen dosyayı belleğe almadan diske kopyalar. (yol, bayt) döner; limit aşılırsa ValueError."""
+    fd, path = tempfile.mkstemp(prefix="igimp_")
+    size = 0
     try:
-        data = parse_export_zip(b"".join(chunks))
-        return await apply_export(db, session_id, data)
-    except ExportError as e:
-        await db.rollback()
-        raise HTTPException(422, str(e))
+        with os.fdopen(fd, "wb") as out:
+            while chunk := src.read(4 * 1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise ValueError
+                out.write(chunk)
+    except BaseException:
+        os.unlink(path)
+        raise
+    return path, size
+
+
+@router.post("/import/zip", status_code=202)
+async def import_zip(session_id: uuid.UUID, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
+    """Instagram verisini yükle: ZIP (parçalı paketler dahil) ve/veya tek tek followers_*.json / following.json.
+    Instagram'a istek ATMAZ.
+
+    Dosyalar diske akıtılır, işleme arka planda yapılır; ilerleme GET /import/jobs/{job_id} ile izlenir.
+    """
+    await _get_session(session_id, db)
+    if not files or len(files) > MAX_FILES:
+        raise HTTPException(422, f"1–{MAX_FILES} dosya yükleyebilirsin")
+    if await asyncio.to_thread(import_jobs.active_job, session_id):
+        raise HTTPException(409, "Bu profil için bir içe aktarma zaten sürüyor")
+    inputs: list[tuple[str, str]] = []
+    remaining = MAX_UPLOAD_BYTES
+    try:
+        for f in files:
+            path, size = await asyncio.to_thread(_spool_to_disk, f.file, remaining)
+            inputs.append((os.path.basename((f.filename or "").replace("\\", "/")), path))
+            remaining -= size
+    except ValueError:
+        for _, p in inputs:
+            os.unlink(p)
+        raise HTTPException(413, "Dosyalar çok büyük. ZIP'in tamamı yerine arayüzün otomatik ayıkladığı JSON'ları ya da yalnızca followers/following dosyalarını yükle.")
+    job_id = import_jobs.create_job(session_id, MAX_UPLOAD_BYTES - remaining)
+    import_jobs.start(session_id, job_id, inputs)
+    return {"job_id": job_id}
+
+
+@router.get("/import/jobs/{job_id}")
+async def import_job_status(session_id: uuid.UUID, job_id: str, db: AsyncSession = Depends(get_db)):
+    await _get_session(session_id, db)
+    job = await asyncio.to_thread(import_jobs.get_job, job_id)
+    if not job or job["session_id"] != str(session_id):
+        raise HTTPException(404, "İş bulunamadı")
+    job.pop("session_id")
+    return job
+
+
+@router.get("/import/active")
+async def import_active(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Sayfa yenilense bile süren işi bulmak için."""
+    await _get_session(session_id, db)
+    return {"job_id": await asyncio.to_thread(import_jobs.active_job, session_id)}
+
+
+@router.get("/data-status")
+async def data_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Elimizdeki verinin özeti: kaç kayıt, hangi tarih aralığı, en son ne zaman güncellendi.
+    Dosyadaki sayılar Instagram'daki sayılarla uyuşmuyorsa nedenini görmek için (ör. kısıtlı tarih aralığı)."""
+    session = await _get_session(session_id, db)
+
+    async def dim(flag, since):
+        row = (await db.execute(
+            select(func.count(), func.min(since), func.max(since), func.count(since))
+            .where(Relationship.session_id == session_id, flag.is_(True))
+        )).one()
+        return {"count": row[0], "oldest": row[1].isoformat() if row[1] else None,
+                "newest": row[2].isoformat() if row[2] else None, "dated": row[3]}
+
+    followers = await dim(Relationship.they_follow, Relationship.they_follow_since)
+    following = await dim(Relationship.we_follow, Relationship.we_follow_since)
+    last_import = (await db.execute(
+        select(func.max(ImportSnapshot.created_at)).where(ImportSnapshot.session_id == session_id))).scalar()
+    last_scan = (await db.execute(
+        select(func.max(func.coalesce(SyncJob.finished_at, SyncJob.started_at))).where(SyncJob.session_id == session_id, SyncJob.status == "completed")
+    )).scalar()
+    snapshots = (await db.execute(
+        select(func.count()).select_from(ImportSnapshot).where(ImportSnapshot.session_id == session_id))).scalar()
+
+    warnings: list[str] = []
+    if followers["oldest"] and following["oldest"] and followers["count"] and following["count"]:
+        gap_days = (datetime.fromisoformat(followers["oldest"]) - datetime.fromisoformat(following["oldest"])).days
+        if gap_days > 365 * 2:
+            warnings.append("followers_range_short")      # takipçi dosyası takip dosyasından yıllarca "daha genç"
+    if session.source == "zip" and snapshots and not followers["count"]:
+        warnings.append("no_followers")
+    return {
+        "source": session.source, "followers": followers, "following": following,
+        "last_import_at": last_import.isoformat() if last_import else None,
+        "last_scan_at": last_scan.isoformat() if last_scan else None,
+        "imports": snapshots, "warnings": warnings,
+    }
 
 
 @router.get("/import/snapshots")

@@ -370,8 +370,8 @@ export default function UsersPage() {
                   gap: '0 10px',
                   minWidth: 480,
                   alignItems: 'center',
-                  background: isSelected ? 'rgba(99,102,241,0.08)' : 'var(--surface)',
-                  border: `1px solid ${isSelected ? 'rgba(99,102,241,0.35)' : isGhost ? 'rgba(139,92,246,0.2)' : 'var(--border)'}`,
+                  background: isSelected ? 'rgba(232,97,58,0.08)' : 'var(--surface)',
+                  border: `1px solid ${isSelected ? 'rgba(232,97,58,0.35)' : isGhost ? 'rgba(210,70,31,0.2)' : 'var(--border)'}`,
                   borderRadius: 10,
                   padding: '7px 10px',
                   transition: 'border-color 0.15s',
@@ -407,18 +407,18 @@ export default function UsersPage() {
 
                   {/* Like */}
                   <span style={{ fontSize: 13, color: u.like_count > 0 ? '#e07070' : 'var(--text-3)', textAlign: 'right', fontWeight: u.like_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
-                    {u.like_count || '—'}
+                    {u.like_count || '-'}
                   </span>
 
                   {/* Yorum */}
                   <span style={{ fontSize: 13, color: u.comment_count > 0 ? '#5b8fe0' : 'var(--text-3)', textAlign: 'right', fontWeight: u.comment_count > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
-                    {u.comment_count || '—'}
+                    {u.comment_count || '-'}
                   </span>
 
                   {/* Skor */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: u.engagement_score >= 50 ? '#e09535' : u.engagement_score > 0 ? 'var(--accent)' : 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
-                      {u.engagement_score > 0 ? `%${u.engagement_score.toFixed(1)}` : '—'}
+                      {u.engagement_score > 0 ? `%${u.engagement_score.toFixed(1)}` : '-'}
                     </span>
                     {u.engagement_score > 0 && <EngagementBar val={u.engagement_score} />}
                   </div>

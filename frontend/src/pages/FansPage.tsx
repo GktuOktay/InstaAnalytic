@@ -147,7 +147,7 @@ function Empty({ text, cta }: { text: string; cta: string }) {
   return (
     <div className="text-center py-16 text-gray-400">
       <p className="mb-3">{text}</p>
-      <Link to="/session" className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-semibold text-sm">{cta}</Link>
+      <Link to="/settings" className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-xl text-white font-semibold text-sm">{cta}</Link>
     </div>
   )
 }

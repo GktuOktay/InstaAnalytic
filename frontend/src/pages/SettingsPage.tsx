@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import ImportScanPanel from '../components/ImportScanPanel'
+import RiskProfilePicker from '../components/RiskProfilePicker'
+import DataStatusCard from '../components/DataStatusCard'
 import { sessionsApi, Session, BrowserCandidate } from '../api/sessions'
 import { downloadCsv } from '../api/insights'
 import { validateUsername } from '../lib/validation'
 import { useSession } from '../contexts/SessionContext'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 import {
   ShieldCheck, Globe, Check, Copy, Trash2, Download, AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
 } from 'lucide-react'
@@ -13,45 +17,101 @@ const AGENT_CMD = 'bash start.sh'
 
 const errText = (e: any, fallback: string) => e?.response?.data?.detail ?? fallback
 
-export default function SessionPage() {
-  const { T, lang } = useLang()
+function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-8">
+      <h2 className="font-semibold">{title}</h2>
+      {desc && <p className="text-xs text-gray-500 mb-3">{desc}</p>}
+      {children}
+    </section>
+  )
+}
+
+export default function SettingsPage() {
+  const { T } = useLang()
   const L = T.connect
   const S = T.safety
+  const ST = T.settings
   const { sessions, loading, refresh } = useSession()
   const [showBrowser, setShowBrowser] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
+  const [selId, setSelId] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)          // içe aktarma / profil değişince durum kartı yenilensin
+
+  const sel = sessions.find(s => s.id === selId) ?? sessions[0]
+  const adding = showAdd || (!loading && sessions.length === 0)
+
+  const onCreated = async (created?: Session) => {
+    await refresh()
+    if (created) setSelId(created.id)
+    setShowAdd(false)
+  }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold mb-1">{L.title}</h1>
-      <p className="text-sm text-gray-500 mb-6">{L.subtitle}</p>
+    <div className="max-w-3xl">
+      <h1 className="text-2xl font-bold mb-1">{ST.title}</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        {ST.subtitle} <Link to="/start" className="text-purple-400 hover:underline">{T.wizard.openWizard}</Link>
+      </p>
 
-      <ZipCard onCreated={refresh} />
-
-      <div className="rounded-2xl border border-gray-800 bg-gray-900 mb-8">
-        <button
-          onClick={() => setShowBrowser(v => !v)}
-          className="w-full flex items-center justify-between p-5 text-left"
-          aria-expanded={showBrowser}
-        >
-          <span className="flex items-center gap-2 font-semibold text-sm">
-            <Globe size={16} className="text-gray-400" /> {L.browserTitle}
-          </span>
-          {showBrowser ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
-        {showBrowser && <BrowserFlow onConnected={refresh} />}
-      </div>
-
-      <h2 className="font-semibold mb-3">{T.session.saved}</h2>
-      {loading ? (
+      {loading && sessions.length === 0 ? (
         <p className="text-gray-600 text-sm">{T.common.loading}</p>
-      ) : sessions.length === 0 ? (
-        <div className="text-center py-10 text-gray-600 border border-dashed border-gray-800 rounded-xl text-sm">
-          {lang === 'en' ? 'Nothing connected yet — start above.' : 'Henüz bağlı bir şey yok — yukarıdan başla.'}
-        </div>
       ) : (
-        <div className="space-y-3">
-          {sessions.map(s => <SessionCard key={s.id} s={s} onChanged={refresh} S={S} />)}
+        <div className="flex flex-wrap items-center gap-2 mb-6" role="tablist" aria-label={ST.profile}>
+          {sessions.map(s => (
+            <button key={s.id} role="tab" aria-selected={s.id === sel?.id} onClick={() => setSelId(s.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm border ${
+                s.id === sel?.id ? 'bg-purple-900/40 border-purple-500 text-purple-100' : 'border-gray-700 text-gray-300 hover:border-gray-500'}`}>
+              @{s.ig_username}
+            </button>
+          ))}
+          {sessions.length > 0 && (
+            <button onClick={() => setShowAdd(v => !v)} aria-expanded={showAdd}
+              className="px-3 py-1.5 rounded-lg text-sm text-gray-400 hover:bg-gray-800">
+              + {ST.addProfile}
+            </button>
+          )}
         </div>
+      )}
+
+      {adding && (
+        <>
+          <ZipCard onCreated={onCreated} />
+          <div className="rounded-xl border border-gray-800 bg-gray-900 mb-8">
+            <button onClick={() => setShowBrowser(v => !v)} aria-expanded={showBrowser}
+              className="w-full flex items-center justify-between p-5 text-left">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Globe size={16} className="text-gray-400" /> {L.browserTitle}
+              </span>
+              {showBrowser ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showBrowser && <BrowserFlow onConnected={() => onCreated()} />}
+          </div>
+        </>
+      )}
+
+      {sel && (
+        <>
+          <Section title={ST.sectionData} desc={ST.sectionDataDesc}>
+            <DataStatusCard sessionId={sel.id} refreshKey={tick} />
+            <ImportScanPanel sessionId={sel.id} show="zip" onImported={() => setTick(t => t + 1)} />
+          </Section>
+
+          <Section title={ST.sectionScan} desc={ST.sectionScanDesc}>
+            {sel.source === 'zip' ? (
+              <p className="text-sm text-gray-400 bg-gray-900 border border-gray-800 rounded-xl p-4">{ST.zipNoScan}</p>
+            ) : (
+              <>
+                <ImportScanPanel sessionId={sel.id} show="budget" onImported={() => {}} />
+                <RiskProfilePicker sessionId={sel.id} onChanged={() => setTick(t => t + 1)} />
+              </>
+            )}
+          </Section>
+
+          <Section title={ST.sectionSafety} desc={ST.sectionSafetyDesc}>
+            <SessionCard s={sel} onChanged={async () => { await refresh(); setTick(t => t + 1) }} S={S} />
+          </Section>
+        </>
       )}
     </div>
   )
@@ -59,13 +119,14 @@ export default function SessionPage() {
 
 /* ── ZIP (önerilen) ─────────────────────────────────────────────────────── */
 
-function ZipCard({ onCreated }: { onCreated: () => Promise<void> }) {
+function ZipCard({ onCreated }: { onCreated: (s: Session) => Promise<void> }) {
   const { T, lang } = useLang()
   const L = T.connect
   const [open, setOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)        // yalnızca alan doğrulaması
+  const toast = useToast()
   const [done, setDone] = useState(false)
 
   const create = async () => {
@@ -75,18 +136,18 @@ function ZipCard({ onCreated }: { onCreated: () => Promise<void> }) {
     const u = v.value
     setBusy(true); setError(null)
     try {
-      await sessionsApi.createZipOnly(u)
+      const created = await sessionsApi.createZipOnly(u)
       setDone(true)
-      await onCreated()
+      await onCreated(created)
     } catch (e: any) {
-      setError(errText(e, T.session.saveError))
+      toast.error(errText(e, T.session.saveError))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="rounded-2xl border border-green-800/50 bg-green-950/20 p-5 mb-3">
+    <div className="rounded-xl border border-green-800/50 bg-green-950/20 p-5 mb-3">
       <div className="flex items-center gap-2 mb-1">
         <ShieldCheck size={18} className="text-green-400" />
         <h2 className="font-semibold">{L.zipTitle}</h2>
@@ -115,7 +176,7 @@ function ZipCard({ onCreated }: { onCreated: () => Promise<void> }) {
                 id="ig-user" autoFocus value={username} autoCapitalize="none" autoCorrect="off" spellCheck={false}
                 onChange={e => setUsername(e.target.value.replace(/^@/, ''))}
                 onKeyDown={e => e.key === 'Enter' && create()}
-                className="flex-1 bg-transparent py-2.5 px-1 text-sm focus:outline-none"
+                className="flex-1 bg-transparent border-0 focus-visible:shadow-none py-2.5 px-1 text-sm focus:outline-none"
               />
             </div>
             <button onClick={create} disabled={busy || !username.trim()}
@@ -163,7 +224,7 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
   const [cands, setCands] = useState<BrowserCandidate[] | null>(null)
   const [chosen, setChosen] = useState<string[]>([])
   const [notes, setNotes] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
   const [copied, setCopied] = useState(false)
 
   const check = useCallback(async () => {
@@ -185,27 +246,27 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
     set(list.includes(v) ? list.filter(x => x !== v) : [...list, v])
 
   const find = async () => {
-    setBusy(true); setError(null); setCands(null)
+    setBusy(true); setCands(null)
     try {
       const r = await sessionsApi.scanBrowsers(picked)
       setCands(r.candidates)
       setChosen(r.candidates.filter(c => !c.already_saved).map(c => c.candidate_id))
       setNotes(r.errors)
     } catch (e: any) {
-      setError(errText(e, T.session.saveError))
+      toast.error(errText(e, T.session.saveError))
     } finally {
       setBusy(false)
     }
   }
 
   const connect = async () => {
-    setBusy(true); setError(null)
+    setBusy(true)
     try {
       await sessionsApi.confirmBrowser(chosen)
       setCands(null); setPicked([])
       await onConnected()
     } catch (e: any) {
-      setError(errText(e, T.session.saveError))
+      toast.error(errText(e, T.session.saveError))
     } finally {
       setBusy(false)
     }
@@ -279,7 +340,6 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
           </div>
         </>
       )}
-      {error && <p role="alert" className="text-sm text-red-400 mt-3">{error}</p>}
     </div>
   )
 }
@@ -289,14 +349,14 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
 function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise<void>; S: any }) {
   const { lang } = useLang()
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  const toast = useToast()
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
   const paused = s.paused_until && new Date(s.paused_until) > new Date()
   const isZip = s.source === 'zip'
 
   const run = async (fn: () => Promise<unknown>, after?: () => Promise<void>) => {
-    setBusy(true); setMsg(null)
-    try { await fn(); await (after ?? onChanged)() } catch (e: any) { setMsg(errText(e, 'Hata')) } finally { setBusy(false) }
+    setBusy(true)
+    try { await fn(); await (after ?? onChanged)() } catch (e: any) { toast.error(errText(e, lang === 'en' ? 'Something went wrong' : 'Bir şey ters gitti')) } finally { setBusy(false) }
   }
 
   const toggleActions = () => {
@@ -307,7 +367,7 @@ function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise
   const remove = () => run(() => sessionsApi.delete(s.id))
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
       <div className="flex items-center gap-2 mb-1">
         <span className="font-semibold">@{s.ig_username}</span>
         <span className={`text-xs px-2 py-0.5 rounded-full ${isZip ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-300'}`}>
@@ -359,7 +419,6 @@ function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise
             <Trash2 size={13} /> {S.purge}
           </button>
         </div>
-        {msg && <p role="alert" className="text-xs text-red-400 mt-2">{msg}</p>}
       </div>
     </div>
   )

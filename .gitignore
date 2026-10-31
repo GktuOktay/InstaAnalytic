@@ -52,3 +52,6 @@ tmp/
 
 # Erişim bilgileri belgesi (gizli)
 CREDENTIALS.md
+
+# Tarayıcı test artıkları (kişisel veri içerebilir)
+.playwright-mcp/

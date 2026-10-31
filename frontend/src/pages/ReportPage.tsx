@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSession } from '../contexts/SessionContext'
 import { reportApi, InteractionReport } from '../api/report'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 import { Heart, MessageCircle, Users, TrendingUp, Star, Award, Loader2 } from 'lucide-react'
 
 const IG = (sc: string) => `https://www.instagram.com/p/${sc}/`
@@ -113,7 +114,7 @@ export default function ReportPage() {
   const [sid, setSid] = useState('')
   const [report, setReport] = useState<InteractionReport | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     if (sessions.length > 0 && !sid) setSid(sessions[0].id)
@@ -121,10 +122,10 @@ export default function ReportPage() {
 
   useEffect(() => {
     if (!sid) return
-    setLoading(true); setError('')
+    setLoading(true)
     reportApi.interactions(sid)
       .then(setReport)
-      .catch(() => setError(T.report.loadError))
+      .catch(() => toast.error(T.report.loadError))
       .finally(() => setLoading(false))
   }, [sid])
 
@@ -168,7 +169,6 @@ export default function ReportPage() {
           <Loader2 size={18} className="animate-spin" /> {T.report.calculating}
         </div>
       )}
-      {error && <p style={{ color: '#E05B6A' }}>{error}</p>}
 
       {report && (() => {
         const { kpi, monthly, follower_breakdown: fb, top_fans, top_posts, top_commenters } = report
@@ -300,11 +300,11 @@ export default function ReportPage() {
                         <td style={{ padding: '8px 6px', color: 'var(--c-soft)', fontSize: 12 }}>
                           <a href={IG(p.shortcode)} target="_blank" rel="noreferrer"
                             style={{ color: 'var(--c-soft)', textDecoration: 'none' }}>
-                            {p.taken_at ?? '—'}
+                            {p.taken_at ?? '-'}
                           </a>
                         </td>
                         <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-text)', fontWeight: 600 }}>{p.like_count}</td>
-                        <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-soft)' }}>{p.comment_count || '—'}</td>
+                        <td style={{ padding: '8px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--c-soft)' }}>{p.comment_count || '-'}</td>
                         <td style={{ padding: '8px 0', textAlign: 'right' }}>
                           <span style={{ fontSize: 11, color: 'var(--c-teal)', fontWeight: 600 }}>
                             %{p.like_count ? Math.round(p.synced_likes / p.like_count * 100) : 0}

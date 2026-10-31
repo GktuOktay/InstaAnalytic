@@ -76,6 +76,8 @@ async def client(db_engine, monkeypatch):
 
     monkeypatch.setattr(settings, "api_token", "test-token")
     maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    from app.services import import_jobs
+    monkeypatch.setattr(import_jobs, "AsyncSessionLocal", maker)    # arka plan işleri de test DB'sini kullansın
 
     async def _get_db():
         async with maker() as s:

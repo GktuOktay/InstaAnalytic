@@ -91,17 +91,22 @@ async def _apply_dimension(db: AsyncSession, session_id, entries: list[ExportEnt
     return gained_names, lost_names
 
 
-async def apply_export(db: AsyncSession, session_id, data: ExportData, source: str = "zip") -> dict:
+async def apply_export(db: AsyncSession, session_id, data: ExportData, source: str = "zip", on_step=None) -> dict:
+    """on_step(label: str): kaydetme aşamaları (canlı sayaç için)."""
+    step = on_step or (lambda _l: None)
     out = {"followers": None, "following": None}
     snap = ImportSnapshot(session_id=session_id, source=source)
     if data.has_followers:
+        step("followers")
         g, l = await _apply_dimension(db, session_id, data.followers, "they_follow")
         snap.followers_count, snap.followers_gained, snap.followers_lost = len(data.followers), g[:_LIST_CAP], l[:_LIST_CAP]
         out["followers"] = {"count": len(data.followers), "gained": len(g), "lost": len(l)}
     if data.has_following:
+        step("following")
         g, l = await _apply_dimension(db, session_id, data.following, "we_follow")
         snap.following_count, snap.following_gained, snap.following_lost = len(data.following), g[:_LIST_CAP], l[:_LIST_CAP]
         out["following"] = {"count": len(data.following), "gained": len(g), "lost": len(l)}
+    step("finalize")
     db.add(snap)
     await db.commit()
     await db.refresh(snap)

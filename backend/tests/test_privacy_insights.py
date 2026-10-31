@@ -124,3 +124,19 @@ async def test_golden_hour_filters_media_type_and_flags_enough_data(client, db, 
     only_photo = (await client.get(f"/api/sessions/{s.id}/analysis/golden-hour?media_type=photo")).json()
     assert only_photo["total_posts"] == 2 and only_photo["enough_data"] is False
     assert set((await client.get(f"/api/sessions/{s.id}/analysis/golden-hour")).json()["media_types"]) == {"reel", "photo"}
+
+
+async def test_purge_works_when_jobs_and_posts_exist(client, make_session, db):
+    """Regresyon: sync_jobs/posts kaydı olan profil 500 hatasıyla silinemiyordu."""
+    from sqlalchemy import select
+    from app.models.post import Post
+    from app.models.session import Session
+    from app.models.sync_job import SyncJob
+    s = await make_session()
+    db.add_all([SyncJob(session_id=s.id, job_type="followers"),
+                Post(id=9001, session_id=s.id, shortcode="abc", media_type="photo")])
+    await db.commit()
+    r = await client.delete(f"/api/sessions/{s.id}/purge")
+    assert r.status_code == 200, r.text
+    assert (await db.execute(select(Session).where(Session.id == s.id))).first() is None
+    assert (await db.execute(select(SyncJob).where(SyncJob.session_id == s.id))).first() is None

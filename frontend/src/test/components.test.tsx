@@ -10,6 +10,13 @@ vi.mock('../api/sessions', () => ({
     setAllowActions: vi.fn(), purge: vi.fn(), delete: vi.fn(),
   },
 }))
+vi.mock('../api/imports', () => ({
+  importApi: {
+    dataStatus: vi.fn(), snapshots: vi.fn(), scanStatus: vi.fn(), activeJob: vi.fn(), job: vi.fn(),
+    uploadFiles: vi.fn(), resetProgress: vi.fn(),
+  },
+}))
+vi.mock('../api/risk', () => ({ riskApi: { get: vi.fn(), set: vi.fn() } }))
 vi.mock('../api/insights', () => ({
   insightsApi: { fans: vi.fn() },
   downloadCsv: vi.fn(),
@@ -19,11 +26,14 @@ vi.mock('../api/analysis', () => ({ analysisApi: { goldenHour: vi.fn(), summary:
 import { sessionsApi } from '../api/sessions'
 import { insightsApi } from '../api/insights'
 import { analysisApi } from '../api/analysis'
-import SessionPage from '../pages/SessionPage'
+import { importApi } from '../api/imports'
+import { riskApi } from '../api/risk'
+import SessionPage from '../pages/SettingsPage'
 import FansPage from '../pages/FansPage'
 import ErrorBoundary from '../components/ErrorBoundary'
 import SafetyBadge from '../components/SafetyBadge'
 import SetupGuide from '../components/SetupGuide'
+import StartPage from '../pages/StartPage'
 import GoldenHourHeatmap from '../components/GoldenHourHeatmap'
 
 const api = sessionsApi as unknown as Record<string, ReturnType<typeof vi.fn>>
@@ -32,6 +42,14 @@ beforeEach(() => {
   vi.restoreAllMocks()
   vi.resetAllMocks()
   api.list.mockResolvedValue([])
+  const empty = { count: 0, oldest: null, newest: null, dated: 0 }
+  ;(importApi.dataStatus as any).mockResolvedValue({ source: 'zip', followers: empty, following: empty,
+    last_import_at: null, last_scan_at: null, imports: 0, warnings: [] })
+  ;(importApi.snapshots as any).mockResolvedValue([])
+  ;(importApi.scanStatus as any).mockResolvedValue({ used_hour: 0, limit_hour: 8, used_day: 0, limit_day: 30,
+    cooldown_until: null, strikes: 0, can_scan: true, next_available_at: null, running: false, paused: { followers: false, following: false } })
+  ;(importApi.activeJob as any).mockResolvedValue(null)
+  ;(riskApi.get as any).mockResolvedValue({ profile: 'safe', profiles: [] })
 })
 
 describe('SessionPage — ZIP first', () => {
@@ -56,12 +74,15 @@ describe('SessionPage — ZIP first', () => {
 
   it('creates the profile and points to the next step', async () => {
     const user = userEvent.setup()
-    api.createZipOnly.mockResolvedValue(makeSession({ ig_username: 'jane' }))
+    const jane = makeSession({ id: 'j1', ig_username: 'jane' })
+    api.createZipOnly.mockResolvedValue(jane)
+    api.list.mockResolvedValueOnce([]).mockResolvedValue([jane])
     renderApp(<SessionPage />)
     await user.click(await screen.findByRole('button', { name: 'Kullanıcı adımı gir' }))
     await user.type(screen.getByLabelText('Instagram kullanıcı adın'), '@jane{Enter}')
     await waitFor(() => expect(api.createZipOnly).toHaveBeenCalledWith('jane'))
-    expect(await screen.findByText(/Profil hazır/)).toBeInTheDocument()
+    expect(await screen.findByRole('tab', { name: '@jane', selected: true })).toBeInTheDocument()   // yeni profil seçilir
+    await waitFor(() => expect(importApi.dataStatus).toHaveBeenCalledWith('j1'))                    // ve veri bölümü açılır
   })
 
   it('shows the API error instead of crashing', async () => {
@@ -161,13 +182,16 @@ describe('SafetyBadge / SetupGuide', () => {
     expect(await screen.findByLabelText('İşlemler AÇIK (1)')).toBeInTheDocument()
   })
 
-  it('guide shows 3 steps for a new user and hides when done', async () => {
+  it('banner points a new user to the wizard and hides once data exists', async () => {
     const { unmount } = renderApp(<SetupGuide hasData={false} />)
-    expect(await screen.findByText('1. Profilini bağla')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Kuruluma başla' })).toHaveAttribute('href', '/start')
     unmount()
     api.list.mockResolvedValue([makeSession()])
+    const second = renderApp(<SetupGuide hasData={false} />)
+    expect(await screen.findByRole('link', { name: 'Kuruluma devam et' })).toBeInTheDocument()
+    second.unmount()
     renderApp(<SetupGuide hasData={true} />)
-    await waitFor(() => expect(screen.queryByText('1. Profilini bağla')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('link', { name: /Kurulum/ })).not.toBeInTheDocument())
   })
 })
 
@@ -245,3 +269,109 @@ describe('ErrorBoundary', () => {
     fireEvent.click(screen.getByRole('button', { name: /Yenile/ }))
   })
 })
+
+
+describe('SettingsPage — one place for source, scan and safety', () => {
+  it('shows data status, warns when the followers file is much newer than the following file', async () => {
+    api.list.mockResolvedValue([makeSession({ source: 'zip' })])
+    ;(importApi.dataStatus as any).mockResolvedValue({
+      source: 'zip',
+      followers: { count: 94, oldest: '2025-11-15T00:00:00Z', newest: '2026-09-27T00:00:00Z', dated: 94 },
+      following: { count: 947, oldest: '2013-08-26T00:00:00Z', newest: '2026-10-27T00:00:00Z', dated: 947 },
+      last_import_at: null, last_scan_at: null, imports: 1, warnings: ['followers_range_short'],
+    })
+    renderApp(<SessionPage />)
+    expect(await screen.findByText('Veri durumu')).toBeInTheDocument()
+    expect(await screen.findByText('94')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Tüm zamanlar')
+    expect(screen.getByText('Veri kaynağı')).toBeInTheDocument()
+    expect(screen.getByText('Tarama')).toBeInTheDocument()
+    expect(screen.getByText('Güvenlik ve gizlilik')).toBeInTheDocument()
+  })
+
+  it('switches between profiles', async () => {
+    const user = userEvent.setup()
+    api.list.mockResolvedValue([makeSession({ id: 's1', ig_username: 'a' }), makeSession({ id: 's2', ig_username: 'b' })])
+    renderApp(<SessionPage />)
+    await user.click(await screen.findByRole('tab', { name: '@b' }))
+    await waitFor(() => expect(importApi.dataStatus).toHaveBeenCalledWith('s2'))
+  })
+
+  it('ZIP profiles show no scan controls, browser profiles do', async () => {
+    api.list.mockResolvedValue([makeSession({ source: 'zip' })])
+    const { unmount } = renderApp(<SessionPage />)
+    expect(await screen.findByText(/tarama ayarı yok/)).toBeInTheDocument()
+    expect(screen.queryByText('Canlı tarama bütçesi')).not.toBeInTheDocument()
+    unmount()
+    api.list.mockResolvedValue([makeSession({ source: 'browser' })])
+    renderApp(<SessionPage />)
+    expect(await screen.findByText('Canlı tarama bütçesi')).toBeInTheDocument()
+  })
+})
+
+describe('StartPage wizard', () => {
+  beforeEach(() => { try { localStorage.removeItem('ia:wizard') } catch { /* yok */ } })
+
+  it('walks account, request and upload; remembers the step', async () => {
+    const user = userEvent.setup()
+    const me = makeSession({ id: 'w1', ig_username: 'wiz' })
+    api.createZipOnly.mockResolvedValue(me)
+    api.list.mockResolvedValueOnce([]).mockResolvedValue([me])
+    renderApp(<StartPage />)
+    await user.type(await screen.findByLabelText('Instagram kullanıcı adın'), 'wiz{Enter}')
+    await waitFor(() => expect(api.createZipOnly).toHaveBeenCalledWith('wiz'))
+    expect(await screen.findByText('Instagram\'dan verini iste')).toBeInTheDocument()
+    expect(screen.getByText(/Tüm zamanlar/, { selector: 'p' })).toBeInTheDocument()   // en sık hata açıkça uyarılıyor
+    expect(screen.getByRole('link', { name: /Instagram'ı aç/ })).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    await user.click(screen.getByRole('button', { name: 'Dosyam hazır' }))
+    expect(await screen.findByText('Dosyayı buraya bırak')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('ia:wizard')!)).toEqual({ step: 2, sessionId: 'w1' })
+  })
+
+  it('tells the user what is missing when the counts differ', async () => {
+    const user = userEvent.setup()
+    const me = makeSession({ id: 'w1', ig_username: 'wiz' })
+    localStorage.setItem('ia:wizard', JSON.stringify({ step: 3, sessionId: 'w1' }))
+    api.list.mockResolvedValue([me])
+    const one = { count: 94, oldest: null, newest: null, dated: 0 }
+    ;(importApi.dataStatus as any).mockResolvedValue({ source: 'zip', followers: one,
+      following: { ...one, count: 947 }, last_import_at: null, last_scan_at: null, imports: 1, warnings: [] })
+    renderApp(<StartPage />)
+    await user.type(await screen.findByLabelText('Takipçi'), '858')
+    expect(await screen.findByText(/Dosyada 764 takipçi eksik/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Yeniden iste' })).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('Takipçi'))
+    await user.type(screen.getByLabelText('Takipçi'), '94')
+    expect(await screen.findByText(/Takipçi: tutuyor/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Yeniden iste' })).not.toBeInTheDocument()
+  })
+})
+
+describe('errors arrive as toasts', () => {
+  it('a failed purge shows the server message as a dismissible toast', async () => {
+    const user = userEvent.setup()
+    api.list.mockResolvedValue([makeSession()])
+    api.purge.mockRejectedValue({ response: { data: { detail: 'Silme sırasında bir sorun oluştu' } } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApp(<SessionPage />)
+    await user.click(await screen.findByRole('button', { name: /Tüm verimi sil/ }))
+    const toast = await screen.findByRole('alert')
+    expect(toast).toHaveTextContent('Silme sırasında bir sorun oluştu')
+    await user.click(screen.getByRole('button', { name: 'Kapat' }))
+    await waitFor(() => expect(screen.queryByText('Silme sırasında bir sorun oluştu')).not.toBeInTheDocument())
+  })
+
+  it('does not stack the same message twice', async () => {
+    const user = userEvent.setup()
+    api.list.mockResolvedValue([makeSession()])
+    api.purge.mockRejectedValue({ response: { data: { detail: 'Aynı hata' } } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApp(<SessionPage />)
+    const del = await screen.findByRole('button', { name: /Tüm verimi sil/ })
+    await user.click(del)
+    await user.click(del)
+    await waitFor(() => expect(api.purge).toHaveBeenCalledTimes(2))
+    expect(screen.getAllByText('Aynı hata')).toHaveLength(1)
+  })
+})
+
