@@ -7,6 +7,7 @@ import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
 import ErrorBoundary from './ErrorBoundary'
 import SafetyBadge from './SafetyBadge'
+import BridgeWarningBanner from './BridgeWarningBanner'
 
 export default function Layout() {
   const { T, lang, setLang } = useLang()
@@ -28,7 +29,9 @@ export default function Layout() {
   ]
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+    // overflow: hidden + main'de position: relative: mutlak konumlu öğeler (ör. sr-only tablo başlıkları)
+    // sayfanın köküne göre yerleşip dış kaydırma çubuğu açmasın; tek kaydırma alanı <main>.
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
 
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       <aside style={{
@@ -173,11 +176,13 @@ export default function Layout() {
       <main style={{
         flex: 1,
         minWidth: 0,
+        position: 'relative',
         overflow: 'auto',
         display: 'flex',
         flexDirection: 'column',
       }}>
         <div style={{ flex: 1, padding: '28px 32px' }}>
+          <BridgeWarningBanner />
           <ErrorBoundary lang={lang} key={location.pathname}><Outlet /></ErrorBoundary>
         </div>
       </main>

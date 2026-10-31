@@ -1,15 +1,18 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, BarChart3, BookOpen, Download, FileArchive, FileJson, HelpCircle, Info,
-  ListChecks, Loader2, Puzzle, Rocket, ShieldCheck, FolderDown,
+  AlertTriangle, ArrowRight, Ban, BarChart3, BookOpen, Check, ChevronRight, Copy, Download, FileArchive, FileJson,
+  HelpCircle, Info, ListChecks, Loader2, OctagonAlert, Puzzle, Rocket, ShieldCheck, FolderDown,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import {
   guideContent, SECTION_ANCHOR, SECTION_ORDER, type GuideContent, type GuideLink, type GuideRow, type GuideStep,
-  type SectionId,
+  type InstallStep, type SectionId,
 } from '../guide/content'
-import { buildExtensionZip, checklistMarkdown, extensionInfo, SAMPLE_FILES, saveBlob, saveText } from '../guide/files'
+import {
+  buildExtensionZip, checklistMarkdown, copyToClipboard, extensionInfo, EXTENSION_ZIP_NAME, SAMPLE_FILES, saveBlob, saveText,
+} from '../guide/files'
+import { Illustration, WarningIllustration } from '../guide/illustrations'
 
 const ICONS: Record<SectionId, typeof BookOpen> = {
   start: Rocket, zip: FileArchive, bridge: Puzzle, results: BarChart3, safety: ShieldCheck, faq: HelpCircle, files: FolderDown,
@@ -62,7 +65,7 @@ export default function GuidePage() {
                     <a href={`#${anchor}`} aria-current={on ? 'location' : undefined}
                       onClick={e => { e.preventDefault(); setActive(anchor); scrollToAnchor(anchor); history.replaceState(null, '', `#${anchor}`) }}
                       className={`block px-2 py-1 rounded-md border-l-2 ${on
-                        ? 'border-purple-500 text-purple-100 bg-purple-900/30'
+                        ? 'border-purple-500 text-gray-100 bg-purple-900/30'
                         : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-900'}`}>
                       {C.sections[id]}
                     </a>
@@ -210,6 +213,7 @@ function ZipSection({ C }: { C: GuideContent }) {
   return (
     <Section id="zip" C={C}>
       <p className="text-sm text-gray-400">{Z.intro}</p>
+      <PathChips label={Z.pathLabel} path={Z.path} keys={Z.pathKey} />
       <Sub>{Z.requestTitle}</Sub>
       <Card><Steps steps={Z.request} /></Card>
       <div className="mt-3"><Note kind="warn" title={Z.warningTitle}>{Z.warning}</Note></div>
@@ -231,12 +235,148 @@ function BridgeSection({ C }: { C: GuideContent }) {
       <p className="text-sm text-gray-300">{B.how}</p>
       <Sub>{B.rulesTitle}</Sub>
       <Card><Bullets items={B.rules} /></Card>
+      <div className="mt-4"><WarningCallout C={C} /></div>
+
       <Sub>{B.installTitle}</Sub>
-      <Card><Steps steps={B.install} /></Card>
+      <p className="text-sm text-gray-400 mb-3">{B.installIntro}</p>
+      <ol className="space-y-3">
+        {B.install.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} />)}
+      </ol>
+      <p className="text-xs text-gray-500 mt-3">{B.devAlt}</p>
+
+      <Sub>{B.troubleTitle}</Sub>
+      <p className="text-sm text-gray-400 mb-2">{B.troubleIntro}</p>
+      <RowTable head={[C.faq.qCol, C.faq.aCol]} rows={B.trouble} caption={B.troubleTitle} />
+
       <Sub>{B.afterTitle}</Sub>
       <p className="text-sm text-gray-300">{B.after}</p>
       <div className="mt-3"><Note kind="warn" title={B.limitTitle}>{B.limit}</Note></div>
     </Section>
+  )
+}
+
+function InstallStepCard({ step, n, C }: { step: InstallStep; n: number; C: GuideContent }) {
+  const B = C.bridge
+  const headingId = `kurulum-${n}`
+  return (
+    <li aria-labelledby={headingId} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <div className="flex items-center gap-2.5">
+        <span aria-hidden="true"
+          className="shrink-0 w-7 h-7 rounded-full bg-purple-600 text-white text-sm font-bold flex items-center justify-center">
+          {n}
+        </span>
+        <h4 id={headingId} className="font-semibold text-sm">
+          <span className="sr-only">{`${B.stepLabel} ${n}:`}</span> {step.title}
+        </h4>
+      </div>
+      <div className="mt-2 sm:pl-[2.375rem] space-y-2">
+        <p className="text-sm text-gray-300">{step.text}</p>
+        {step.copy && <CopyText text={step.copy} labels={B.copy} />}
+        {step.tip && (
+          <p className="flex gap-1.5 text-xs text-gray-400">
+            <Info size={14} className="shrink-0 mt-px text-gray-500" aria-hidden="true" /> <span>{step.tip}</span>
+          </p>
+        )}
+        {step.link && <div><GLink link={step.link} /></div>}
+        <Illustration id={step.art} ui={B.ui} alt={step.alt} caption={step.caption} className="max-w-lg pt-1" />
+      </div>
+    </li>
+  )
+}
+
+/** Yanında kopyalama düğmesi olan kısa metin (ör. chrome://extensions, tıklanamadığı için). */
+function CopyText({ text, labels }: { text: string; labels: GuideContent['bridge']['copy'] }) {
+  const [state, setState] = useState<'idle' | 'done' | 'failed'>('idle')
+
+  useEffect(() => {
+    if (state !== 'done') return
+    const t = setTimeout(() => setState('idle'), 2000)
+    return () => clearTimeout(t)
+  }, [state])
+
+  const copy = async () => {
+    try {
+      await copyToClipboard(text)
+      setState('done')
+    } catch {
+      setState('failed')
+    }
+  }
+
+  const done = state === 'done'
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <code className="font-mono text-sm px-2 py-1 rounded-md bg-gray-800 border border-gray-700 select-all">{text}</code>
+      <button type="button" onClick={copy} aria-label={`${labels.button}: ${text}`}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs font-medium">
+        {done ? <Check size={13} className="text-green-400" aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+        {done ? labels.done : labels.button}
+      </button>
+      <span role="status" className={state === 'failed' ? 'text-xs text-amber-300' : 'sr-only'}>
+        {done ? labels.done : state === 'failed' ? labels.failed : ''}
+      </span>
+    </div>
+  )
+}
+
+/** Instagram uyarısında ne olduğu ve ne yapılacağı. Bilerek göze batan bir kutu. */
+function WarningCallout({ C }: { C: GuideContent }) {
+  const W = C.bridge.warning
+  return (
+    <div id="uyari" role="note" aria-labelledby="uyari-h"
+      className="scroll-mt-6 rounded-xl border-2 border-red-500/70 bg-red-900/30 p-4">
+      <div className="flex gap-3">
+        <OctagonAlert size={22} className="shrink-0 mt-0.5 text-red-400" aria-hidden="true" />
+        <div className="min-w-0 flex-1 space-y-3 text-sm text-gray-200">
+          <h3 id="uyari-h" className="text-base font-semibold text-red-300">{W.title}</h3>
+          <div>
+            <p>{W.intro}</p>
+            <ul className="list-disc pl-5 mt-1 space-y-0.5 marker:text-red-400">
+              {W.signs.map(t => <li key={t}>{t}</li>)}
+            </ul>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="font-semibold">{W.effectsTitle}</p>
+              <ul className="list-disc pl-5 mt-1 space-y-0.5 marker:text-red-400">
+                {W.effects.map(t => <li key={t}>{t}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold">{W.doTitle}</p>
+              <ol className="list-decimal pl-5 mt-1 space-y-0.5 marker:text-red-400">
+                {W.do.map(t => <li key={t}>{t}</li>)}
+              </ol>
+            </div>
+          </div>
+          <p className="flex gap-1.5 font-semibold text-red-300">
+            <Ban size={16} className="shrink-0 mt-0.5" aria-hidden="true" /> <span>{W.never}</span>
+          </p>
+          <WarningIllustration ui={C.bridge.ui} alt={W.alt} caption={W.caption} className="max-w-md" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Instagram menüsündeki yol, kısa hâliyle. Yanlış seçilince sonucu bozan adımlar vurgulu. */
+function PathChips({ label, path, keys }: { label: string; path: string[]; keys: string[] }) {
+  return (
+    <div className="mt-3">
+      <p className="text-xs uppercase tracking-wide text-gray-500 mb-1.5">{label}</p>
+      <ol aria-label={label} className="flex flex-wrap items-center gap-1.5 text-xs">
+        {path.map((p, i) => (
+          <li key={p} className="flex items-center gap-1.5">
+            {i > 0 && <ChevronRight size={13} className="text-gray-600" aria-hidden="true" />}
+            <span className={`px-2 py-1 rounded-md border text-gray-100 ${keys.includes(p)
+              ? 'border-purple-500 bg-purple-900/30 font-semibold'
+              : 'border-gray-700 bg-gray-800'}`}>
+              {p}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
   )
 }
 
@@ -308,7 +448,7 @@ function FilesSection({ C }: { C: GuideContent }) {
     setBuilding(true); setFailed(false)
     try {
       const blob = await buildExtensionZip()
-      saveBlob(blob, `instaanalytic-kopru${ext.version ? `-${ext.version}` : ''}.zip`)
+      saveBlob(blob, EXTENSION_ZIP_NAME)
     } catch {
       setFailed(true)
     } finally {

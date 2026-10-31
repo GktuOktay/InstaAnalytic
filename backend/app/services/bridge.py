@@ -8,7 +8,8 @@ durulacağı burada belirlenir (tek yer, test edilebilir).
 Neden böyle: istek aynı cihazdan, aynı IP'den, aynı tarayıcıdan ve aynı oturumdan çıkar. Instagram açısından
 kullanıcı kendi gönderisinin beğenenlerine bakıyor; çerez kopyalanmaz, headless tarayıcı yoktur.
 
-Ritim: gönderi başına bir beğenen isteği, yorum isteği yalnızca yorum varsa. Gönderiler arası düzensiz bekleme,
+Ritim: gönderi başına bir beğenen isteği, yorum isteği yalnızca yorum varsa. Yeni gönderi hemen okunur;
+ilk 3 gününde okunan gönderi, geç gelen beğeniler de sayılsın diye 3 günü dolunca bir kez daha okunur. Gönderiler arası düzensiz bekleme,
 birkaç gönderide bir uzun mola, günlük gönderi tavanı. Risk sinyalinde (429, challenge, giriş duvarı) her şey
 24 saat (tekrarında 72 saat) durur.
 """
@@ -49,7 +50,7 @@ ALLOWED_PATH = re.compile(
 
 # ── Ritim ───────────────────────────────────────────────────────────────────────
 
-MATURE_AFTER = timedelta(days=3)       # beğeniler ilk günlerde birikir; erken okumak eksik liste verir
+REFRESH_AFTER = timedelta(days=3)      # ilk 3 günde okunan gönderi, 3 günü dolunca bir kez daha okunur
 FEED_EVERY = timedelta(hours=24)
 FEED_MAX_PAGES = 9                     # 12'şerli, en yeni ~108 gönderi
 PAGES_PER_LIST = 5                     # tek gönderinin beğenen / yorum listesi için en çok sayfa
@@ -287,13 +288,16 @@ async def _choose(db: AsyncSession, kv: KV, session: Session, viewer_id: int | N
             path = _with_cursor(COMMENTS_PATH.format(pid=p.id), "min_id", await _get(kv, sid, f"cm:{p.id}"))
             return {"action": "fetch", "kind": "comments", "path": path, "post_id": p.id}
 
-        # 4) Beğenenleri okunmamış, beğenileri oturmuş en yeni gönderi
+        # 4) Beğenenleri hiç okunmamış en yeni gönderi
         p = (await db.execute(
-            select(Post).where(
-                Post.session_id == sid, Post.likers_synced_at.is_(None),
-                (Post.taken_at.is_(None)) | (Post.taken_at <= now - MATURE_AFTER),
-            ).order_by(Post.taken_at.desc().nullslast()).limit(1)
+            select(Post).where(Post.session_id == sid, Post.likers_synced_at.is_(None))
+            .order_by(Post.taken_at.desc().nullslast()).limit(1)
         )).scalar()
+        # 5) İlk 3 gününde okunmuş, artık 3 günü dolmuş gönderi: geç gelen beğeniler için bir kez daha
+        if not p:
+            p = (await db.execute(
+                select(Post).where(*_refresh_due(sid, now)).order_by(Post.taken_at).limit(1)
+            )).scalar()
         if p:
             if not p.like_count:
                 p.likers_synced_at = now
@@ -303,13 +307,23 @@ async def _choose(db: AsyncSession, kv: KV, session: Session, viewer_id: int | N
             return {"action": "fetch", "kind": "likers", "path": path, "post_id": p.id}
         break
 
-    # 5) Yalnızca yeni gönderiler kaldı: beğeniler oturana kadar bekle
-    young = (await db.execute(
-        select(func.min(Post.taken_at)).where(Post.session_id == sid, Post.likers_synced_at.is_(None))
+    # Her şey okundu. Tazelenecek gönderi varsa sırası gelince uyan
+    soon = (await db.execute(
+        select(func.min(Post.taken_at)).where(*_refresh_pending(sid))
     )).scalar()
-    if young:
-        return _wait(min(IDLE_WAIT_S, max(600, (young + MATURE_AFTER - now).total_seconds())), "waiting_young")
+    if soon:
+        return _wait(min(IDLE_WAIT_S, max(600, (soon + REFRESH_AFTER - now).total_seconds())), "up_to_date")
     return _wait(IDLE_WAIT_S, "up_to_date")
+
+
+def _refresh_pending(sid):
+    """İlk 3 gününde okunmuş, henüz tazelenmemiş gönderiler."""
+    return (Post.session_id == sid, Post.taken_at.is_not(None), Post.likers_synced_at.is_not(None),
+            Post.likers_synced_at < Post.taken_at + REFRESH_AFTER)
+
+
+def _refresh_due(sid, now: datetime):
+    return (*_refresh_pending(sid), Post.taken_at <= now - REFRESH_AFTER)
 
 
 # ── Yanıtı işleme ───────────────────────────────────────────────────────────────
@@ -469,8 +483,7 @@ async def _ingest_likers(db, kv, session: Session, pid: int, body: dict, now: da
     await kv.delete(_k(sid, f"lk:{pid}"), _k(sid, f"lkp:{pid}"))
     if post:
         post.likers_synced_at = now
-        if not post.comment_count:
-            post.comments_synced_at = now
+        post.comments_synced_at = None if post.comment_count else now
     await db.commit()
     wait = ht.between(rng, *WITHIN_POST_S) if post and post.comment_count else await _post_done(kv, sid, rng)
     return {"action": "ok", "wait_s": await _set_next(kv, sid, wait), "saved": len(users)}
@@ -513,14 +526,14 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
         func.count(Post.id),
         func.count(Post.likers_synced_at),
         func.count(Post.comments_synced_at),
-        func.count(Post.id).filter(and_(Post.likers_synced_at.is_(None), Post.taken_at > now - MATURE_AFTER)),
+        func.count(Post.id).filter(and_(*_refresh_pending(sid))),
         func.count(Post.id).filter(Post.likers_synced_at > now - timedelta(hours=24)),
     ).where(Post.session_id == sid))).one()
     seen = await _get(kv, sid, "seen")
     next_at = await _get(kv, sid, "next_at")
     paused = bool(session.paused_until and session.paused_until > now)
     return {
-        "posts": row[0], "likers_done": row[1], "comments_done": row[2], "waiting_young": row[3],
+        "posts": row[0], "likers_done": row[1], "comments_done": row[2], "refresh_pending": row[3],
         "today": row[4], "daily_cap": daily_cap(session.risk_profile),
         "last_seen": datetime.fromtimestamp(float(seen), tz=timezone.utc).isoformat() if seen else None,
         "connected": bool(seen and time.time() - float(seen) < 15 * 60),

@@ -8,6 +8,8 @@ import type { GuideContent } from './content'
 /* ── Köprü eklentisi ─────────────────────────────────────────────────────── */
 
 export const EXTENSION_FOLDER = 'instaanalytic-kopru'
+/** İndirilen dosyanın adı. Rehberdeki resimler ve metin bu adı gösteriyor; sürüm eklenmez ki tarif tutsun. */
+export const EXTENSION_ZIP_NAME = `${EXTENSION_FOLDER}.zip`
 const EXT_PREFIX = '../../extension/'
 
 // Metin dosyaları ham hâliyle; görseller ?raw ile bozulacağı için ayrı, URL olarak alınır.
@@ -102,3 +104,25 @@ export function saveBlob(blob: Blob, fileName: string): void {
 
 export const saveText = (text: string, fileName: string, type: string) =>
   saveBlob(new Blob([text], { type: `${type};charset=utf-8` }), fileName)
+
+/* ── Panoya kopyalama ────────────────────────────────────────────────────── */
+
+/** Önce Clipboard API; yoksa (http, eski tarayıcı) gizli bir metin alanıyla dener. Başaramazsa hata fırlatır. */
+export async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch { /* aşağıdaki yola düş */ }
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try { ok = typeof document.execCommand === 'function' && document.execCommand('copy') } finally { ta.remove() }
+  if (!ok) throw new Error('copy failed')
+}

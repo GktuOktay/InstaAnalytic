@@ -8,6 +8,8 @@ const $ = (id) => document.getElementById(id);
 const el = {
   enabled: $('enabled'),
   status: $('status'),
+  warning: $('warning'),
+  warningUntil: $('warning-until'),
   statusText: $('status-text'),
   today: $('today'),
   last: $('last'),
@@ -66,6 +68,12 @@ function renderStatus(status, enabled) {
   const s = status || {};
   const state = enabled ? (s.state || 'waiting') : 'off';
   el.status.dataset.state = state;
+  // Instagram uyarısı: kapalıyken bile görünür, en üstte
+  const warnOn = s.state === 'warning' && (!s.warningUntil || s.warningUntil > Date.now());
+  el.warning.hidden = !warnOn;
+  el.warningUntil.textContent = warnOn && s.warningUntil
+    ? `Yeniden denenecek: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
+    : '';
   el.statusText.textContent = enabled ? (s.message || 'Bekleniyor.') : 'Kapalı. Açtığınızda başlar.';
 
   const count = s.todayDate === todayKey() ? Number(s.todayCount) || 0 : 0;

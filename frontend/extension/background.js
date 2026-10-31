@@ -10,8 +10,6 @@ const ALARM = 'ia-tick';
 const PATH_RE = /^\/api\/v1\/(feed\/user\/\d+\/\?count=12(&max_id=[\w%.-]+)?|media\/\d+\/likers\/(\?max_id=[\w%.-]+)?|media\/\d+\/comments\/\?can_support_threading=true&permalink_enabled=false(&min_id=[\w%.-]+)?)$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const QUIET_FROM_H = 1;            // 01:00–08:00 arası hiç çalışmaz
-const QUIET_TO_H = 8;
 const IDLE_S = 300;                // son 5 dakikada klavye/fare yoksa "başında değil"
 const MIN_GAP_S = 3;               // sunucu ne derse desin iki istek arası en az bu kadar
 const INLINE_MAX_S = 25;           // bundan kısa beklemeler aynı tur içinde beklenir (alarm alt sınırı 30 sn)
@@ -20,12 +18,11 @@ const APP_BACKOFF_MIN = [1, 5, 15];
 const MAX_BODY_CHARS = 8 * 1024 * 1024;
 
 const WAIT_TEXT = {
-  paused: 'Duraklatıldı.',
+  paused: 'Instagram uyarı verdi, toplama durduruldu.',
   stopped: 'Uygulamadan durduruldu.',
   wrong_account: "Instagram'da bu profile ait olmayan bir hesap açık.",
   pacing: 'Sıradaki istek için bekleniyor.',
   daily_cap: 'Bugünlük sınır doldu, yarın devam eder.',
-  waiting_young: 'Yeni gönderilerin beğenileri henüz oturmadı; birkaç gün sonra okunacak.',
   up_to_date: 'Her şey güncel.',
   no_viewer: 'Instagram hesabı tanınamadı.',
 };
@@ -65,8 +62,30 @@ function todayKey(d = new Date()) {
 async function setStatus(patch) {
   const { status } = await chrome.storage.local.get('status');
   const next = { ...(status || {}), ...patch, updatedAt: Date.now() };
+  if (patch.state && patch.state !== 'warning') next.warningUntil = null;
   await chrome.storage.local.set({ status: next });
+  if (patch.state) await updateBadge(next.state);
   return next;
+}
+
+// Instagram uyarısı kritik: simgede kırmızı "!" kalır, pencere açılmasa da görünür.
+async function updateBadge(state) {
+  const warn = state === 'warning';
+  await chrome.action.setBadgeText({ text: warn ? '!' : '' });
+  if (warn) await chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+  await chrome.action.setTitle({
+    title: warn ? 'InstaAnalytic Köprüsü: Instagram uyarı verdi, toplama durduruldu' : 'InstaAnalytic Köprüsü',
+  });
+}
+
+// Sunucunun "paused" cevabı: Instagram uyarısı ya da üst üste hata. Kullanıcının kendi durdurması "stopped".
+async function setPaused(reason, message, waitS) {
+  if (reason === 'paused') {
+    await setStatus({ state: 'warning', message: WAIT_TEXT.paused + (message ? ` ${message}` : ''),
+      warningUntil: Date.now() + waitS * 1000 });
+  } else {
+    await setStatus({ state: 'paused', message: (WAIT_TEXT[reason] || 'Bekleniyor.') + (message ? ` ${message}` : '') });
+  }
 }
 
 async function countRequest() {
@@ -94,18 +113,6 @@ async function schedule(seconds) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-function inQuietHours(d = new Date()) {
-  const h = d.getHours();
-  return h >= QUIET_FROM_H && h < QUIET_TO_H;
-}
-
-function secondsUntilQuietEnds(d = new Date()) {
-  const end = new Date(d);
-  end.setHours(QUIET_TO_H, 0, 0, 0);
-  // Her sabah tam 08:00'de başlamasın: 0–20 dk arası kayma
-  return Math.max(60, (end - d) / 1000) + Math.random() * 1200;
 }
 
 // ── Uygulama (localhost) ─────────────────────────────────────────────────────
@@ -192,11 +199,6 @@ async function step() {
     return null;
   }
 
-  if (inQuietHours()) {
-    await setStatus({ state: 'quiet', message: 'Gece molası (01:00–08:00). Sabah kendiliğinden devam eder.' });
-    return { wait: secondsUntilQuietEnds() };
-  }
-
   const idle = await chrome.idle.queryState(IDLE_S);
   if (idle !== 'active') {
     await setStatus({ state: 'idle', message: 'Bilgisayar başında olmadığınız için bekleniyor.' });
@@ -257,11 +259,13 @@ async function step() {
     const job = next.data;
     if (job.action === 'wait') {
       const reason = String(job.reason || '');
-      const extra = job.message ? ` ${job.message}` : '';
-      const state = reason === 'paused' || reason === 'stopped' ? 'paused'
-        : reason === 'wrong_account' ? 'error' : 'waiting';
-      await setStatus({ state, message: (WAIT_TEXT[reason] || 'Bekleniyor.') + extra });
       const wait = Number(job.wait_s) || 60;
+      if (reason === 'paused' || reason === 'stopped') {
+        await setPaused(reason, job.message, wait);
+      } else {
+        const extra = job.message ? ` ${job.message}` : '';
+        await setStatus({ state: reason === 'wrong_account' ? 'error' : 'waiting', message: (WAIT_TEXT[reason] || 'Bekleniyor.') + extra });
+      }
       // Kısa tempo beklemesi: bir önceki yanıtın hemen ardından geldiyse aynı turda beklenir
       return { wait: reason === 'pacing' ? wait + 1 : wait, inline: reason === 'pacing' };
     }
@@ -309,8 +313,8 @@ async function step() {
     const wait = Number(out.wait_s) || 60;
     if (out.action === 'wait') {
       const reason = String(out.reason || '');
-      const state = reason === 'paused' || reason === 'stopped' ? 'paused' : 'waiting';
-      await setStatus({ state, message: (WAIT_TEXT[reason] || 'Bekleniyor.') + (out.message ? ` ${out.message}` : '') });
+      if (reason === 'paused' || reason === 'stopped') await setPaused(reason, out.message, wait);
+      else await setStatus({ state: 'waiting', message: (WAIT_TEXT[reason] || 'Bekleniyor.') + (out.message ? ` ${out.message}` : '') });
       return { wait };
     }
 

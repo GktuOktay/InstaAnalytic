@@ -11,6 +11,7 @@ import { sessionsApi } from '../api/sessions'
 import { insightsApi } from '../api/insights'
 import { bridgeApi } from '../api/bridge'
 import CleanupPage from '../pages/CleanupPage'
+import BridgeWarningBanner from '../components/BridgeWarningBanner'
 
 const counts = { ghost: 2, one_way_silent: 1, mutual_silent: 0, silent_follower: 0, one_way_engaged: 0, occasional: 0, loyal: 1 }
 const row = (username: string, group: string) => ({
@@ -26,7 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   ;(sessionsApi.list as any).mockResolvedValue([makeSession()])
   ;(bridgeApi.status as any).mockResolvedValue({
-    posts: 50, likers_done: 12, comments_done: 12, waiting_young: 1, today: 4, daily_cap: 12, last_seen: new Date().toISOString(),
+    posts: 50, likers_done: 12, comments_done: 12, refresh_pending: 1, today: 4, daily_cap: 12, last_seen: new Date().toISOString(),
     connected: true, stopped: false, wrong_account: null, paused_until: null, paused_reason: null, next_at: null,
   })
 })
@@ -55,5 +56,26 @@ describe('CleanupPage', () => {
     ;(insightsApi.cleanup as any).mockResolvedValue(res({ scanned_posts: 4, enough_data: false }))
     renderApp(<CleanupPage />)
     await waitFor(() => expect(screen.getByText(/en az 10 gönderi bekle/)).toBeInTheDocument())
+  })
+})
+
+describe('BridgeWarningBanner', () => {
+  it('shows a red alert on every page while Instagram has paused collection', async () => {
+    ;(bridgeApi.status as any).mockResolvedValue({
+      posts: 50, likers_done: 12, comments_done: 12, refresh_pending: 0, today: 4, daily_cap: 12, last_seen: null,
+      connected: false, stopped: false, wrong_account: null, paused_until: '2026-11-02T10:00:00Z',
+      paused_reason: 'Köprü: Instagram uyarı verdi (feedback_required)', next_at: null,
+    })
+    renderApp(<BridgeWarningBanner />)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Instagram @me için uyarı verdi')
+    expect(alert).toHaveTextContent('feedback_required')
+    expect(screen.getByRole('link', { name: 'Ne yapmalıyım?' })).toHaveAttribute('href', '/guide#uyari')
+  })
+
+  it('stays hidden when nothing is paused', async () => {
+    renderApp(<BridgeWarningBanner />)
+    await waitFor(() => expect(bridgeApi.status).toHaveBeenCalled())
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

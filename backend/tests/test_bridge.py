@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.ig_user import IgUser
 from app.models.interaction import Interaction
@@ -105,6 +105,12 @@ async def test_full_cycle_feed_likers_comments_and_heals_zip_names(db, make_sess
     assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "pacing"
     kv.unpace(s.id)
 
+    # En yeni (1 günlük) gönderi beklemeden hemen okunur
+    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
+    assert job["kind"] == "likers" and job["post_id"] == 77
+    await _report(db, kv, s, job, 200, '{"users":[{"pk":557,"username":"veli"}]}')
+    kv.unpace(s.id)
+
     job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
     assert job == {"action": "fetch", "kind": "likers", "path": f"/api/v1/media/{BIG_PK}/likers/", "post_id": BIG_PK}
     likers = '{"users":[{"pk":555,"username":"ayse","full_name":"Ayşe"},{"pk":1001,"username":"me"}],"status":"ok"}'
@@ -119,20 +125,31 @@ async def test_full_cycle_feed_likers_comments_and_heals_zip_names(db, make_sess
     await _report(db, kv, s, job, 200, comments)
     kv.unpace(s.id)
 
-    # Kalan tek gönderi 1 günlük: beğeniler otursun diye beklenir, istek atılmaz
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "waiting_young"
+    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "up_to_date"
 
     post = await db.get(Post, BIG_PK)
     await db.refresh(post)
     assert post.likers_synced_at and post.comments_synced_at and post.shortcode == "OLD1"
     kinds = {(i.ig_user_id, i.interaction_type) for i in (await db.execute(select(Interaction))).scalars()}
-    assert kinds == {(555, "like"), (556, "comment")}
+    assert kinds == {(555, "like"), (556, "comment"), (557, "like")}
     assert await db.get(IgUser, ph) is None                            # yer tutucu gerçek ID'ye bağlandı
     rel = await db.get(Relationship, (s.id, 555))
     assert rel and rel.they_follow
 
     st = await bridge.status(db, kv, s, now=NOW)
-    assert st["posts"] == 2 and st["likers_done"] == 1 and st["waiting_young"] == 1 and st["connected"]
+    assert st["posts"] == 2 and st["likers_done"] == 2 and st["refresh_pending"] == 1 and st["connected"]
+
+    # 3 günü dolunca geç gelen beğeniler için bir kez daha okunur, sonra bir daha istenmez
+    later = NOW + timedelta(days=3)
+    await db.execute(update(Post).values(last_synced_at=later))      # gönderi listesi taze
+    await db.commit()
+    job = await bridge.plan_next(db, kv, s, 1001, now=later)
+    assert job["kind"] == "likers" and job["post_id"] == 77
+    await bridge.handle_report(db, kv, s, job["path"], 200, '{"users":[{"pk":558,"username":"geç"}]}',
+                               now=later, rng=random.Random(1))
+    kv.unpace(s.id)
+    assert (await bridge.plan_next(db, kv, s, 1001, now=later))["reason"] == "up_to_date"
+    assert (await bridge.status(db, kv, s, now=later))["refresh_pending"] == 0
 
 
 @pytest.mark.asyncio

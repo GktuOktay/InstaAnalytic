@@ -32,7 +32,6 @@ uygulamanın koyduğu bekleme süreleri yine geçerlidir.
 Eklenti bilerek yavaştır ve yalnızca şu durumda çalışır:
 
 - izin anahtarı açıkken,
-- saat 01:00 ile 08:00 arası dışında,
 - son 5 dakika içinde bilgisayarı kullanmışsanız,
 - Instagram bir sekmede açıkken.
 

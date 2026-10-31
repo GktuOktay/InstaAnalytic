@@ -46,7 +46,7 @@ export default function BridgeStatusCard({ sessionId, onChange }: { sessionId: s
   if (!st) return <div className="h-20 rounded-xl bg-gray-900 border border-gray-800 animate-pulse mb-4" aria-hidden />
 
   const when = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
-  const dot = st.paused_until || st.wrong_account ? 'bg-amber-400' : st.connected && !st.stopped ? 'bg-green-400' : 'bg-gray-600'
+  const dot = st.paused_until ? 'bg-red-500' : st.wrong_account ? 'bg-amber-400' : st.connected && !st.stopped ? 'bg-green-400' : 'bg-gray-600'
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
@@ -63,7 +63,10 @@ export default function BridgeStatusCard({ sessionId, onChange }: { sessionId: s
           <p className="text-xs text-gray-500 mt-0.5">{L.desc}</p>
 
           {st.paused_until && (
-            <p className="text-xs text-amber-300 mt-2">{fill(L.paused, { at: when(st.paused_until) })} {st.paused_reason}</p>
+            <div role="alert" className="text-xs text-red-100 bg-red-950/60 border border-red-700 rounded-lg px-3 py-2 mt-2">
+              <p className="font-semibold">{fill(L.paused, { at: when(st.paused_until) })}</p>
+              {st.paused_reason && <p className="text-red-200/80">{st.paused_reason}</p>}
+            </div>
           )}
           {st.wrong_account && <p className="text-xs text-amber-300 mt-2">{fill(L.wrongAccount, { name: st.wrong_account })}</p>}
           {st.stopped && <p className="text-xs text-gray-400 mt-2">{L.stopped}</p>}
@@ -77,7 +80,6 @@ export default function BridgeStatusCard({ sessionId, onChange }: { sessionId: s
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mt-2">
                 <span>{fill(L.progress, { done: st.likers_done, total: st.posts })}</span>
                 <span>{fill(L.today, { n: st.today, cap: st.daily_cap })}</span>
-                {st.waiting_young > 0 && <span>{fill(L.young, { n: st.waiting_young })}</span>}
                 {st.next_at && <span>{L.nextAt}: {when(st.next_at)}</span>}
               </div>
             </>

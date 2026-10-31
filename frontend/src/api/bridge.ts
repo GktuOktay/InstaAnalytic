@@ -4,7 +4,7 @@ export interface BridgeStatus {
   posts: number
   likers_done: number
   comments_done: number
-  waiting_young: number
+  refresh_pending: number
   today: number
   daily_cap: number
   last_seen: string | null
