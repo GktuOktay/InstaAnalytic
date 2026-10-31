@@ -8,9 +8,11 @@ import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
-import { RefreshCw, Lock, BadgeCheck, Users, UserMinus, UserPlus, CheckSquare, Square } from 'lucide-react'
+import { ghostsApi } from '../api/ghosts'
+import GhostPanel from '../components/GhostPanel'
+import { RefreshCw, Lock, BadgeCheck, Users, UserMinus, UserPlus, CheckSquare, Square, Ghost } from 'lucide-react'
 
-type Tab = 'not_following_back' | 'not_followed_back' | 'mutual' | 'followers' | 'following'
+type Tab = 'not_following_back' | 'ghosts' | 'not_followed_back' | 'mutual' | 'followers' | 'following'
 
 export default function FollowersPage() {
   const { T } = useLang()
@@ -18,6 +20,7 @@ export default function FollowersPage() {
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'not_following_back', label: T.followers.notFollowingBackPlural },
+    { key: 'ghosts',             label: T.ghosts.tab                      },
     { key: 'not_followed_back',  label: T.followers.notFollowedBack        },
     { key: 'mutual',             label: T.followers.mutual                 },
     { key: 'followers',          label: T.followers.allFollowers           },
@@ -45,12 +48,23 @@ export default function FollowersPage() {
   const fetchTab = useCallback((): Promise<RelationshipUser[]> => {
     switch (tab) {
       case 'not_following_back': return analysisApi.notFollowingBack(activeSession)
+      case 'ghosts':             return ghostsApi.list(activeSession)
       case 'not_followed_back':  return analysisApi.notFollowedBack(activeSession)
       case 'mutual':             return analysisApi.mutual(activeSession)
       case 'followers':          return analysisApi.followers(activeSession)
       case 'following':          return analysisApi.following(activeSession)
     }
   }, [tab, activeSession])
+
+  const handleMark = async (userId: number, ghost: boolean | null) => {
+    try {
+      await ghostsApi.mark(activeSession, userId, ghost)
+      toast.success(ghost === null ? T.ghosts.unmarked : T.ghosts.marked)
+      loadData()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? T.common.error)
+    }
+  }
 
   // ── loadData — fetchTab'dan sonra ─────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -258,13 +272,14 @@ export default function FollowersPage() {
 
       {/* Özet kartlar */}
       {summary && (
-        <div className="grid grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {[
             { label: T.followers.followers,           value: summary.total_followers  },
             { label: T.followers.followingTab,        value: summary.total_following  },
             { label: T.followers.mutual,              value: summary.mutual           },
             { label: T.followers.notFollowingBack,    value: summary.not_following_back, warn: true },
             { label: T.followers.notFollowedBackSingle, value: summary.not_followed_back },
+            ...(summary.ghosts > 0 ? [{ label: T.ghosts.summary, value: summary.ghosts }] : []),
           ].map(c => (
             <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
               <p className={`text-2xl font-bold ${c.warn ? 'text-amber-400' : ''}`}>{c.value}</p>
@@ -283,10 +298,12 @@ export default function FollowersPage() {
                 ? 'border-purple-500 text-white'
                 : 'border-transparent text-gray-500 hover:text-gray-300'
             }`}>
-            {t.label}
+            {t.label}{t.key === 'ghosts' && summary && summary.ghosts > 0 ? ` (${summary.ghosts})` : ''}
           </button>
         ))}
       </div>
+
+      {tab === 'ghosts' && <GhostPanel sessionId={activeSession} onChanged={loadData} />}
 
       {/* Arama + toplu aksiyon */}
       <div className="flex items-center gap-3 mb-4">
@@ -304,8 +321,8 @@ export default function FollowersPage() {
       {/* Liste */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-600 border border-dashed border-gray-800 rounded-xl">
-          <p className="text-sm">{T.followers.noData}</p>
-          <p className="text-xs mt-1">Önce Sync butonuna bas.</p>
+          <p className="text-sm">{tab === 'ghosts' ? T.ghosts.empty : T.followers.noData}</p>
+          {tab !== 'ghosts' && <p className="text-xs mt-1">{T.followers.noDataHint}</p>}
         </div>
       ) : (
         <>
@@ -352,7 +369,19 @@ export default function FollowersPage() {
                       <Users size={11} />{u.follower_count?.toLocaleString() ?? '-'}
                     </span>
                     <div className="flex gap-1 items-center" onClick={e => e.stopPropagation()}>
-                      {isQueued
+                      {tab === 'ghosts'
+                        ? <button onClick={() => handleMark(u.id, null)}
+                            className="px-2 py-1 rounded-lg text-xs bg-gray-800 hover:bg-gray-700" title={T.ghosts.unmark}>
+                            {T.ghosts.unmark}
+                          </button>
+                        : <>
+                          {tab === 'not_following_back' && (
+                            <button onClick={() => handleMark(u.id, true)} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400"
+                              title={T.ghosts.markGhost} aria-label={T.ghosts.markGhost}>
+                              <Ghost size={13} />
+                            </button>
+                          )}
+                          {isQueued
                         ? <span className="text-xs text-amber-400 px-2 py-1 bg-amber-900/30 rounded-lg flex items-center gap-1">
                             <RefreshCw size={10} className="animate-spin" /> Kuyrukta
                           </span>
@@ -367,6 +396,8 @@ export default function FollowersPage() {
                                 className="p-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-red-400" title={T.followers.unfollow}>
                                 <UserMinus size={13} />
                               </button>
+                          }
+                        </>
                       }
                     </div>
                   </div>

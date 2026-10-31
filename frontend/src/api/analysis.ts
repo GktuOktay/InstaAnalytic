@@ -12,6 +12,7 @@ export interface RelationshipUser {
   we_follow: boolean
   they_follow: boolean
   last_checked_at: string | null
+  reach_status?: 'ok' | 'unreachable' | 'unknown' | null
 }
 
 export interface AnalysisSummary {
@@ -20,6 +21,7 @@ export interface AnalysisSummary {
   mutual: number
   not_following_back: number
   not_followed_back: number
+  ghosts: number
 }
 
 export interface SyncResponse {

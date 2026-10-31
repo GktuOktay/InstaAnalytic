@@ -19,4 +19,8 @@ class IgUser(Base):
     bio: Mapped[str | None] = mapped_column(Text)
     external_url: Mapped[str | None] = mapped_column(Text)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Hayalet hesap tespiti: None=bakılmadı | ok | unreachable (silinmiş/dondurulmuş) | unknown (emin olunamadı)
+    reach_status: Mapped[str | None] = mapped_column(String(16), index=True)
+    reach_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reach_source: Mapped[str | None] = mapped_column(String(8))     # auto | manual (elle işaretleme otomatik kontrolü ezmez)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

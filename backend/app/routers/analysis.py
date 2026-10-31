@@ -97,11 +97,13 @@ async def analysis_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get
         )
     )).scalar_one()
 
-    not_following_back = (await db.execute(
-        select(func.count()).select_from(Relationship).where(
-            and_(Relationship.session_id == session_id, Relationship.we_follow == True, Relationship.they_follow == False)
-        )
-    )).scalar_one()
+    ghost = IgUser.reach_status == "unreachable"
+    nfb_base = (
+        select(func.count()).select_from(Relationship).join(IgUser, IgUser.id == Relationship.ig_user_id)
+        .where(and_(Relationship.session_id == session_id, Relationship.we_follow == True, Relationship.they_follow == False))
+    )
+    not_following_back = (await db.execute(nfb_base.where(sa.or_(IgUser.reach_status.is_(None), ~ghost)))).scalar_one()
+    ghosts = (await db.execute(nfb_base.where(ghost))).scalar_one()
 
     not_followed_back = (await db.execute(
         select(func.count()).select_from(Relationship).where(
@@ -115,11 +117,14 @@ async def analysis_summary(session_id: uuid.UUID, db: AsyncSession = Depends(get
         mutual=mutual,
         not_following_back=not_following_back,
         not_followed_back=not_followed_back,
+        ghosts=ghosts,
     )
 
 
-def _rel_user_query(session_id, we_follow: bool | None, they_follow: bool | None):
+def _rel_user_query(session_id, we_follow: bool | None, they_follow: bool | None, hide_ghosts: bool = False):
     conditions = [Relationship.session_id == session_id]
+    if hide_ghosts:
+        conditions.append(sa.or_(IgUser.reach_status.is_(None), IgUser.reach_status != "unreachable"))
     if we_follow is not None:
         conditions.append(Relationship.we_follow == we_follow)
     if they_follow is not None:
@@ -131,8 +136,8 @@ def _rel_user_query(session_id, we_follow: bool | None, they_follow: bool | None
     )
 
 
-async def _paginated_rel(db, session_id, we_follow, they_follow, page, limit):
-    q = _rel_user_query(session_id, we_follow, they_follow)
+async def _paginated_rel(db, session_id, we_follow, they_follow, page, limit, hide_ghosts: bool = False):
+    q = _rel_user_query(session_id, we_follow, they_follow, hide_ghosts)
     q = q.offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(q)).all()
     result = []
@@ -143,7 +148,7 @@ async def _paginated_rel(db, session_id, we_follow, they_follow, page, limit):
             is_verified=ig_user.is_verified, follower_count=ig_user.follower_count,
             following_count=ig_user.following_count,
             we_follow=rel.we_follow, they_follow=rel.they_follow,
-            last_checked_at=rel.last_checked_at,
+            last_checked_at=rel.last_checked_at, reach_status=ig_user.reach_status,
         ))
     return result
 
@@ -151,7 +156,7 @@ async def _paginated_rel(db, session_id, we_follow, they_follow, page, limit):
 @router.get("/analysis/not-following-back", response_model=list[RelationshipUser])
 async def not_following_back(session_id: uuid.UUID, page: int = 1, limit: int = 50, db: AsyncSession = Depends(get_db)):
     await _get_session(session_id, db)
-    return await _paginated_rel(db, session_id, we_follow=True, they_follow=False, page=page, limit=limit)
+    return await _paginated_rel(db, session_id, we_follow=True, they_follow=False, page=page, limit=limit, hide_ghosts=True)
 
 
 @router.get("/analysis/not-followed-back", response_model=list[RelationshipUser])

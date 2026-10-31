@@ -16,6 +16,9 @@ vi.mock('../api/imports', () => ({
     uploadFiles: vi.fn(), resetProgress: vi.fn(),
   },
 }))
+vi.mock('../api/ghosts', () => ({
+  ghostsApi: { status: vi.fn(), start: vi.fn(), stop: vi.fn(), list: vi.fn(), mark: vi.fn() },
+}))
 vi.mock('../api/risk', () => ({ riskApi: { get: vi.fn(), set: vi.fn() } }))
 vi.mock('../api/insights', () => ({
   insightsApi: { fans: vi.fn() },
@@ -28,6 +31,8 @@ import { insightsApi } from '../api/insights'
 import { analysisApi } from '../api/analysis'
 import { importApi } from '../api/imports'
 import { riskApi } from '../api/risk'
+import { ghostsApi } from '../api/ghosts'
+import GhostPanel from '../components/GhostPanel'
 import SessionPage from '../pages/SettingsPage'
 import FansPage from '../pages/FansPage'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -372,6 +377,55 @@ describe('errors arrive as toasts', () => {
     await user.click(del)
     await waitFor(() => expect(api.purge).toHaveBeenCalledTimes(2))
     expect(screen.getAllByText('Aynı hata')).toHaveLength(1)
+  })
+})
+
+describe('GhostPanel', () => {
+  const status = (over: Record<string, any> = {}) => ({
+    job: { state: 'idle', total: 0, done: 0, ok: 0, unreachable: 0, unknown: 0, message: '', resume_at: null, started_at: null, updated_at: null, ...(over.job ?? {}) },
+    pace: { interval_s: 30, per_hour: 120, strikes: 0, cooldown_until: null, day_count: 0, day_cap: 2000, ...(over.pace ?? {}) },
+    counts: { candidates: 857, unchecked: 857, ok: 0, unreachable: 0, unknown: 0, ...(over.counts ?? {}) },
+  })
+
+  it('needs explicit consent before it starts, and says the account is not used', async () => {
+    const user = userEvent.setup()
+    ;(ghostsApi.status as any).mockResolvedValue(status())
+    ;(ghostsApi.start as any).mockResolvedValue({ status: 'queued', total: 857 })
+    renderApp(<GhostPanel sessionId="s1" onChanged={() => {}} />)
+    expect(await screen.findByText(/Hesabına dokunmuyoruz/)).toBeInTheDocument()
+    const go = screen.getByRole('button', { name: '857 hesabı kontrol et' })
+    expect(go).toBeDisabled()
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(go)
+    await waitFor(() => expect(ghostsApi.start).toHaveBeenCalledWith('s1'))
+  })
+
+  it('shows live progress, speed and a stop button while running', async () => {
+    const user = userEvent.setup()
+    ;(ghostsApi.status as any).mockResolvedValue(status({ job: { state: 'running', total: 200, done: 50, unreachable: 6, ok: 44 }, pace: { per_hour: 240 } }))
+    ;(ghostsApi.stop as any).mockResolvedValue({})
+    renderApp(<GhostPanel sessionId="s1" onChanged={() => {}} />)
+    expect(await screen.findByText('50 / 200 hesap kontrol edildi')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
+    expect(screen.getByText(/Saatte yaklaşık 240 kontrol/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Durdur/ }))
+    await waitFor(() => expect(ghostsApi.stop).toHaveBeenCalledWith('s1'))
+  })
+
+  it('explains a cooldown instead of looking stuck', async () => {
+    ;(ghostsApi.status as any).mockResolvedValue(status({ job: { state: 'cooldown', total: 200, done: 50, resume_at: Date.now() / 1000 + 900 } }))
+    renderApp(<GhostPanel sessionId="s1" onChanged={() => {}} />)
+    expect(await screen.findByText(/Instagram yavaşlamamızı istedi/)).toBeInTheDocument()
+  })
+
+  it('surfaces a server refusal as a toast', async () => {
+    const user = userEvent.setup()
+    ;(ghostsApi.status as any).mockResolvedValue(status())
+    ;(ghostsApi.start as any).mockRejectedValue({ response: { data: { detail: 'Kontrol zaten sürüyor' } } })
+    renderApp(<GhostPanel sessionId="s1" onChanged={() => {}} />)
+    await user.click(await screen.findByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: '857 hesabı kontrol et' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Kontrol zaten sürüyor')
   })
 })
 

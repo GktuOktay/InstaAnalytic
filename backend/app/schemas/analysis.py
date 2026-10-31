@@ -20,6 +20,7 @@ class RelationshipUser(IgUserBase):
     we_follow: bool
     they_follow: bool
     last_checked_at: datetime | None
+    reach_status: str | None = None     # None | ok | unreachable (hayalet) | unknown
 
 
 class AnalysisSummary(BaseModel):
@@ -28,6 +29,7 @@ class AnalysisSummary(BaseModel):
     mutual: int
     not_following_back: int   # biz takip, o etmiyor
     not_followed_back: int    # o takip, biz etmiyoruz
+    ghosts: int = 0           # geri takip etmiyor görünen ama silinmiş/dondurulmuş hesaplar (not_following_back'e dahil değil)
 
 
 class SyncResponse(BaseModel):

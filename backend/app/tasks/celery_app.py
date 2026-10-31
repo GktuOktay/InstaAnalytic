@@ -5,7 +5,7 @@ celery_app = Celery(
     "instaanalytic",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.sync_tasks", "app.tasks.action_tasks"],
+    include=["app.tasks.sync_tasks", "app.tasks.action_tasks", "app.tasks.ghost_tasks"],
 )
 
 celery_app.conf.update(
