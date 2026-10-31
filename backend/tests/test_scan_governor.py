@@ -55,13 +55,24 @@ def test_daily_budget():
     assert "Günlük" in e.value.reason
 
 
-def test_pacing_and_long_break():
-    g, c, _ = make(GovernorConfig(pages_per_hour=50, pages_per_day=50, long_break_every=2))
-    for _ in range(3):
+def test_pacing_never_below_minimum_and_breaks_are_irregular():
+    g, c, _ = make(GovernorConfig(pages_per_hour=500, pages_per_day=500, long_break_every=4))
+    for _ in range(80):
         g.before_request()
-    assert c.slept[0] != 0 and 4 <= c.slept[0] <= 9      # 2. istek öncesi normal bekleme
-    assert any(60 <= s <= 120 for s in c.slept)            # 2. istekten sonra uzun mola
-    assert len(c.slept) == 3                               # ilk istek beklemez
+    normal = [x for x in c.slept if x < 40]
+    breaks = [x for x in c.slept if x >= 40]
+    assert normal and all(x >= 4.0 for x in normal)                  # güvenlik alt sınırı asla delinmez
+    assert max(normal) <= 9 * 1.6 + 1e-9
+    assert len(set(round(x, 2) for x in normal)) > 40                # sabit değil, her seferinde farklı
+    assert breaks and all(60 <= x <= 120 * 1.6 + 1e-9 for x in breaks)
+    # molaların aralığı sabit değil: iki mola arasındaki istek sayısı değişiyor
+    gaps, run = [], 0
+    for x in c.slept:
+        run += 1
+        if x >= 40:
+            gaps.append(run); run = 0
+    assert len(set(gaps)) > 1
+    assert len(c.slept) == 79 + len(breaks)                          # ilk istek beklemez
 
 
 def test_failure_escalates_cooldown_and_blocks_without_auto_resume():

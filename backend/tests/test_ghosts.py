@@ -50,20 +50,22 @@ def test_classify_does_not_guess():
 
 def test_pacer_speeds_up_when_clean_but_never_below_floor():
     p = Pacer(FakeRedis(), now=lambda: 1_000_000.0)
-    assert p.snapshot()["per_hour"] == 120
+    start = p.snapshot()
+    assert 100 <= start["per_hour"] <= 130 and start["interval_s"] == Pacer.START_S     # 20/saat değil
     for _ in range(15):
         assert p.record(OK) == "continue"
-    assert p.snapshot()["interval_s"] == pytest.approx(25.5)
+    assert p.snapshot()["interval_s"] == pytest.approx(Pacer.START_S * 0.85, abs=0.1)
     for _ in range(15 * 20):
         p.record(UNREACHABLE)
-    assert p.snapshot()["interval_s"] == Pacer.FLOOR_S              # ~360/saat üstüne çıkmaz
+    assert p.snapshot()["interval_s"] == Pacer.FLOOR_S              # ~250/saat üstüne çıkmaz
+    assert p.snapshot()["per_hour"] <= 270
 
 
 def test_pacer_backs_off_on_block_and_cooldown_grows():
     t = {"now": 1_000_000.0}
     p = Pacer(FakeRedis(), now=lambda: t["now"])
     assert p.record(BLOCKED) == "cooldown"
-    assert p.snapshot()["interval_s"] == 60.0                        # bekleme iki katına çıktı
+    assert p.snapshot()["interval_s"] == Pacer.START_S * 2           # bekleme iki katına çıktı
     reason, until = p.wait_reason()
     assert reason == "cooldown" and until == t["now"] + 15 * 60
     t["now"] = until + 1
@@ -205,3 +207,49 @@ async def test_manual_mark_overrides_and_can_be_cleared(client, db, make_session
     assert u.reach_source == "manual"
     assert (await client.put(url, json={"ghost": None})).json()["reach_status"] is None
     assert (await client.put(f"/api/sessions/{s.id}/ghosts/9999", json={"ghost": True})).status_code == 404
+
+
+# ── ritim: sabit değil ───────────────────────────────────────────────────────
+
+def test_ghost_delays_are_irregular_with_reading_pauses_and_random_breaks():
+    import random
+    p = Pacer(FakeRedis(), now=lambda: 1_000_000.0, rng=random.Random(7))
+    mean = p.snapshot()["interval_s"]
+    ds = [p.delay() for _ in range(400)]
+    assert len(set(round(d, 3) for d in ds)) > 380                       # neredeyse hepsi farklı
+    assert min(ds) >= mean * 0.35                                        # kırpma alt sınırı
+    assert sum(d > mean * 2.2 for d in ds) >= 15                         # bakınma molaları
+    long = [i for i, d in enumerate(ds) if d >= 120]                     # uzun molalar
+    assert len(long) >= 4
+    assert len({b - a for a, b in zip(long, long[1:])}) > 1              # aralıkları sabit değil
+    typical = sorted(ds)[len(ds) // 2]
+    assert 0.5 * mean < typical < 1.3 * mean                             # medyan ortalama civarında
+
+
+# ── human_timing ─────────────────────────────────────────────────────────────
+
+def test_between_never_goes_below_the_floor_and_has_a_spread():
+    import random, statistics
+    from app.services import human_timing as ht
+    rng = random.Random(3)
+    xs = [ht.between(rng, 60, 120) for _ in range(5000)]
+    assert min(xs) >= 60 and max(xs) <= 120 * 1.6
+    assert statistics.pstdev(xs) / statistics.mean(xs) > 0.15            # düz değil, dağılımlı
+    assert sum(x > 120 for x in xs) > 0                                   # bazen üst sınırı da aşar (yalnızca yukarı doğru)
+    assert ht.between(rng, 90, 90) == 90
+
+
+def test_around_keeps_the_average_close_to_the_target():
+    import random, statistics
+    from app.services import human_timing as ht
+    rng = random.Random(5)
+    xs = [ht.around(rng, 20.0) for _ in range(20000)]
+    assert statistics.mean(xs) == pytest.approx(20.0, rel=0.08)
+
+
+def test_random_cadence_is_not_a_fixed_period():
+    import random
+    from app.services import human_timing as ht
+    rng = random.Random(9)
+    vals = {ht.random_cadence(rng, 10) for _ in range(200)}
+    assert vals <= set(range(6, 16)) and len(vals) > 5

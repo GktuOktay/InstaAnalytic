@@ -127,7 +127,7 @@ const en: Translations = {
     title:        'Ghost account check',
     intro:        'Deleted, disabled or deactivated accounts show up in "doesn\'t follow you back" even though nobody actually left you. We can tell them apart.',
     how:          'Your account is never touched. We open the profile pages one by one in a clean browser (like an incognito tab, no cookies, no login). Instagram only sees your computer\'s IP address.',
-    speed:        'The speed adjusts itself: it starts at about {n} accounts an hour, speeds up if all goes well, and waits if Instagram asks us to slow down.',
+    speed:        'The time between checks is different every time, with short and long breaks in between. The speed adjusts itself: it starts at about {n} accounts an hour, speeds up if all goes well, and waits if Instagram asks us to slow down.',
     ack:          'I understand this check requests Instagram pages without logging in.',
     startN:       'Check {n} accounts',
     stop:         'Stop',

@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
+from app.services import human_timing as ht
+
 OK, UNREACHABLE, UNKNOWN, BLOCKED = "ok", "unreachable", "unknown", "blocked"
 
 _PROFILE_TITLE = re.compile(r"\(@[A-Za-z0-9._]{1,30}\)")
@@ -46,11 +48,13 @@ def classify(title: str, path: str) -> str:
 
 class Pacer:
     """
-    İstekler arası bekleme süresi. Başlangıç ~120 istek/saat; her 15 temiz sonuçta %15 hızlanır (en fazla ~360/saat).
+    İstekler arası ortalama bekleme. Gerçek bekleme sabit değildir (bkz. human_timing): log-normal dağılır, birkaç istekte
+    bir kısa "bakınma" molası ve daha seyrek uzun molalar rastgele aralıkla araya girer.
+    Başlangıç ~115 istek/saat (molalar dahil); her 15 temiz sonuçta %15 hızlanır (en fazla ~250/saat).
     Takılma sinyali (BLOCKED ya da 3 ardışık UNKNOWN): bekleme iki katına çıkar, 15 dk x 2^n kadar (en çok 6 saat) durur.
     Üst üste MAX_STRIKES kez takılırsa iş durdurulur ve kullanıcıya bildirilir.
     """
-    START_S, FLOOR_S, CEIL_S = 30.0, 10.0, 180.0
+    START_S, FLOOR_S, CEIL_S = 22.0, 8.0, 150.0
     SPEEDUP_EVERY, SPEEDUP_FACTOR = 15, 0.85
     UNKNOWN_RUN_LIMIT = 3
     COOLDOWN_BASE_S, COOLDOWN_MAX_S = 15 * 60, 6 * 3600
@@ -59,8 +63,9 @@ class Pacer:
     DAILY_CAP = 2000
     KEY = "ghost:pace"
 
-    def __init__(self, r, now: Callable[[], float] = time.time):
+    def __init__(self, r, now: Callable[[], float] = time.time, rng: random.Random | None = None):
         self.r, self.now = r, now
+        self.rng = rng or random.Random()
 
     def _get(self) -> dict:
         h = {k.decode() if isinstance(k, bytes) else k: (v.decode() if isinstance(v, bytes) else v)
@@ -74,6 +79,8 @@ class Pacer:
             "clean_since_strike": int(h.get("clean_since_strike", 0)),
             "cooldown_until": float(h.get("cooldown_until", 0)),
             "day": day, "day_count": int(h.get("day_count", 0)),
+            "until_read": int(h.get("until_read", self.rng.randint(*ht.READ_EVERY))),
+            "until_break": int(h.get("until_break", self.rng.randint(*ht.BREAK_EVERY))),
         }
 
     def _put(self, s: dict) -> None:
@@ -82,7 +89,7 @@ class Pacer:
 
     def snapshot(self) -> dict:
         s = self._get()
-        return {"interval_s": round(s["interval"], 1), "per_hour": int(3600 / s["interval"]),
+        return {"interval_s": round(s["interval"], 1), "per_hour": ht.effective_per_hour(s["interval"]),
                 "strikes": s["strikes"], "cooldown_until": s["cooldown_until"] or None,
                 "day_count": s["day_count"], "day_cap": self.DAILY_CAP}
 
@@ -97,7 +104,20 @@ class Pacer:
         return None
 
     def delay(self) -> float:
-        return self._get()["interval"] * random.uniform(0.6, 1.4)
+        """Sonraki yoklamadan önceki bekleme (saniye). Her çağrıda farklı; molaların sıklığı da rastgele."""
+        s = self._get()
+        mean = s["interval"]
+        d = ht.around(self.rng, mean)
+        s["until_read"] -= 1
+        if s["until_read"] <= 0:
+            d += mean * self.rng.uniform(*ht.READ_EXTRA)
+            s["until_read"] = self.rng.randint(*ht.READ_EVERY)
+        s["until_break"] -= 1
+        if s["until_break"] <= 0:
+            d += self.rng.uniform(*ht.BREAK_S)
+            s["until_break"] = self.rng.randint(*ht.BREAK_EVERY)
+        self._put(s)
+        return d
 
     def record(self, outcome: str) -> str:
         """'continue' | 'cooldown' | 'stop'"""
@@ -145,9 +165,13 @@ class Prober(Protocol):
 
 class BrowserProber:
     """Temiz (çerezsiz) Chromium bağlamı; her ROTATE_EVERY yoklamada yenilenir. Görsel/medya/yazı tipi yüklenmez."""
-    ROTATE_EVERY = 40
-    UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
-          "Chrome/130.0.0.0 Safari/537.36")
+    ROTATE_RANGE = (25, 60)           # bağlam ömrü her seferinde rastgele
+    VIEWPORTS = [(1280, 800), (1366, 768), (1440, 900), (1536, 864), (1920, 1080)]
+    UAS = [
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    ]
 
     def __init__(self):
         from playwright.sync_api import sync_playwright
@@ -156,20 +180,23 @@ class BrowserProber:
             headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
         self._ctx = None
         self._n = 0
+        self._rotate_at = 0
         self._new_ctx()
 
     def _new_ctx(self) -> None:
         if self._ctx:
             self._ctx.close()
-        self._ctx = self._browser.new_context(user_agent=self.UA, locale="en-US", viewport={"width": 1280, "height": 800},
+        w, h = random.choice(self.VIEWPORTS)
+        self._ctx = self._browser.new_context(user_agent=random.choice(self.UAS), locale="en-US", viewport={"width": w, "height": h},
                                               bypass_csp=True)      # başlık beklemesi için; Instagram CSP'si string eval'i engelliyor
         self._ctx.route("**/*", lambda route: route.abort()
                         if route.request.resource_type in ("image", "media", "font") else route.continue_())
         self._n = 0
+        self._rotate_at = random.randint(*self.ROTATE_RANGE)
 
     def probe(self, username: str) -> tuple[str, str]:
         from playwright.sync_api import TimeoutError as PWTimeout
-        if self._n >= self.ROTATE_EVERY:
+        if self._n >= self._rotate_at:
             self._new_ctx()
         self._n += 1
         page = self._ctx.new_page()

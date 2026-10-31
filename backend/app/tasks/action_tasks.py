@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from app.tasks.celery_app import celery_app
 from app.core.security import decrypt
 
+from app.services import human_timing
+
 logger = logging.getLogger(__name__)
 
 # Kuyruk ve lock key şablonları
@@ -258,7 +260,7 @@ def process_action_queue(self, session_id: str):
                     logger.warning("ID çözülemedi, atlandı: %s", ph.username if ph else ig_user_id)
                     skipped += 1
                     _, _, dmin, dmax = effective_action_limits(prof, enabled_at, datetime.now(timezone.utc))
-                    time.sleep(random.uniform(dmin, dmax))
+                    time.sleep(human_timing.between(random, dmin, dmax))
                     continue
                 resolve_placeholder(db, ig_user_id, real_id)
                 db.commit()
@@ -336,7 +338,7 @@ def process_action_queue(self, session_id: str):
             remaining = r.llen(queue_key)
             if remaining > 0:
                 _, _, dmin, dmax = effective_action_limits(prof, enabled_at, datetime.now(timezone.utc))
-                delay = random.uniform(dmin, dmax)
+                delay = human_timing.between(random, dmin, dmax)
                 logger.info("Sonraki işlem için %.0f sn bekleniyor (%d kalan)...", delay, remaining)
                 r.expire(lock_key, 600)
                 time.sleep(delay)

@@ -26,6 +26,8 @@ class ScanPaused(Exception):
         self.resume_at = resume_at
         self.auto_resume = auto_resume
 
+from app.services import human_timing as ht
+
 
 @dataclass
 class GovernorConfig:
@@ -50,6 +52,7 @@ class ScanGovernor:
         self.r, self.sid, self.cfg = r, str(session_id), cfg
         self.now, self.sleep, self.rng = now, sleep, rng or random.Random()
         self._run_requests = 0
+        self._until_break = ht.random_cadence(self.rng, cfg.long_break_every)   # mola sıklığı da rastgele
         self._lock_token: str | None = None
 
     # ── anahtarlar ──────────────────────────────────────────────────────────
@@ -102,9 +105,11 @@ class ScanGovernor:
     def before_request(self) -> None:
         self.check()
         if self._run_requests:     # ilk istek bekletilmez
-            self.sleep(self.rng.uniform(self.cfg.delay_min, self.cfg.delay_max))
-            if self._run_requests % self.cfg.long_break_every == 0:
-                self.sleep(self.rng.uniform(self.cfg.long_break_min, self.cfg.long_break_max))
+            self.sleep(ht.between(self.rng, self.cfg.delay_min, self.cfg.delay_max))
+            self._until_break -= 1
+            if self._until_break <= 0:
+                self.sleep(ht.between(self.rng, self.cfg.long_break_min, self.cfg.long_break_max))
+                self._until_break = ht.random_cadence(self.rng, self.cfg.long_break_every)
         now = self.now()
         self.r.zadd(self._k("reqs"), {f"{now}:{uuid.uuid4().hex[:6]}": now})
         self.r.expire(self._k("reqs"), DAY + HOUR)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -16,7 +17,8 @@ from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-SLICE_MAX_PROBES = 120
+SLICE_PROBES = (60, 140)            # dilim boyutu her seferinde rastgele
+SLICE_GAP_S = (20, 90)              # dilimler arası boşluk
 SLICE_MAX_SECONDS = 25 * 60
 UNKNOWN_RETRY_AFTER = timedelta(days=1)
 RECHECK_AFTER = timedelta(days=14)
@@ -70,10 +72,21 @@ def _save(db, user_id: int, status: str) -> None:
         db.commit()
 
 
+def _interruptible_sleep(r, session_id, seconds: float) -> None:
+    """Uzun molalar sırasında da Durdur düğmesi birkaç saniyede etki etsin."""
+    end = time.monotonic() + seconds
+    while (left := end - time.monotonic()) > 0:
+        if gs.stop_requested(r, session_id):
+            return
+        time.sleep(min(2.0, left))
+
+
 def run_slice(db, r, session_id, *, prober_factory=BrowserProber, pacer: Pacer | None = None, recheck: bool = False,
-              sleep=time.sleep, max_probes: int = SLICE_MAX_PROBES, max_seconds: int = SLICE_MAX_SECONDS) -> SliceResult:
+              sleep=None, max_probes: int | None = None, max_seconds: int = SLICE_MAX_SECONDS) -> SliceResult:
     """Bir dilim yoklar. Takılırsa/bitince/durdurulunca nedenini döner. Tarayıcı yalnızca iş varken açılır."""
     pacer = pacer or Pacer(r)
+    max_probes = max_probes or random.randint(*SLICE_PROBES)
+    sleep = sleep or (lambda sec: _interruptible_sleep(r, session_id, sec))
     started = time.monotonic()
     probed = 0
     prober = None
@@ -153,7 +166,7 @@ def check_ghosts(self, session_id: str, recheck: bool = False):
             gs.write(r, sid, state="done", message="", resume_at="")
         else:                                                  # dilim doldu, iş sürüyor
             gs.write(r, sid, state="running", message="", resume_at="")
-            check_ghosts.apply_async(args=[session_id, recheck], countdown=3)
+            check_ghosts.apply_async(args=[session_id, recheck], countdown=random.randint(*SLICE_GAP_S))
         return {"status": res.stopped_reason or "slice_done", "probed": res.probed}
     except Exception:
         logger.exception("Hayalet kontrolü başarısız")

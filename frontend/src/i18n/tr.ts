@@ -125,7 +125,7 @@ const tr = {
     title:        'Hayalet hesap avı',
     intro:        'Silinmiş, dondurulmuş ya da kapatılmış hesaplar "seni takip etmiyor" listesinde görünür ama aslında kimse seni bırakmış değil. Bunları ayırabiliriz.',
     how:          'Hesabına dokunmuyoruz. Temiz bir tarayıcıyla (gizli sekme gibi, çerezsiz ve girişsiz) profil sayfalarına tek tek bakıyoruz. Instagram yalnızca bilgisayarının IP adresini görür.',
-    speed:        'Hız kendini ayarlar: saatte yaklaşık {n} hesapla başlar, sorun çıkmazsa hızlanır, Instagram yavaşlamamızı isterse bekler.',
+    speed:        'Kontroller arasındaki süre her seferinde farklıdır, arada kısa ve uzun molalar verilir. Hız kendini ayarlar: saatte yaklaşık {n} hesapla başlar, sorun çıkmazsa hızlanır, Instagram yavaşlamamızı isterse bekler.',
     ack:          'Anladım, bu kontrol giriş yapmadan Instagram sayfalarına istek atar.',
     startN:       '{n} hesabı kontrol et',
     stop:         'Durdur',
