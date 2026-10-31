@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import ImportScanPanel from '../components/ImportScanPanel'
 import RiskProfilePicker from '../components/RiskProfilePicker'
 import DataStatusCard from '../components/DataStatusCard'
+import BridgeStatusCard from '../components/BridgeStatusCard'
 import { sessionsApi, Session, BrowserCandidate } from '../api/sessions'
 import { downloadCsv } from '../api/insights'
 import { validateUsername } from '../lib/validation'
@@ -94,6 +95,7 @@ export default function SettingsPage() {
         <>
           <Section title={ST.sectionData} desc={ST.sectionDataDesc}>
             <DataStatusCard sessionId={sel.id} refreshKey={tick} />
+            <BridgeStatusCard sessionId={sel.id} />
             <ImportScanPanel sessionId={sel.id} show="zip" onImported={() => setTick(t => t + 1)} />
           </Section>
 

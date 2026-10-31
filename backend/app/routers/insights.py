@@ -124,3 +124,134 @@ async def fans_csv(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         [[f.username, "evet" if f.follows_me else "hayır", f.likes, f.comments, f.engagement_rate, f.score, f.tier, f.trend]
          for f in res.fans],
     )
+
+
+# ── Gözden çıkarma: kim hiç etkileşime girmiyor ─────────────────────────────────
+
+CLEANUP_MIN_POSTS = 10
+LOYAL_RATE = 30.0           # incelenen gönderilerin en az %30'unda etkileşim
+CLEANUP_GROUPS = ("ghost", "one_way_silent", "mutual_silent", "silent_follower", "one_way_engaged", "occasional", "loyal")
+
+
+class CleanupRow(BaseModel):
+    ig_user_id: int
+    username: str
+    full_name: str | None
+    i_follow: bool
+    follows_me: bool
+    likes: int
+    comments: int
+    posts_engaged: int
+    engagement_rate: float
+    last_engaged_at: str | None
+    group: str
+
+
+class CleanupResponse(BaseModel):
+    total_posts: int
+    scanned_posts: int
+    min_posts: int
+    enough_data: bool
+    followers_known: int
+    following_known: int
+    counts: dict[str, int]
+    total_rows: int
+    rows: list[CleanupRow]
+
+
+def _cleanup_group(i_follow: bool, follows_me: bool, engaged: int, rate: float, ghost: bool) -> str:
+    if ghost:
+        return "ghost"
+    if engaged == 0:
+        if i_follow and not follows_me:
+            return "one_way_silent"
+        return "mutual_silent" if i_follow else "silent_follower"
+    if rate >= LOYAL_RATE:
+        return "loyal"
+    return "one_way_engaged" if i_follow and not follows_me else "occasional"
+
+
+async def compute_cleanup(db: AsyncSession, session_id: uuid.UUID) -> tuple[CleanupResponse, list[CleanupRow]]:
+    posts = (await db.execute(
+        select(Post.id, Post.taken_at, Post.likers_synced_at).where(Post.session_id == session_id)
+    )).all()
+    taken = {pid: t for pid, t, _ in posts}
+    scanned_ids = {pid for pid, _, synced in posts if synced is not None}
+    scanned_ids |= {pid for (pid,) in (await db.execute(
+        select(Interaction.post_id).where(Interaction.session_id == session_id).distinct()
+    )).all()}
+    scanned = len(scanned_ids)
+
+    agg: dict[int, dict] = {}
+    for uid, pid, kind in (await db.execute(
+        select(Interaction.ig_user_id, Interaction.post_id, Interaction.interaction_type)
+        .where(Interaction.session_id == session_id)
+    )).all():
+        a = agg.setdefault(uid, {"likes": 0, "comments": 0, "posts": set()})
+        a["likes" if kind == "like" else "comments"] += 1
+        a["posts"].add(pid)
+
+    rels = (await db.execute(
+        select(Relationship.ig_user_id, Relationship.we_follow, Relationship.they_follow,
+               IgUser.username, IgUser.full_name, IgUser.reach_status)
+        .join(IgUser, IgUser.id == Relationship.ig_user_id)
+        .where(Relationship.session_id == session_id, (Relationship.we_follow.is_(True)) | (Relationship.they_follow.is_(True)))
+    )).all()
+
+    rows: list[CleanupRow] = []
+    for uid, we, they, username, full_name, reach in rels:
+        a = agg.get(uid, {"likes": 0, "comments": 0, "posts": set()})
+        engaged = len(a["posts"])
+        rate = round(100 * engaged / scanned, 1) if scanned else 0.0
+        last = max((taken[p] for p in a["posts"] if taken.get(p)), default=None)
+        rows.append(CleanupRow(
+            ig_user_id=uid, username=username, full_name=full_name, i_follow=bool(we), follows_me=bool(they),
+            likes=a["likes"], comments=a["comments"], posts_engaged=engaged, engagement_rate=rate,
+            last_engaged_at=last.isoformat() if last else None,
+            group=_cleanup_group(bool(we), bool(they), engaged, rate, reach == "unreachable"),
+        ))
+    counts = {g: 0 for g in CLEANUP_GROUPS}
+    for r in rows:
+        counts[r.group] += 1
+    rows.sort(key=lambda r: (r.posts_engaged, r.likes + _COMMENT_WEIGHT * r.comments, r.username.lower()))
+    res = CleanupResponse(
+        total_posts=len(posts), scanned_posts=scanned, min_posts=CLEANUP_MIN_POSTS,
+        enough_data=scanned >= CLEANUP_MIN_POSTS,
+        followers_known=sum(1 for r in rows if r.follows_me), following_known=sum(1 for r in rows if r.i_follow),
+        counts=counts, total_rows=0, rows=[],
+    )
+    return res, rows
+
+
+def _filter_cleanup(rows: list[CleanupRow], group: str | None, q: str | None) -> list[CleanupRow]:
+    needle = (q or "").strip().lower().lstrip("@")
+    return [r for r in rows if (not group or r.group == group) and (not needle or needle in r.username.lower())]
+
+
+@router.get("/cleanup", response_model=CleanupResponse)
+async def cleanup(session_id: uuid.UUID, group: str | None = None, q: str | None = None,
+                  page: int = 1, limit: int = 50, db: AsyncSession = Depends(get_db)):
+    await _check(session_id, db)
+    if group and group not in CLEANUP_GROUPS:
+        raise HTTPException(400, "Bilinmeyen grup")
+    res, rows = await compute_cleanup(db, session_id)
+    picked = _filter_cleanup(rows, group, q)
+    limit = max(1, min(limit, 200))
+    start = (max(1, page) - 1) * limit
+    res.total_rows = len(picked)
+    res.rows = picked[start:start + limit]
+    return res
+
+
+@router.get("/cleanup.csv")
+async def cleanup_csv(session_id: uuid.UUID, group: str | None = None, db: AsyncSession = Depends(get_db)):
+    await _check(session_id, db)
+    _, rows = await compute_cleanup(db, session_id)
+    return _csv_response(
+        "gozden-cikar.csv",
+        ["kullanıcı adı", "grup", "ben takip ediyorum", "beni takip ediyor", "beğeni", "yorum",
+         "etkileşimli gönderi", "oran %", "son etkileşim"],
+        [[r.username, r.group, "evet" if r.i_follow else "hayır", "evet" if r.follows_me else "hayır",
+          r.likes, r.comments, r.posts_engaged, r.engagement_rate, (r.last_engaged_at or "")[:10]]
+         for r in _filter_cleanup(rows, group, None)],
+    )

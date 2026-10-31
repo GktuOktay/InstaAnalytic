@@ -20,3 +20,6 @@ class Post(Base):
     view_count: Mapped[int | None] = mapped_column(Integer)
     taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Tarayıcı köprüsü: beğenen / yorum listesinin en son okunduğu an (None = henüz okunmadı)
+    likers_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    comments_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

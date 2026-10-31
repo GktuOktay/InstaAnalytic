@@ -10,6 +10,8 @@ import UsersPage from './pages/UsersPage'
 import MonitorPage from './pages/MonitorPage'
 import ReportPage from './pages/ReportPage'
 import FansPage from './pages/FansPage'
+import CleanupPage from './pages/CleanupPage'
+import GuidePage from './pages/GuidePage'
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
         <Route path="actions" element={<ActionLogPage />} />
         <Route path="report" element={<ReportPage />} />
         <Route path="fans" element={<FansPage />} />
+        <Route path="cleanup" element={<CleanupPage />} />
+        <Route path="guide" element={<GuidePage />} />
       </Route>
     </Routes>
   )

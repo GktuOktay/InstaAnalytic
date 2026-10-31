@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>InstaAnalytic Köprüsü</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>InstaAnalytic Köprüsü</h1>
+  </header>
+
+  <label class="toggle">
+    <input type="checkbox" id="enabled">
+    <span class="switch" aria-hidden="true"></span>
+    <span class="toggle-text">Beğenenleri toplamaya izin ver</span>
+  </label>
+
+  <p class="note">
+    Yalnızca Instagram bir sekmede açıkken ve siz bilgisayar başındayken çalışır.
+    Bilerek yavaş ilerler; bir listeyi okuduktan sonra bir süre bekler, gece hiç çalışmaz.
+  </p>
+
+  <section class="status" id="status" data-state="off">
+    <div class="status-line"><span class="dot"></span><span id="status-text">Kapalı.</span></div>
+    <dl class="facts">
+      <div><dt>Bugün</dt><dd id="today">0 istek</dd></div>
+      <div><dt>Son istek</dt><dd id="last">—</dd></div>
+      <div><dt>Sonraki</dt><dd id="next">—</dd></div>
+    </dl>
+  </section>
+
+  <section class="block">
+    <div class="row">
+      <span class="label">Profil</span>
+      <span id="profile-name" class="value">—</span>
+      <button type="button" id="profile-change" class="link">Değiştir</button>
+    </div>
+    <div id="profile-picker" hidden>
+      <select id="profile-select" aria-label="Profil seçin"></select>
+      <p id="profile-hint" class="hint"></p>
+    </div>
+  </section>
+
+  <section class="block">
+    <label class="label" for="app-url">Uygulama adresi</label>
+    <div class="row">
+      <input type="url" id="app-url" placeholder="http://localhost:3002" spellcheck="false" autocomplete="off">
+      <button type="button" id="app-save" class="secondary">Kaydet</button>
+    </div>
+    <p id="app-hint" class="hint"></p>
+  </section>
+
+  <footer>
+    <button type="button" id="try-now">Şimdi dene</button>
+    <button type="button" id="open-app" class="secondary">Uygulamayı aç</button>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
