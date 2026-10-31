@@ -2,13 +2,13 @@
 Risk profilleri: tarama bütçesi + aksiyon (takip/takipten çıkma) hızı.
 
 Instagram eşiklerini yayınlamıyor; sayılar muhafazakârlık sırasına göre seçilmiş tahminlerdir,
-hiçbir profil "ban yemez" garantisi vermez. Varsayılan: balanced.
+hiçbir profil "ban yemez" garantisi vermez. Varsayılan: safe.
 """
 from dataclasses import dataclass
 
 from app.services.scan_governor import GovernorConfig
 
-DEFAULT_PROFILE = "balanced"
+DEFAULT_PROFILE = "safe"
 
 
 @dataclass(frozen=True)
@@ -46,21 +46,21 @@ PROFILES: dict[str, RiskProfile] = {
         GovernorConfig(pages_per_hour=15, pages_per_day=60, delay_min=8, delay_max=15,
                        long_break_every=6, long_break_min=90, long_break_max=180,
                        cooldown_tiers=(3600, 14400, 86400, 172800)),
-        interactions_max_posts=15, action_hourly=15, action_daily=60, action_delay_min=90, action_delay_max=180,
+        interactions_max_posts=15, action_hourly=8, action_daily=30, action_delay_min=120, action_delay_max=240,
     ),
     "balanced": RiskProfile(
         "balanced",
         GovernorConfig(pages_per_hour=30, pages_per_day=150, delay_min=4, delay_max=9,
                        long_break_every=10, long_break_min=60, long_break_max=120,
                        cooldown_tiers=(1800, 7200, 43200, 86400)),
-        interactions_max_posts=30, action_hourly=30, action_daily=120, action_delay_min=60, action_delay_max=120,
+        interactions_max_posts=30, action_hourly=12, action_daily=45, action_delay_min=90, action_delay_max=180,
     ),
     "aggressive": RiskProfile(
         "aggressive",
         GovernorConfig(pages_per_hour=60, pages_per_day=300, delay_min=2, delay_max=5,
                        long_break_every=20, long_break_min=30, long_break_max=60,
                        cooldown_tiers=(900, 3600, 21600, 43200)),
-        interactions_max_posts=100, action_hourly=60, action_daily=250, action_delay_min=30, action_delay_max=60,
+        interactions_max_posts=100, action_hourly=15, action_daily=60, action_delay_min=60, action_delay_max=120,
     ),
 }
 
@@ -84,3 +84,32 @@ def load_profile_sync(session_id: str) -> RiskProfile:
     finally:
         engine.dispose()
     return get_profile(key)
+
+
+# ── Sert tavanlar: hangi profil seçilirse seçilsin AŞILAMAZ ─────────────────────────
+ACTION_HARD_HOURLY = 15
+ACTION_HARD_DAILY = 60
+ACTION_HARD_MIN_DELAY = 60          # sn
+QUIET_HOURS = (1, 8)                # yerel saat 01:00-08:00 arası işlem yapılmaz (insan gibi davran)
+QUIET_TZ = "Europe/Istanbul"
+# İşlemler yeni açıldığında kademeli artış: (gün eşiği, günlük tavan)
+RAMP_UP = ((3, 20), (7, 40))
+
+
+def effective_action_limits(prof: RiskProfile, enabled_at, now) -> tuple[int, int, int, int]:
+    """(saatlik, günlük, min bekleme, max bekleme) — profil, sert tavan ve ısınma süresinin en kısıtlayıcısı."""
+    daily = min(prof.action_daily, ACTION_HARD_DAILY)
+    if enabled_at is not None:
+        age_days = (now - enabled_at).total_seconds() / 86400
+        for threshold, cap in RAMP_UP:
+            if age_days < threshold:
+                daily = min(daily, cap)
+                break
+    dmin = max(prof.action_delay_min, ACTION_HARD_MIN_DELAY)
+    return min(prof.action_hourly, ACTION_HARD_HOURLY), daily, dmin, max(prof.action_delay_max, dmin + 15)
+
+
+def in_quiet_hours(now) -> bool:
+    from zoneinfo import ZoneInfo
+    h = now.astimezone(ZoneInfo(QUIET_TZ)).hour
+    return QUIET_HOURS[0] <= h < QUIET_HOURS[1]

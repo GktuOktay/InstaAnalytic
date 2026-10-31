@@ -49,8 +49,23 @@ class GoldenHourSlot(BaseModel):
     hour: int
     avg_engagement: float
     post_count: int
+    lift: float = 1.0          # ortalamaya göre kat: 1.5 = genel ortalamanın %50 üstü
+    confidence: str = "low"    # low (<3 gönderi) | ok (3-5) | high (6+)
+
+
+class GoldenHourHour(BaseModel):
+    hour: int
+    avg_engagement: float
+    post_count: int
+    lift: float
+    confidence: str
 
 
 class GoldenHourResponse(BaseModel):
     slots: list[GoldenHourSlot]
+    hours: list[GoldenHourHour] = []   # günlerden bağımsız saat özeti: daha çok örnek, daha güvenilir
     timezone: str
+    total_posts: int = 0
+    overall_avg: float = 0.0
+    media_types: list[str] = []
+    enough_data: bool = False          # en az 15 gönderi

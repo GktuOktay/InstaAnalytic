@@ -15,8 +15,8 @@ async def health():
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
         checks["postgres"] = "ok"
-    except Exception as e:
-        checks["postgres"] = str(e)
+    except Exception:
+        checks["postgres"] = "error"
         checks["status"] = "degraded"
 
     try:
@@ -24,8 +24,8 @@ async def health():
         await r.ping()
         await r.aclose()
         checks["redis"] = "ok"
-    except Exception as e:
-        checks["redis"] = str(e)
+    except Exception:
+        checks["redis"] = "error"
         checks["status"] = "degraded"
 
     return checks

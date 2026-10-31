@@ -8,7 +8,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"   # yalnızca bu bilgisayar; ağdaki diğer cihazlar erişemez
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -17,10 +17,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -31,7 +34,7 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -53,7 +56,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.tasks.celery_app worker -B --loglevel=info --concurrency=2
 
   flower:
     build:
@@ -61,23 +64,24 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"
     depends_on:
       - redis
       - worker
-    command: celery -A app.tasks.celery_app flower --port=5555
+    command: sh -c 'exec celery -A app.tasks.celery_app flower --port=5555 --basic-auth="$$FLOWER_USER:$$FLOWER_PASSWORD"'
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3002:3000"
+      - "127.0.0.1:3002:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000
+      # Token yalnızca Vite proxy'sinde (sunucu tarafı) kalır, tarayıcı paketine gömülmez.
+      - API_TOKEN=${API_TOKEN}
 
 volumes:
   postgres_data:

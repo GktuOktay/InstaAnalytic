@@ -23,12 +23,13 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
   const t = T.goldenHour
   const [slots, setSlots] = useState<GoldenHourSlot[]>([])
   const [loading, setLoading] = useState(true)
+  const [enough, setEnough] = useState(true)
   const [tooltip, setTooltip] = useState<{ slot: GoldenHourSlot; x: number; y: number } | null>(null)
 
   useEffect(() => {
     setLoading(true)
     analysisApi.goldenHour(sessionId)
-      .then(r => setSlots(r.slots))
+      .then(r => { setSlots(r.slots); setEnough(r.enough_data) })
       .catch(() => setSlots([]))
       .finally(() => setLoading(false))
   }, [sessionId])
@@ -38,7 +39,10 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
 
   const maxEng = Math.max(...slots.map(s => s.avg_engagement), 1)
   const grid = buildGrid(slots)
-  const top3 = [...slots].sort((a, b) => b.avg_engagement - a.avg_engagement).slice(0, 3)
+  // Tek gönderilik "şans" saatleri öne çıkmasın: yeterli örneği olanlar tercih edilir
+  const reliable = slots.filter(s => s.confidence !== 'low')
+  const pool = reliable.length >= 3 ? reliable : slots
+  const top3 = [...pool].sort((a, b) => b.avg_engagement - a.avg_engagement).slice(0, 3)
   const hours = Array.from({ length: 24 }, (_, i) => i)
   const days = [0, 1, 2, 3, 4, 5, 6]
   const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`
@@ -69,6 +73,12 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
         </div>
       </div>
 
+      {!enough && (
+        <p style={{ fontSize: 11.5, color: '#FBBF24', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 8, padding: '7px 10px', marginBottom: 12 }}>
+          {t.lowData}
+        </p>
+      )}
+
       {/* Top 3 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {top3.map((s, i) => (
@@ -85,6 +95,10 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
             </p>
             <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>
               {t.avgEng} · {s.post_count} {t.posts}
+              {s.confidence === 'low' && <span style={{ color: '#FBBF24' }}> · {t.lowConf}</span>}
+            </p>
+            <p style={{ fontSize: 10, color: s.lift >= 1 ? '#86EFAC' : 'var(--text-3)', marginTop: 2 }}>
+              {Math.round(s.lift * 100)}% {t.lift}
             </p>
           </div>
         ))}
@@ -118,6 +132,7 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
                       cursor: slot ? 'default' : undefined,
                       transition: 'opacity 0.1s',
                       ...cellStyle(ratio),
+                      ...(slot && slot.confidence === 'low' ? { opacity: 0.55 } : {}),
                     }}
                     onMouseEnter={e => { if (slot) setTooltip({ slot, x: e.clientX, y: e.clientY }) }}
                     onMouseLeave={() => setTooltip(null)}
@@ -143,7 +158,7 @@ export default function GoldenHourHeatmap({ sessionId }: Props) {
           <p style={{ color: '#A5B4FC' }}>
             {t.avgEng}: <strong>{tooltip.slot.avg_engagement.toFixed(1)}</strong>
           </p>
-          <p style={{ color: 'var(--text-3)' }}>{tooltip.slot.post_count} {t.posts}</p>
+          <p style={{ color: 'var(--text-3)' }}>{tooltip.slot.post_count} {t.posts}{tooltip.slot.confidence === 'low' ? ` · ${t.lowConf}` : ''}</p>
         </div>
       )}
     </div>

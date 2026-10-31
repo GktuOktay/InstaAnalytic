@@ -73,6 +73,11 @@ LOG_LEVEL=INFO
     Write-Host ""
 }
 
+# Eksik güvenlik değerlerini (Redis/API/Flower parolaları) tamamla ve CREDENTIALS.md'yi güncelle
+$py = Get-Command python -ErrorAction SilentlyContinue
+if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }
+if ($py) { & $py.Source "$ScriptDir\scripts\init_env.py" } else { Write-Host "  ⚠ python bulunamadı: scripts\init_env.py çalıştırılamadı." }
+
 # ── 3. Host Agent binary ──────────────────────────────────────────────────────
 Write-Host "► Host Agent kontrol ediliyor…"
 New-Item -ItemType Directory -Force -Path "$ScriptDir\scripts\bin" | Out-Null

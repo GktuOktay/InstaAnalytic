@@ -23,9 +23,22 @@ async def _get_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     return session
 
 
+async def _get_session_for_write(session_id: uuid.UUID, db: AsyncSession) -> Session:
+    """Yazma işlemleri (takip/çıkma) için: varsayılan KAPALI, açılması bilinçli bir karardır."""
+    from datetime import datetime, timezone
+    session = await _get_session(session_id, db)
+    if session.source == "zip":
+        raise HTTPException(400, "ZIP profili Instagram'a bağlı değil; işlem yapılamaz.")
+    if not session.allow_actions:
+        raise HTTPException(403, "Takip/takipten çıkma işlemleri kapalı. Oturum sayfasından bilinçli olarak açın.")
+    if session.paused_until and session.paused_until > datetime.now(timezone.utc):
+        raise HTTPException(423, f"İşlemler güvenlik için durduruldu: {session.paused_reason or 'Instagram uyarısı'}")
+    return session
+
+
 @router.post("/follow/{ig_user_id}", response_model=ActionResponse)
 async def follow_user(session_id: uuid.UUID, ig_user_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    await _get_session_for_write(session_id, db)
     result = queue_action(str(session_id), "follow", ig_user_id)
     return ActionResponse(
         success=True,
@@ -38,7 +51,7 @@ async def follow_user(session_id: uuid.UUID, ig_user_id: int, db: AsyncSession =
 
 @router.post("/unfollow/{ig_user_id}", response_model=ActionResponse)
 async def unfollow_user(session_id: uuid.UUID, ig_user_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    await _get_session_for_write(session_id, db)
     result = queue_action(str(session_id), "unfollow", ig_user_id)
     return ActionResponse(
         success=True,
@@ -68,7 +81,7 @@ async def clear_action_queue(session_id: uuid.UUID, db: AsyncSession = Depends(g
 
 @router.post("/remove-follower/{ig_user_id}", response_model=ActionResponse)
 async def remove_follower(session_id: uuid.UUID, ig_user_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_session(session_id, db)
+    await _get_session_for_write(session_id, db)
     result = queue_action(str(session_id), "remove_follower", ig_user_id)
     return ActionResponse(
         success=True,
@@ -79,13 +92,27 @@ async def remove_follower(session_id: uuid.UUID, ig_user_id: int, db: AsyncSessi
     )
 
 
+@router.post("/bulk-unfollow/preview")
+async def bulk_unfollow_preview(session_id: uuid.UUID, body: BulkUnfollowRequest, db: AsyncSession = Depends(get_db)):
+    """Önizleme (dry-run): hiçbir şey kuyruğa alınmaz; kimlerin etkileneceği ve tahmini süre döner."""
+    await _get_session(session_id, db)
+    rows = (await db.execute(select(IgUser).where(IgUser.id.in_(body.user_ids)))).scalars().all()
+    avg_delay = (body.delay_min_seconds + body.delay_max_seconds) / 2
+    return {
+        "count": len(body.user_ids),
+        "usernames": [u.username for u in rows][:100],
+        "estimated_duration_minutes": int(len(body.user_ids) * avg_delay / 60),
+        "note": "Bu bir önizlemedir; hiçbir işlem yapılmadı.",
+    }
+
+
 @router.post("/bulk-unfollow", response_model=BulkUnfollowResponse)
 async def bulk_unfollow_action(
     session_id: uuid.UUID,
     body: BulkUnfollowRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_session(session_id, db)
+    await _get_session_for_write(session_id, db)
     task = bulk_unfollow.delay(
         str(session_id),
         body.user_ids,

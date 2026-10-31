@@ -1,9 +1,9 @@
 from app.services.risk_profiles import DEFAULT_PROFILE, PROFILES, get_profile
 
 
-def test_default_and_unknown_fall_back_to_balanced():
-    assert get_profile(None).key == DEFAULT_PROFILE == "balanced"
-    assert get_profile("nope").key == "balanced"
+def test_default_and_unknown_fall_back_to_safe():
+    assert get_profile(None).key == DEFAULT_PROFILE == "safe"
+    assert get_profile("nope").key == "safe"
 
 
 def test_profiles_are_ordered_by_aggressiveness():

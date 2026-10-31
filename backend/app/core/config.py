@@ -6,9 +6,12 @@ class Settings(BaseSettings):
     redis_url: str
     encryption_key: str
     host_agent_secret: str = ""
+    api_token: str = ""
+    encryption_key_old: str = ""   # anahtar rotasyonu: eski anahtar yalnızca çözmek için kullanılır
     chrome_user_data_dir: str = ""
     environment: str = "development"
     log_level: str = "INFO"
+    session_ttl_days: int = 30    # kullanılmayan tarayıcı oturumunun çerezleri bu süreden sonra silinir
     host_agent_url: str = "http://host.docker.internal:8002"
 
     # Tarama/aksiyon hızı session başına risk profilinden gelir (app/services/risk_profiles.py)

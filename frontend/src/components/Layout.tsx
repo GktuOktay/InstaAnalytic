@@ -1,10 +1,12 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Image, Network,
-  History, MonitorDot, FileBarChart2, Moon, Sun,
+  History, MonitorDot, FileBarChart2, Moon, Sun, Flame,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
+import ErrorBoundary from './ErrorBoundary'
+import SafetyBadge from './SafetyBadge'
 
 export default function Layout() {
   const { T, lang, setLang } = useLang()
@@ -16,6 +18,7 @@ export default function Layout() {
     { to: '/followers', label: T.nav.followers,  icon: Users           },
     { to: '/posts',     label: T.nav.posts,      icon: Image           },
     { to: '/report',    label: T.nav.report,     icon: FileBarChart2   },
+    { to: '/fans',      label: T.nav.fans,       icon: Flame           },
     { to: '/users',     label: T.nav.users,      icon: Network         },
     { to: '/monitor',   label: T.nav.monitor,    icon: MonitorDot      },
     { to: '/actions',   label: T.nav.actions,    icon: History         },
@@ -152,6 +155,8 @@ export default function Layout() {
           })}
         </nav>
 
+        <SafetyBadge />
+
         {/* Footer */}
         <div style={{
           padding: '12px 16px',
@@ -172,7 +177,7 @@ export default function Layout() {
         flexDirection: 'column',
       }}>
         <div style={{ flex: 1, padding: '28px 32px' }}>
-          <Outlet />
+          <ErrorBoundary lang={lang} key={location.pathname}><Outlet /></ErrorBoundary>
         </div>
       </main>
     </div>

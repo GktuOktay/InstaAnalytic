@@ -1,11 +1,11 @@
 import json
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -17,6 +17,8 @@ from app.models.ig_user import IgUser
 from app.schemas.session import (
     SessionCreate, SessionResponse, SessionVerifyResponse,
     SessionPreviewRequest, SessionPreviewResponse,
+    BrowserListResponse, BrowserScanRequest, BrowserScanResponse, BrowserCandidate,
+    BrowserConfirmRequest, ZipOnlyCreate, ActionsToggle,
 )
 from app.services import instagram
 
@@ -123,192 +125,159 @@ async def host_agent_status():
     return {"connected": False, "platform": None}
 
 
-def _sse(event: str, data: Any) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+_CAND_TTL = 300  # sn — onaylanmayan adaylar 5 dakikada silinir
 
 
-async def _do_scan_stream(db: AsyncSession) -> AsyncGenerator[str, None]:
-    """SSE generator — her adımı canlı olarak akıt."""
-    yield _sse("log", {"msg": "Host agent bağlantısı kontrol ediliyor…"})
+def _redis():
+    import redis.asyncio as aioredis
+    return aioredis.from_url(settings.redis_url)
+
+
+async def _require_agent_v2() -> None:
+    """Eski host agent tüm tarayıcıları sormadan tarar; güncel olmayanı kullanma."""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            h = await client.get(f"{settings.host_agent_url}/health")
-            if h.status_code != 200:
-                yield _sse("error", {"msg": "Host agent yanıt vermiyor."})
-                return
-    except httpx.ConnectError:
-        yield _sse("error", {
-            "msg": "Host agent çalışmıyor. Başlatmak için: bash start.sh"
-        })
-        return
-
-    yield _sse("log", {"msg": "✓ Host agent bağlı."})
-    yield _sse("log", {"msg": "Tarayıcı cookie'leri taranıyor…"})
-
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(f"{settings.host_agent_url}/scan", headers=_agent_headers())
-            resp.raise_for_status()
-            raw_sessions: list[dict] = resp.json().get("sessions", [])
-    except Exception as e:
-        yield _sse("error", {"msg": f"Tarama hatası: {e}"})
-        return
-
-    scan_data = resp.json()
-    scan_errors: list = scan_data.get("errors", [])
-    scanned_browsers: list = scan_data.get("scanned_browsers", [])
-
-    if scanned_browsers:
-        yield _sse("log", {"msg": f"Taranan tarayıcılar: {', '.join(scanned_browsers)}"})
-
-    if scan_errors:
-        for err in scan_errors:
-            yield _sse("log", {"msg": f"  ⚠ {err}"})
-
-    if not raw_sessions:
-        if scan_errors:
-            yield _sse("error", {"msg": "Tarayıcı cookie'leri okunamadı. Yukarıdaki uyarıya bakın."})
-        else:
-            browsers_str = ", ".join(scanned_browsers) if scanned_browsers else "Chrome, Firefox, Safari"
-            yield _sse("error", {"msg": (
-                f"Tarayıcılarda Instagram session bulunamadı.\n"
-                f"Taranan: {browsers_str}\n"
-                f"→ instagram.com adresinde oturum açık olduğundan emin olun ve tekrar deneyin."
-            )})
-        return
-
-    yield _sse("log", {"msg": f"✓ {len(raw_sessions)} tarayıcı session'ı bulundu."})
-
-    saved_sessions = []
-    for i, raw in enumerate(raw_sessions, 1):
-        sid = raw["session_id_cookie"]
-        extra = raw.get("extra_cookies", {})
-        browser = raw.get("browser", "?")
-        uid = extra.get("ds_user_id", "?")
-        yield _sse("log", {"msg": f"[{i}/{len(raw_sessions)}] {browser} — uid={uid} doğrulanıyor…"})
-
-        try:
-            user = instagram._web_account_info(sid, extra)
-            uname = user.get("username") or f"user_{user.get('pk', uid)}"
-            yield _sse("log", {"msg": f"  ✓ Kullanıcı: @{uname}"})
-            session = await _create_and_save_session(db, uname, sid, extra, user)
-            saved_sessions.append(session)
-            yield _sse("log", {"msg": f"  ✓ Session kaydedildi."})
-        except HTTPException as e:
-            if e.status_code == 400:
-                yield _sse("log", {"msg": f"  → Zaten kayıtlı, atlandı."})
-            else:
-                yield _sse("log", {"msg": f"  ✗ Hata: {e.detail}"})
-        except Exception as e:
-            yield _sse("log", {"msg": f"  ✗ Hata: {e}"})
-
-    total = len(saved_sessions)
-    if total:
-        yield _sse("log", {"msg": f"✓ {total} session başarıyla kaydedildi."})
-    else:
-        yield _sse("log", {"msg": "Tüm session'lar zaten kayıtlı."})
-
-    # Kaydedilen session listesini döndür
-    result = await db.execute(select(Session).order_by(Session.created_at.desc()))
-    all_sessions = result.scalars().all()
-    yield _sse("done", {
-        "sessions": [
-            {
-                "id": str(s.id),
-                "ig_username": s.ig_username,
-                "ig_user_id": s.ig_user_id,
-                "plan_b_active": s.plan_b_active,
-                "created_at": s.created_at.isoformat(),
-                "last_used_at": s.last_used_at.isoformat() if s.last_used_at else None,
-                "last_verified_at": s.last_verified_at.isoformat() if s.last_verified_at else None,
-            }
-            for s in all_sessions
-        ]
-    })
+            r = await client.get(f"{settings.host_agent_url}/health")
+            ver = r.json().get("api_version", 1) if r.status_code == 200 else 0
+    except Exception:
+        raise HTTPException(503, "Host agent çalışmıyor. Başlatmak için: bash start.sh")
+    if ver < 2:
+        raise HTTPException(409, "Host agent eski sürüm. Güvenlik için güncelleyin: bash start.sh")
 
 
-@router.get("/scan-browser/stream")
-async def scan_browser_stream(db: AsyncSession = Depends(get_db)):
-    """SSE akışı — tarama adımlarını canlı gönderir."""
-    return StreamingResponse(
-        _do_scan_stream(db),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-@router.post("/scan-browser", response_model=list[SessionResponse], status_code=207)
-async def scan_browser_sessions(db: AsyncSession = Depends(get_db)):
-    """
-    Host agent'ı çağırarak tarayıcı cookie'lerini tara,
-    bulunan session'ları otomatik kaydet.
-    """
-    # 1. Host agent erişim kontrolü
+async def _agent_get(path: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            health = await client.get(f"{settings.host_agent_url}/health")
-            if health.status_code != 200:
-                raise HTTPException(503, "Host agent çalışmıyor")
+            r = await client.get(f"{settings.host_agent_url}{path}", headers=_agent_headers())
+            r.raise_for_status()
+            return r.json()
     except httpx.ConnectError:
-        raise HTTPException(503, "Host agent çalışmıyor. Başlatmak için: python3 scripts/host_agent.py &")
+        raise HTTPException(503, "Host agent çalışmıyor. Başlatmak için: bash start.sh")
+    except Exception:
+        raise HTTPException(502, "Host agent yanıt vermedi")
 
-    # 2. Cookie'leri tara
+
+@router.get("/browsers", response_model=BrowserListResponse)
+async def list_browsers():
+    """Desteklenen tarayıcılar. Cookie OKUNMAZ; yalnızca adlar döner."""
+    await _require_agent_v2()
+    return BrowserListResponse(browsers=(await _agent_get("/browsers")).get("browsers", []))
+
+
+@router.post("/scan-browser", response_model=BrowserScanResponse)
+async def scan_browser(body: BrowserScanRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Yalnızca kullanıcının seçtiği tarayıcılarda oturum ara. HİÇBİR ŞEY KAYDEDİLMEZ:
+    bulunan hesaplar kısa süreli (5 dk) şifreli aday olarak tutulur, kullanıcı /confirm ile seçer.
+    """
+    if not body.browsers:
+        raise HTTPException(422, "En az bir tarayıcı seçin")
+    await _require_agent_v2()
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.post(f"{settings.host_agent_url}/scan", headers=_agent_headers())
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{settings.host_agent_url}/scan", headers=_agent_headers(), json={"browsers": body.browsers}
+            )
+            if resp.status_code == 400:
+                raise HTTPException(422, "Geçersiz tarayıcı seçimi")
             resp.raise_for_status()
             data = resp.json()
-    except Exception as e:
-        raise HTTPException(502, f"Tarama hatası: {e}")
+    except HTTPException:
+        raise
+    except httpx.ConnectError:
+        raise HTTPException(503, "Host agent çalışmıyor. Başlatmak için: bash start.sh")
+    except Exception:
+        raise HTTPException(502, "Tarama başarısız oldu")
 
-    raw_sessions: list[dict] = data.get("sessions", [])
-    if not raw_sessions:
-        raise HTTPException(404, "Tarayıcılarda aktif Instagram session bulunamadı. instagram.com'da oturum aç.")
+    existing = {s.ig_user_id for s in (await db.execute(select(Session))).scalars().all()}
+    candidates: list[BrowserCandidate] = []
+    errors: list[str] = list(data.get("errors", []))
+    r = _redis()
+    try:
+        for raw in data.get("sessions", []):
+            sid, extra = raw["session_id_cookie"], raw.get("extra_cookies", {})
+            try:
+                user = instagram._web_account_info(sid, extra)
+            except Exception:
+                errors.append(f"{raw.get('browser', '?')}: oturum doğrulanamadı (süresi dolmuş olabilir)")
+                continue
+            uname = user.get("username") or raw.get("username") or f"user_{user.get('pk', '')}"
+            cid = uuid.uuid4().hex
+            payload = {"sid": sid, "extra": extra, "user": user, "username": uname}
+            await r.set(f"cand:{cid}", encrypt(json.dumps(payload)), ex=_CAND_TTL)
+            candidates.append(BrowserCandidate(
+                candidate_id=cid, browser=raw.get("browser", "?"), ig_username=uname,
+                full_name=user.get("full_name"), already_saved=int(user.get("pk", 0)) in existing,
+            ))
+    finally:
+        await r.aclose()
+    return BrowserScanResponse(candidates=candidates, errors=errors)
 
-    # 3. Her session'ı validate + kaydet
+
+@router.post("/scan-browser/confirm", response_model=list[SessionResponse], status_code=201)
+async def confirm_browser_sessions(body: BrowserConfirmRequest, db: AsyncSession = Depends(get_db)):
+    """Kullanıcının seçtiği adayları kaydet. Seçilmeyenler hiç saklanmaz."""
     saved: list[Session] = []
-    errors: list[str] = []
-
-    for raw in raw_sessions:
-        sid = raw["session_id_cookie"]
-        extra = raw.get("extra_cookies", {})
-        user_info: dict = {}
-        try:
-            # Host agent zaten username'i çözmüş olabilir
-            host_username = raw.get("username") or ""
-            user_info = instagram._web_account_info(sid, extra)
-            uname = user_info.get("username") or host_username or ""
-            session = await _create_and_save_session(db, uname, sid, extra, user_info)
-            saved.append(session)
-        except HTTPException as e:
-            if e.status_code == 400:  # zaten kayıtlı — mevcut session'ı döndür ve username güncelle
-                uid = user_info.get("pk") or user_info.get("id") or instagram._parse_user_id_from_sessionid(sid)
-                if uid:
-                    res = await db.execute(select(Session).where(Session.ig_user_id == int(uid)))
-                    existing = res.scalar_one_or_none()
-                    if existing:
-                        # Host agent'tan gelen gerçek username varsa güncelle
-                        real_uname = host_username or user_info.get("username", "")
-                        if real_uname and not real_uname.startswith("user_"):
-                            existing.ig_username = real_uname
-                            ig_user = await db.get(IgUser, int(uid))
-                            if ig_user:
-                                ig_user.username = real_uname
-                            await db.commit()
-                            await db.refresh(existing)
-                        saved.append(existing)
-            else:
-                errors.append(str(e.detail))
-        except Exception as e:
-            errors.append(str(e))
-
-    if not saved and errors:
-        raise HTTPException(422, "; ".join(errors))
-
+    r = _redis()
+    try:
+        for cid in body.candidate_ids:
+            raw = await r.getdel(f"cand:{cid}")
+            if not raw:
+                continue
+            p = json.loads(decrypt(raw.decode() if isinstance(raw, bytes) else raw))
+            try:
+                saved.append(await _create_and_save_session(db, p["username"], p["sid"], p["extra"], p["user"]))
+            except HTTPException as e:
+                if e.status_code != 400:  # 400 = zaten kayıtlı, sessizce atla
+                    raise
+    finally:
+        await r.aclose()
+    if not saved:
+        raise HTTPException(404, "Seçilen aday bulunamadı veya süresi doldu. Taramayı tekrar çalıştırın.")
     return saved
+
+
+@router.post("/zip-only", response_model=SessionResponse, status_code=201)
+async def create_zip_only_session(body: ZipOnlyCreate, db: AsyncSession = Depends(get_db)):
+    """
+    Cookie'siz, yalnızca ZIP verisiyle çalışan profil. Instagram'a HİÇ istek atılmaz: en güvenli mod.
+    """
+    import hashlib
+    username = body.ig_username.strip().lstrip("@").lower()
+    if not re.fullmatch(r"[a-z0-9._]{1,30}", username):
+        raise HTTPException(422, "Geçerli bir Instagram kullanıcı adı girin")
+    fake_id = -int(hashlib.sha256(username.encode()).hexdigest()[:12], 16)  # negatif = geçici kimlik
+    dup = await db.execute(select(Session).where((Session.ig_username == username) | (Session.ig_user_id == fake_id)))
+    if dup.scalar_one_or_none():
+        raise HTTPException(400, f"'{username}' zaten kayıtlı")
+    await _upsert_ig_user(db, fake_id, username, {})
+    session = Session(
+        ig_user_id=fake_id, ig_username=username, source="zip",
+        session_data=encrypt(json.dumps({"cookies": {}})),
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+@router.post("/{session_id}/allow-actions", response_model=SessionResponse)
+async def set_allow_actions(session_id: uuid.UUID, body: ActionsToggle, db: AsyncSession = Depends(get_db)):
+    """Takip / takipten çıkma gibi yazma işlemlerini aç/kapat (varsayılan kapalı)."""
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(404, "Session bulunamadı")
+    if body.allow_actions and session.source == "zip":
+        raise HTTPException(400, "ZIP profili Instagram'a bağlı değil; işlem yapılamaz. Önce tarayıcıdan hesap bağlayın.")
+    session.allow_actions = body.allow_actions
+    if body.allow_actions and not session.actions_enabled_at:
+        session.actions_enabled_at = datetime.now(timezone.utc)   # ısınma süresi buradan başlar
+    if not body.allow_actions:
+        session.actions_enabled_at = None
+        session.paused_until, session.paused_reason = None, None
+    await db.commit()
+    await db.refresh(session)
+    return session
 
 
 @router.post("", response_model=SessionResponse, status_code=201)

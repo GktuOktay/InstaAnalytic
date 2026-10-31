@@ -8,6 +8,7 @@ import PostsPage from './pages/PostsPage'
 import UsersPage from './pages/UsersPage'
 import MonitorPage from './pages/MonitorPage'
 import ReportPage from './pages/ReportPage'
+import FansPage from './pages/FansPage'
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="monitor" element={<MonitorPage />} />
         <Route path="actions" element={<ActionLogPage />} />
         <Route path="report" element={<ReportPage />} />
+        <Route path="fans" element={<FansPage />} />
       </Route>
     </Routes>
   )

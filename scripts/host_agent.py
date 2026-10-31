@@ -88,13 +88,15 @@ def parse_user_id_from_sessionid(sessionid: str) -> str | None:
     return None
 
 
-def scan_cookies() -> tuple[list[dict], list[str]]:
-    """Tüm tarayıcılarda Instagram session'larını tara. (sessions, errors) döner."""
+def scan_cookies(selected: list[str]) -> tuple[list[dict], list[str]]:
+    """YALNIZCA kullanıcının seçtiği tarayıcılarda Instagram session'larını tara. (sessions, errors) döner."""
     found = []
     seen = set()
     errors = []
 
     for browser_name, loader in BROWSERS:
+        if browser_name not in selected:
+            continue
         try:
             jar = loader(domain_name="instagram.com")
             cookies = {c.name: c.value for c in jar}
@@ -212,6 +214,31 @@ def resolve_username(session_id_cookie: str, extra_cookies: dict, user_id: str) 
     return None
 
 
+_AUDIT_FILE = Path(os.path.expanduser("~/.instaanalytic_agent.log"))
+
+
+def _audit(browsers: list[str], found: int) -> None:
+    """Hangi tarayıcının ne zaman okunduğunu kaydet (cookie değerleri ASLA yazılmaz) ve kullanıcıyı bilgilendir."""
+    from datetime import datetime
+    line = f"{datetime.now().isoformat(timespec='seconds')} scan browsers={','.join(browsers)} sessions_found={found}\n"
+    try:
+        with open(_AUDIT_FILE, "a") as f:
+            f.write(line)
+        _AUDIT_FILE.chmod(0o600)
+    except OSError:
+        pass
+    if _SYSTEM == "Darwin":
+        import subprocess
+        msg = f"Tarayıcı oturumu okundu: {', '.join(browsers)}"
+        try:
+            subprocess.run(
+                ["osascript", "-e", f'display notification "{msg}" with title "InstaAnalytic"'],
+                timeout=3, check=False,
+            )
+        except Exception:
+            pass
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[host_agent] {fmt % args}")
@@ -240,9 +267,17 @@ class Handler(BaseHTTPRequestHandler):
             self._headers(200)
             self.wfile.write(json.dumps({
                 "status": "ok",
+                "api_version": 2,   # v2: tarayıcı seçimi zorunlu, denetim kaydı
                 "platform": _SYSTEM,
-                "secret_file": str(_SECRET_FILE),
             }).encode())
+        elif self.path == "/browsers":
+            if not self._is_authorized():
+                self._headers(401)
+                self.wfile.write(b'{"error":"unauthorized"}')
+                return
+            self._headers(200)
+            # Çerezler okunmaz; yalnızca desteklenen tarayıcı adları listelenir
+            self.wfile.write(json.dumps({"browsers": [name for name, _ in BROWSERS]}).encode())
         else:
             self._headers(404)
             self.wfile.write(b'{"error":"not found"}')
@@ -254,11 +289,20 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/scan":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            valid_names = {name for name, _ in BROWSERS}
+            selected = [b for b in body.get("browsers", []) if b in valid_names]
+            if not selected:
+                self._headers(400)
+                self.wfile.write(b'{"error":"browsers listesi gerekli (en az bir tarayici sec)"}')
+                return
             sessions, errors = [], []
             try:
-                sessions, errors = scan_cookies()
+                sessions, errors = scan_cookies(selected)
             except Exception as e:
                 errors.append(str(e))
+            _audit(selected, len(sessions))
 
             for s in sessions:
                 if not s.get("username"):
@@ -272,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({
                 "sessions": sessions,
                 "errors": errors,
-                "scanned_browsers": [name for name, _ in BROWSERS],
+                "scanned_browsers": selected,
                 "platform": _SYSTEM,
             }).encode())
 
