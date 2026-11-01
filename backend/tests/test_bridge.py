@@ -51,8 +51,9 @@ def likers_req(media_id):
                       "variables": json.dumps({"media_id": str(media_id)}), "doc_id": "123"})
 
 
-async def _obs(db, kv, s, url, body, page="https://www.instagram.com/me/", req="", status=200, now=NOW):
-    return await bridge.observe(db, kv, s, url=url, page_url=page, req_body=req, status=status, text=body, now=now)
+async def _obs(db, kv, s, url, body, page="https://www.instagram.com/me/", req="", status=200, now=NOW, kinds=None):
+    return await bridge.observe(db, kv, s, url=url, page_url=page, req_body=req, status=status, text=body, now=now,
+                                kinds=kinds)
 
 
 # ── ayrıştırma ───────────────────────────────────────────────────────────────
@@ -194,6 +195,16 @@ async def test_unrecognised_likers_like_response_is_kept_as_shape_only(db, make_
     await _obs(db, kv, s, GQL, weird, req=urlencode({"fb_api_req_friendly_name": "PolarisLikersSheetQuery"}))
     [d] = await bridge.diagnostics(kv, s.id)
     assert d["friendly"] == "PolarisLikersSheetQuery" and "gizli" not in json.dumps(d)
+
+
+@pytest.mark.asyncio
+async def test_unrecognised_post_grid_response_is_kept_for_the_posts_tool(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    weird = '{"data":{"grid_v9":{"tiles":[{"slug":"ABCDE","author":"me"}]}}}'
+    await _obs(db, kv, s, GQL, weird, req=urlencode({"fb_api_req_friendly_name": "PolarisProfilePostsQuery"}), kinds={"posts"})
+    [d] = await bridge.diagnostics(kv, s.id)
+    assert d["friendly"] == "PolarisProfilePostsQuery" and "ABCDE" not in json.dumps(d)
 
 
 @pytest.mark.asyncio

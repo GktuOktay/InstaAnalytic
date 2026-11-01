@@ -5,7 +5,7 @@ import { extensionOutdated, cmpVersion, LATEST_EXTENSION_VERSION } from '../lib/
 
 /** background.js'i sahte bir Chrome ortamında çalıştırır. */
 function loadBackground(installed: string, appVersion: string | null, store: Record<string, any> = {},
-  todo: any[] = []) {
+  todo: any[] = [], stopped = false) {
   const listeners: Record<string, Function> = {}
   const reload = vi.fn()
   const chrome = {
@@ -41,6 +41,8 @@ function loadBackground(installed: string, appVersion: string | null, store: Rec
     if (String(url).includes('/bridge/todo')) return new Response(JSON.stringify(todo), { status: 200 })
     if (String(url).includes('/bridge/observe')) return new Response(JSON.stringify(observeReply), { status: 200 })
     if (String(url).includes('/bridge/jobs')) return new Response('{"id":"x"}', { status: 201 })
+    if (String(url).includes('/bridge/status')) return new Response(JSON.stringify({ stopped }), { status: 200 })
+    if (String(url).includes('/bridge/resume')) { stopped = false; return new Response('{"stopped":false}', { status: 200 }) }
     return new Response(JSON.stringify({ version: appVersion }), { status: 200 })
   })
   // eslint-disable-next-line no-new-func
@@ -137,7 +139,7 @@ describe('tools', () => {
 })
 
 // İş sekmesinden bir yanıt gelmiş gibi yap; uygulama `saved` kadar kayıt bildirir
-async function observeSaved(b: any, saved: Record<string, number>) {
+async function observeSaved(b: any, saved: Record<string, number | boolean>) {
   b.chrome.__setObserve({ posts: 0, likers: 0, comments: 0, warning: false, ignored: false, ...saved })
   b.listeners.message({ type: 'ia-observed', viewer: '525', url: 'https://www.instagram.com/graphql/query',
     page: 'https://www.instagram.com/p/AAAAA/liked_by/', status: 200, text: '{}', friendly: 'Q', variables: '', kinds: ['likers', 'posts'] },
@@ -203,6 +205,33 @@ describe('jobs started from the app', () => {
     expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/gktuoktay/', active: true })
     await b.listeners.removed(77)
     expect(b.session.job.state).toBe('stopped')
+  })
+
+  it('starting a job turns saving back on when it was stopped in the app, and says so', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const b = loadBackground('2.5.1', '2.5.1', { ...ME }, [], true)
+    expect((await msg(b, { type: 'ia-run', cmd: { kind: 'posts' } }, fromApp)).ok).toBe(true)
+    expect(b.fetchStub.mock.calls.some((c: any[]) => String(c[0]).endsWith('/bridge/resume'))).toBe(true)
+    await observeSaved(b, { posts: 38 })
+    b.listeners.message({ type: 'ia-job-done', error: null, seen: 38 }, fromIg(), () => {})
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(b.session.job.outcome).toBe('ok')
+    expect(b.session.job.message).toContain('38 gönderi kaydedildi')
+    expect(b.session.job.message).toContain('yeniden açıldı')
+    vi.useRealTimers()
+  })
+
+  it('if the app still refuses to save, the result names that instead of "not recognised"', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const b = loadBackground('2.5.1', '2.5.1', { ...ME })
+    await msg(b, { type: 'ia-run', cmd: { kind: 'posts' } }, fromApp)
+    await observeSaved(b, { ignored: true, stopped: true })
+    b.listeners.message({ type: 'ia-job-done', error: null, seen: 38 }, fromIg(), () => {})
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(b.session.job.outcome).toBe('failed')
+    expect(b.session.job.message).toContain('kayıt durdurulmuş')
+    expect(b.session.job.message).not.toContain('tanınmadı')
+    vi.useRealTimers()
   })
 
   it('only the app page and the popup may start jobs', async () => {

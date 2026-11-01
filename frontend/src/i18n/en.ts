@@ -570,7 +570,7 @@ const en: Translations = {
     bannerTodo:   'Nothing was stopped; whether to continue is up to you. Use Instagram normally on your phone and complete any verification yourself.',
     bannerMore:   'What should I do?',
     paused:       'Instagram showed a warning. We suggest a break until {at}; nothing was stopped.',
-    stopped:      'Saving is stopped for this profile.',
+    stopped:      'Saving is stopped for this profile. Starting a job from the extension turns it back on.',
     stop:         'Stop',
     resume:       'Resume',
     guide:        'How to use',

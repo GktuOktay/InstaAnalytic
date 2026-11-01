@@ -511,7 +511,8 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
             val = int(val) if day == today else 0
             await kv.set(_k(sid, name), f"{today}|{val + n}", ex=STATE_TTL_S)
         await kv.set(_k(sid, "last_saved"), str(time.time()), ex=STATE_TTL_S)
-    elif not result["ignored"] and ((friendly and _INTERESTING.search(friendly)) or "liker" in text[:200000].lower()):
+    elif not result["ignored"] and ((friendly and _INTERESTING.search(friendly)) or "liker" in text[:200000].lower()
+                                    or ("posts" in kinds and relevant(url, friendly))):
         await _diag(kv, sid, friendly, url, page_url, status, body)   # ilgili görünüyor ama tanınmadı
     until, reason = await _warning(db, kv, session, now)
     if until:

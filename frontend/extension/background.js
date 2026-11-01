@@ -352,9 +352,23 @@ async function startJob(cmd) {
     queue = codes.slice(0, 50);
   }
 
+  // Kullanıcı işi kendisi başlattı: uygulamada bu profil için kayıt durdurulmuşsa yeniden aç,
+  // yoksa sayfa okunur ama hiçbir şey kaydedilmez
+  const st = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`);
+  if (st.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı. Uygulama açık mı?' };
+  if (st.status === 404) return { ok: false, error: 'Seçili profil uygulamada bulunamadı. Eklentinin Ayarlar sekmesinden profili yeniden seçin.' };
+  let resumed = false;
+  if (st.data && st.data.stopped) {
+    const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/resume`, {});
+    if (r.status !== 200) {
+      return { ok: false, error: 'Uygulamada bu profil için kayıt durdurulmuş ve yeniden açılamadı. Gönderiler sayfasındaki köprü kartında «Devam et»e basın.' };
+    }
+    resumed = true;
+  }
+
   const job = {
     id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
-    username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0,
+    username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0, resumed,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
   const tab = await chrome.tabs.create({ url: jobUrl(job, 0), active: true });
@@ -417,6 +431,7 @@ async function addToJob(jobId, r) {
   job.cur.likers += Number(r.likers) || 0;
   job.cur.comments += Number(r.comments) || 0;
   if (r.warning) job.warned = String(r.message || 'Instagram uyarı verdi.');
+  if (r.stopped) job.cur.stopped = true;          // uygulama kaydı reddetti: bu profil için durdurulmuş
   await setJob(job);
 }
 
@@ -428,7 +443,10 @@ function stepResult(job, error, seen) {
   const saved = (job.cur && job.cur[job.kind]) || 0;
   let note = null;
   if (error) note = error;
-  else if (!saved && seen > 0) {
+  else if (!saved && job.cur && job.cur.stopped) {
+    note = 'Uygulamada bu profil için kayıt durdurulmuş; sayfa okundu ama hiçbir şey kaydedilmedi. ' +
+      'Gönderiler sayfasındaki köprü kartında «Devam et»e basıp işi yeniden başlatın.';
+  } else if (!saved && seen > 0) {
     note = `Sayfada ${seen} ${job.kind === 'posts' ? 'gönderi' : 'kişi'} göründü ama hiçbiri kaydedilmedi. Instagram'ın gönderdiği veri tanınmadı; ` +
       'uygulamadaki teşhis kaydı bunun için tutuldu, bize bildirin.';
   } else if (!saved) {
@@ -453,6 +471,7 @@ function summarize(job) {
   for (const x of bad.slice(0, 5)) lines.push(`• ${x.shortcode ? x.shortcode + ': ' : ''}${x.note}`);
   if (bad.length > 5) lines.push(`• …ve ${bad.length - 5} gönderi daha.`);
   if (job.warned) lines.push(`Uyarı: ${job.warned}`);
+  if (job.resumed) lines.push('Not: Uygulamada bu profil için kayıt durdurulmuştu; işi başlattığınız için yeniden açıldı.');
   return lines.join('\n');
 }
 

@@ -568,7 +568,7 @@ const tr = {
     bannerTodo:   'Hiçbir şey durdurulmadı; devam edip etmemek senin kararın. Instagram\'ı telefondan normal kullan, doğrulama isterse kendin tamamla.',
     bannerMore:   'Ne yapmalıyım?',
     paused:       'Instagram uyarı verdi. {at} tarihine kadar ara vermeni öneririz; hiçbir şey durdurulmadı.',
-    stopped:      'Bu profil için kayıt durduruldu.',
+    stopped:      'Bu profil için kayıt durduruldu. Eklentiden bir iş başlatırsan kayıt kendiliğinden yeniden açılır.',
     stop:         'Durdur',
     resume:       'Devam et',
     guide:        'Nasıl kullanılır?',
