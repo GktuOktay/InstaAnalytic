@@ -10,10 +10,10 @@ export interface GuideRow { term: string; text: string; link?: GuideLink }
 
 /** Rehber resimlerinin kimlikleri. Her biri src/guide/illustrations.tsx içinde çizilir. */
 export type ArtId =
-  | 'download' | 'unzip' | 'address' | 'devmode' | 'loadUnpacked' | 'pickFolder'
+  | 'appFolder' | 'address' | 'devmode' | 'loadUnpacked' | 'pickFolder'
   | 'card' | 'pin' | 'reload' | 'popup' | 'connected'
   | 'useToggle' | 'useProfile' | 'useOpenPost' | 'useLikes' | 'useNext'
-  | 'refresh'
+  | 'updateTab' | 'updateManual'
 
 /** Resimli adım (kurulum ve kullanım). `alt` ekran okuyucu için resmin tarifi, `caption` resmin altındaki kısa yazı. */
 export interface InstallStep {
@@ -30,19 +30,15 @@ export interface InstallStep {
 
 /** Resimlerin içinde görünen yazılar: Chrome'un ve uygulamanın düğme adları. */
 export interface ArtLabels {
-  zipName: string
-  folderName: string
+  /** Uygulamanın kurulduğu klasörün adı ve içindeki kurulum dosyası. */
+  appFolder: string
+  installerFile: string
+  appFolderHint: string
+  rightFolder: string
   appTab: string
-  guideHeading: string
-  extCardTitle: string
-  extCardText: string
-  extButton: string
-  samplesTitle: string
   downloads: string
   desktop: string
   documents: string
-  doubleClick: string
-  winHint: string
   typeHere: string
   newTab: string
   enterKey: string
@@ -56,7 +52,6 @@ export interface ArtLabels {
   select: string
   cancel: string
   folderContents: string
-  notThis: string
   extName: string
   extVersion: string
   details: string
@@ -67,7 +62,9 @@ export interface ArtLabels {
   reloadOr: string
   reloadWin: string
   reloadMac: string
-  refreshHint: string
+  popupTabStatus: string
+  popupTabSettings: string
+  popupTabUpdate: string
   popupToggle: string
   popupNote: string
   popupStatus: string
@@ -81,6 +78,14 @@ export interface ArtLabels {
   popupAppUrl: string
   popupAppUrlValue: string
   popupOpenApp: string
+  popupInstalled: string
+  popupAppVersion: string
+  popupVersionValue: string
+  popupNewVersionValue: string
+  popupUpToDate: string
+  popupManual: string
+  popupManualNote: string
+  popupCheckNow: string
   settingsHeading: string
   bridgeTitle: string
   bridgeConnected: string
@@ -161,11 +166,25 @@ export interface GuideContent {
     ui: ArtLabels
     copy: { button: string; done: string; failed: string }
     stepLabel: string
-    devAlt: string
+    /** Kurulum adımlarının altındaki tek satır: klasöre ulaşamayan için zip yolu (kendiliğinden güncellenmez). */
+    zipNote: { text: string; link: GuideLink }
     troubleTitle: string
     troubleIntro: string
     trouble: GuideRow[]
-    update: { title: string; intro: string; steps: GuideStep[]; alt: string; caption: string }
+    update: {
+      title: string
+      intro: string
+      steps: GuideStep[]
+      tip: string
+      alt: string
+      caption: string
+      /** Zip kopyasından kurulmuş eklenti için bir kerelik düzeltme. */
+      fixTitle: string
+      fixIntro: string
+      fixSteps: GuideStep[]
+      fixAlt: string
+      fixCaption: string
+    }
   }
   use: {
     intro: string
@@ -332,23 +351,15 @@ const tr: GuideContent = {
       caption: 'Kırmızı şerit ve simgedeki "!": bir süre beğenen listesi açma.',
     },
     installTitle: 'Kurulum, adım adım (yaklaşık 5 dakika)',
-    installIntro: 'Her adımda neye tıklayacağın resimde renkli bir çerçeve ve numarayla gösteriliyor. Resimler Chrome\'un sadeleştirilmiş hâli; seninki biraz farklı görünebilir. Kurulum yalnızca bir kez yapılır.',
+    installIntro: 'Her adımda neye tıklayacağın resimde renkli bir çerçeve ve numarayla gösteriliyor. Resimler Chrome\'un sadeleştirilmiş hâli; seninki biraz farklı görünebilir. Eklentiyi uygulamanın kendi klasöründen yüklüyorsun. Bu yüzden kurulum yalnızca bir kez yapılır; uygulama güncellenince eklenti de kendiliğinden güncellenir.',
     install: [
       {
-        art: 'download',
-        title: 'Eklentiyi indir',
-        text: 'Bu sayfanın en altındaki Referans dosyalar bölümüne in ve "Eklentiyi indir" düğmesine bas. instaanalytic-kopru.zip adında bir dosya iner.',
-        link: { to: '#referans', label: 'Referans dosyalar' },
-        alt: 'Kullanım rehberindeki Referans dosyalar bölümü. Köprü eklentisi kartının sağındaki "Eklentiyi indir" düğmesi işaretli.',
-        caption: '"Eklentiyi indir" düğmesine bas.',
-      },
-      {
-        art: 'unzip',
-        title: 'ZIP dosyasını aç',
-        text: 'İndirilenler klasörünü aç. instaanalytic-kopru.zip dosyasına çift tıkla. Yanında instaanalytic-kopru adında bir klasör belirir.',
-        tip: 'Windows\'ta: dosyaya sağ tıkla, "Tümünü ayıkla"yı seç, sonra "Ayıkla"ya bas. Çıkan klasörü silme ve başka yere taşıma. Chrome eklentiyi o klasörden çalıştırır.',
-        alt: 'İndirilenler klasörü. instaanalytic-kopru.zip dosyasına çift tıklanıyor, yanında instaanalytic-kopru klasörü beliriyor.',
-        caption: 'Çift tıkla, yanında klasör çıksın.',
+        art: 'appFolder',
+        title: 'InstaAnalytic klasörünü bul',
+        text: 'Uygulamayı kurduğun klasörü aç. İçinde "InstaAnalytic Kur.command" (Windows\'ta "InstaAnalytic Kur.bat") dosyası olan klasör bu. Önce frontend klasörüne, sonra onun içindeki extension klasörüne gir: InstaAnalytic → frontend → extension. manifest.json dosyasını görüyorsan doğru yerdesin.',
+        tip: 'Bu klasörü silme ve taşıma. Chrome eklentiyi buradan çalıştırır. Klasörün yerini hatırlamıyorsan Finder\'da (Windows\'ta Dosya Gezgini\'nde) "InstaAnalytic Kur" diye ara.',
+        alt: 'InstaAnalytic klasörü sütunlar hâlinde açık. İlk sütunda, "InstaAnalytic Kur.command" dosyasıyla aynı yerdeki frontend klasörü işaretli. İkinci sütunda extension klasörü işaretli. Üçüncü sütunda manifest.json dosyası ve "doğru klasör" yazısı görünüyor.',
+        caption: 'InstaAnalytic → frontend → extension.',
       },
       {
         art: 'address',
@@ -376,18 +387,18 @@ const tr: GuideContent = {
       },
       {
         art: 'pickFolder',
-        title: 'instaanalytic-kopru klasörünü seç',
-        text: 'Açılan pencerede İndirilenler\'e git. instaanalytic-kopru klasörüne bir kez tıkla, sonra "Seç"e bas.',
-        tip: 'ZIP dosyasını ya da onun bulunduğu üst klasörü seçme. Doğru klasörün içinde manifest.json adında bir dosya vardır.',
-        alt: 'Klasör seçme penceresi. instaanalytic-kopru klasörü seçili ve işaretli, zip dosyasının yanında "bu değil" yazıyor. Sağ alttaki "Seç" düğmesi işaretli.',
-        caption: 'ZIP dosyasını değil, klasörü seç.',
+        title: 'extension klasörünü seç',
+        text: 'Açılan pencerede InstaAnalytic klasörüne git ve frontend klasörünü aç. İçindeki extension klasörüne bir kez tıkla, sonra "Seç"e bas. Seçtiğin klasör: InstaAnalytic/frontend/extension.',
+        tip: 'InstaAnalytic ya da frontend klasörünü seçme. Doğru klasörün içinde manifest.json adında bir dosya vardır.',
+        alt: 'Klasör seçme penceresi, InstaAnalytic › frontend açık. extension klasörü seçili ve işaretli; altında içinde manifest.json olduğu yazıyor. Sağ alttaki "Seç" düğmesi işaretli.',
+        caption: 'frontend içindeki extension klasörünü seç.',
       },
       {
         art: 'card',
         title: 'Eklentinin listede olduğunu gör',
-        text: 'Listede "InstaAnalytic Köprüsü 1.0.0" adında bir kart belirir. Kartın sağ altındaki anahtar açık olmalı.',
+        text: 'Listede "InstaAnalytic Köprüsü" adında bir kart belirir. Altında sürüm numarası yazar (ör. 2.2.0). Kartın sağ altındaki anahtar açık olmalı.',
         tip: 'Kartta kırmızı bir "Hatalar" düğmesi görürsen bir şey ters gitmiş demektir. Aşağıdaki "Kurulum çalışmadıysa" listesine bak.',
-        alt: 'Uzantılar sayfasında InstaAnalytic Köprüsü 1.0.0 kartı işaretli. Yanında, kırmızı "Hatalar" düğmesinin bir sorun anlamına geldiği gösteriliyor.',
+        alt: 'Uzantılar sayfasında InstaAnalytic Köprüsü 2.2.0 kartı işaretli. Yanında, kırmızı "Hatalar" düğmesinin bir sorun anlamına geldiği gösteriliyor.',
         caption: 'Kart göründüyse eklenti yüklendi.',
       },
       {
@@ -408,10 +419,10 @@ const tr: GuideContent = {
       {
         art: 'popup',
         title: 'Eklentiyi aç ve kaydı başlat',
-        text: 'Araç çubuğundaki eklenti simgesine tıkla. Küçük bir pencere açılır. Profil satırında kendi profilin yazmalı; yazmıyorsa "Değiştir"e bas ve seç. Sonra en üstteki "Gezinirken beğenenleri kaydet" anahtarını aç.',
+        text: 'Araç çubuğundaki eklenti simgesine tıkla. Küçük bir pencere açılır; üstünde Durum, Ayarlar ve Güncelleme sekmeleri var. Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarını aç. Sonra Ayarlar sekmesine geç: Profil satırında kendi profilin yazmalı. Yazmıyorsa "Değiştir"e bas ve seç.',
         tip: 'Eklenti kendi başına hiçbir şey okumaz. Yalnızca sen Instagram\'da gezinirken dinler. Nasıl kullanılacağı bir sonraki bölümde.',
-        alt: 'Eklenti penceresi. Araç çubuğundaki eklenti simgesi, Profil satırı ve "Gezinirken beğenenleri kaydet" anahtarı sırayla işaretli. Durum satırında yeşil nokta ve "Dinliyor" yazıyor.',
-        caption: 'Simge, profil, sonra anahtar.',
+        alt: 'Eklenti penceresi, Durum sekmesi açık. Araç çubuğundaki eklenti simgesi, "Gezinirken beğenenleri kaydet" anahtarı ve Ayarlar sekmesi sırayla işaretli. Durum satırında yeşil nokta ve "Dinliyor" yazıyor.',
+        caption: 'Simge, anahtar, sonra Ayarlar sekmesinde profil.',
       },
       {
         art: 'connected',
@@ -424,19 +435,14 @@ const tr: GuideContent = {
       },
     ],
     ui: {
-      zipName: 'instaanalytic-kopru.zip',
-      folderName: 'instaanalytic-kopru',
+      appFolder: 'InstaAnalytic',
+      installerFile: 'InstaAnalytic Kur.command',
+      appFolderHint: 'Kur dosyasının olduğu klasör',
+      rightFolder: 'doğru klasör',
       appTab: 'InstaAnalytic',
-      guideHeading: 'Referans dosyalar',
-      extCardTitle: 'Köprü eklentisi (.zip)',
-      extCardText: 'Chrome eklentisinin klasörü.',
-      extButton: 'Eklentiyi indir',
-      samplesTitle: 'Örnek ZIP dosyaları',
       downloads: 'İndirilenler',
       desktop: 'Masaüstü',
       documents: 'Belgeler',
-      doubleClick: 'çift tıkla',
-      winHint: 'Windows: sağ tık → Tümünü ayıkla',
       typeHere: 'Buraya yaz',
       newTab: 'Yeni sekme',
       enterKey: 'Enter ↵',
@@ -450,9 +456,8 @@ const tr: GuideContent = {
       select: 'Seç',
       cancel: 'İptal',
       folderContents: 'içinde: manifest.json, popup.html…',
-      notThis: 'bu değil',
       extName: 'InstaAnalytic Köprüsü',
-      extVersion: '1.0.0',
+      extVersion: '2.2.0',
       details: 'Ayrıntılar',
       remove: 'Kaldır',
       errors: 'Hatalar',
@@ -461,7 +466,9 @@ const tr: GuideContent = {
       reloadOr: 'ya da',
       reloadWin: 'Windows',
       reloadMac: 'Mac',
-      refreshHint: 'yenile',
+      popupTabStatus: 'Durum',
+      popupTabSettings: 'Ayarlar',
+      popupTabUpdate: 'Güncelleme',
       popupToggle: 'Gezinirken beğenenleri kaydet',
       popupNote: "Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda, sayfanın zaten indirdiği listeyi kaydeder.",
       popupStatus: 'Dinliyor',
@@ -475,6 +482,14 @@ const tr: GuideContent = {
       popupAppUrl: 'Uygulama adresi',
       popupAppUrlValue: 'http://localhost:3002',
       popupOpenApp: 'Uygulamayı aç',
+      popupInstalled: 'Yüklü sürüm',
+      popupAppVersion: 'Uygulamadaki sürüm',
+      popupVersionValue: '2.2.0',
+      popupNewVersionValue: '2.3.0',
+      popupUpToDate: 'Güncel',
+      popupManual: 'Yeni sürüm var, elle kurulum gerekiyor',
+      popupManualNote: 'Yeni sürüm var (2.3.0). Bu kopya kendiliğinden güncellenemiyor.',
+      popupCheckNow: 'Şimdi denetle',
       settingsHeading: 'Ayarlar',
       bridgeTitle: 'Tarayıcı köprüsü',
       bridgeConnected: 'Dinliyor',
@@ -494,14 +509,17 @@ const tr: GuideContent = {
     },
     copy: { button: 'Kopyala', done: 'Kopyalandı', failed: 'Kopyalanamadı. Elle yaz.' },
     stepLabel: 'Adım',
-    devAlt: 'Geliştiriciysen: aynı klasör depoda frontend/extension altında da duruyor. 6. adımda doğrudan onu seçebilirsin.',
+    zipNote: {
+      text: 'Klasöre ulaşamıyorsan eklentiyi zip olarak da indirebilirsin. Ama bu kopya kendiliğinden güncellenmez; yeni sürüm çıkınca bir kez kaldırıp uygulama klasöründen yüklemen gerekir.',
+      link: { to: '#referans', label: 'Zip olarak indir' },
+    },
     troubleTitle: 'Kurulum çalışmadıysa',
     troubleIntro: 'En sık karşılaşılan durumlar ve çözümleri:',
     trouble: [
       { term: '"Paketlenmemiş öğe yükle" düğmesi yok.', text: 'Geliştirici modu kapalı. Uzantılar sayfasında sağ üstteki anahtarı aç.' },
       {
         term: '"Manifest dosyası eksik veya okunamıyor" hatası',
-        text: 'Yanlış klasör seçildi. ZIP dosyasını ya da üst klasörü değil, içinde manifest.json olan instaanalytic-kopru klasörünü seç. Windows klasörü bir kat daha içine koymuş olabilir; o zaman bir kat içeri gir.',
+        text: 'Yanlış klasör seçildi. InstaAnalytic ya da frontend klasörünü değil, onun içindeki extension klasörünü seç. Doğru klasörün içinde manifest.json vardır.',
       },
       { term: 'Eklenti "Instagram sekmesini bir kez yenileyin" diyor.', text: "Instagram sekmesi eklentiden önce açılmış. Sekmeyi bir kez yenile (F5, Mac'te Cmd+R)." },
       { term: 'Eklenti penceresi "Uygulama kapalı" diyor.', text: 'InstaAnalytic şu an çalışmıyor. Uygulamayı başlat. Eklenti birkaç dakika içinde kendiliğinden bağlanır.' },
@@ -511,18 +529,43 @@ const tr: GuideContent = {
         term: 'Kart hâlâ "Eklenti henüz bağlanmadı" diyor.',
         text: 'Eklenti penceresinde anahtar açık mı, profil seçili mi? Instagram sekmesini bir kez yenile, sonra uygulama sayfasını da yenile.',
       },
+      {
+        term: 'Kartta "Eklentin güncel değil" yazıyor.',
+        text: 'Eklenti birkaç saat içinde kendini günceller. Beklemek istemezsen eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. Orada "elle kurulum gerekiyor" yazıyorsa bir alttaki satıra bak.',
+        link: { to: '#guncelle', label: 'Güncelleme' },
+      },
+      {
+        term: 'Eklenti "elle kurulum gerekiyor" diyor.',
+        text: 'Eklentiyi indirilmiş bir zip kopyasından kurmuşsun. Bu kopya kendiliğinden güncellenemez. Bunu bir kez yap: chrome://extensions sayfasında eskisini kaldır, sonra "Paketlenmemiş öğe yükle" ile InstaAnalytic/frontend/extension klasörünü seç. Sonraki güncellemeler kendiliğinden gelir.',
+        link: { to: '#guncelle', label: 'Adım adım' },
+      },
+      {
+        term: 'Eklenti "güncellendi" dedi ama kayıt olmuyor.',
+        text: "Açık Instagram sekmesi hâlâ eski sürümle çalışıyor. Sekmeyi bir kez yenile (F5, Mac'te Cmd+R).",
+      },
     ],
     update: {
       title: 'Eklentiyi güncellemek',
-      intro: 'Eklentinin yeni bir sürümü çıktıysa, kurulu olanı yenilemen gerekir. Baştan kurmana gerek yok.',
+      intro: 'Normalde yapman gereken bir şey yok. Eklenti uygulamanın klasöründen yüklendiği için uygulamayla birlikte güncellenir.',
       steps: [
-        { text: 'Bu sayfanın en altından eklentiyi yeniden indir ve ZIP dosyasını aç.', link: { to: '#referans', label: 'Referans dosyalar' } },
-        { text: 'Eski instaanalytic-kopru klasörünün içindekileri sil. Yerine yeni klasörün içindekileri koy. Klasörün adı ve yeri aynı kalsın.' },
-        { text: 'chrome://extensions sayfasını aç. "InstaAnalytic Köprüsü" kartındaki ↻ (yenile) simgesine tıkla.' },
-        { text: 'Açık Instagram sekmesini bir kez yenile.' },
+        { text: 'Uygulama güncellenince eklentinin dosyaları da güncellenir. Dosya indirmen ya da kopyalaman gerekmez.' },
+        { text: 'Eklenti birkaç saatte bir uygulamada yeni sürüm var mı diye bakar. Penceresini açtığında ve bir Instagram sayfası yüklendiğinde de bakar.' },
+        { text: 'Yeni sürüm varsa eklenti kendini yeniden yükler ve "Eklenti X sürümüne güncellendi. Açık Instagram sekmesini bir kez yenileyin." der.' },
+        { text: 'Açık Instagram sekmesini bir kez yenile. Bu kadar.' },
       ],
-      alt: 'Uzantılar sayfasında InstaAnalytic Köprüsü kartı. Kartın sağ altında, anahtarın solundaki yuvarlak ok (yenile) simgesi işaretli.',
-      caption: 'Karttaki ↻ simgesine tıkla.',
+      tip: 'Hemen bakmak istersen eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. İki sürüm aynıysa "Güncel" yazar.',
+      alt: 'Eklenti penceresi, Güncelleme sekmesi açık. Yüklü sürüm 2.2.0, Uygulamadaki sürüm 2.2.0; durum satırında yeşil nokta ve "Güncel" yazıyor. Güncelleme sekmesi ve "Şimdi denetle" düğmesi sırayla işaretli.',
+      caption: 'Güncelleme sekmesi: sürümler aynıysa "Güncel".',
+      fixTitle: 'Eklentiyi zip dosyasından kurduysan (bir kez yapılır)',
+      fixIntro: 'İndirilmiş bir zip kopyası kendiliğinden güncellenemez. Yeni sürüm çıkınca eklenti bunu fark eder: simgesinde turuncu bir "↑" belirir, Güncelleme sekmesinde "Yeni sürüm var (X). Bu kopya kendiliğinden güncellenemiyor." yazar. Uygulamadaki Tarayıcı köprüsü kartında da "Eklentin güncel değil" yazar. Şunu bir kez yap, sonraki güncellemeler kendiliğinden gelir:',
+      fixSteps: [
+        { text: 'chrome://extensions sayfasını aç. "InstaAnalytic Köprüsü" kartında "Kaldır"a bas. Kaydettiğin beğenenler uygulamada durur, silinmez. Instagram uyarısı sürüyorsa bunu yapma; önce bekleme süresi dolsun.' },
+        { text: '"Paketlenmemiş öğe yükle"ye bas ve InstaAnalytic/frontend/extension klasörünü seç (içinde manifest.json olan).', link: { to: '#kurulum-1', label: 'Kurulum adımları' } },
+        { text: 'Eklenti penceresini aç. Ayarlar sekmesinde profilini kontrol et, Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarını aç.' },
+        { text: 'Açık Instagram sekmesini bir kez yenile. İndirdiğin eski klasörü artık silebilirsin.' },
+      ],
+      fixAlt: 'Eklenti penceresi, Güncelleme sekmesi açık. Araç çubuğundaki eklenti simgesinde turuncu bir "↑" var. Durum satırında turuncu nokta ve "Yeni sürüm var, elle kurulum gerekiyor" yazıyor; altında "Bu kopya kendiliğinden güncellenemiyor." notu var. Simge ve durum satırı sırayla işaretli.',
+      fixCaption: 'Turuncu "↑": bu kopya bir kez uygulama klasöründen yeniden yüklenmeli.',
     },
   },
 
@@ -533,9 +576,9 @@ const tr: GuideContent = {
       {
         art: 'useToggle',
         title: 'Eklentiyi aç',
-        text: 'Araç çubuğundaki eklenti simgesine tıkla. "Gezinirken beğenenleri kaydet" anahtarı açık olsun, Profil satırında kendi profilin yazsın. Durum satırında yeşil nokta ve "Dinliyor" görünür.',
-        alt: 'Eklenti penceresi. "Gezinirken beğenenleri kaydet" anahtarı açık, Profil satırı ve yeşil noktalı "Dinliyor" durum satırı sırayla işaretli.',
-        caption: 'Anahtar açık, profil doğru, durum "Dinliyor".',
+        text: 'Araç çubuğundaki eklenti simgesine tıkla. Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarı açık olsun. Durum satırında yeşil nokta ve "Dinliyor" görünür. Profilin doğru mu, Ayarlar sekmesinden bakabilirsin.',
+        alt: 'Eklenti penceresi, Durum sekmesi açık. "Gezinirken beğenenleri kaydet" anahtarı, yeşil noktalı "Dinliyor" durum satırı ve Ayarlar sekmesi sırayla işaretli.',
+        caption: 'Anahtar açık, durum "Dinliyor", profil Ayarlar\'da.',
       },
       {
         art: 'useProfile',
@@ -678,7 +721,7 @@ const tr: GuideContent = {
     limits: [
       'Instagram eşiklerini açıklamaz. Buradaki sayılar tahmindir.',
       'Hiçbir ayar "hesabım kısıtlanmaz" garantisi vermez. Ayarlar sadece riski düşürür.',
-      'Eklenti Instagram adreslerine bağlı değil. Ama sayfanın indirdiği verinin biçimi çok değişirse listeyi tanıyamayabilir; o zaman eklentinin güncellenmesi gerekir.',
+      'Eklenti Instagram adreslerine bağlı değil. Ama sayfanın indirdiği verinin biçimi çok değişirse listeyi tanıyamayabilir; o zaman eklentinin yeni bir sürümü gerekir. Uygulamayı güncellediğinde eklenti de kendiliğinden güncellenir.',
       'Uygulamayı internete açma. Yalnızca kendi bilgisayarında çalıştır.',
     ],
   },
@@ -708,11 +751,18 @@ const tr: GuideContent = {
         link: { to: '#uyari', label: 'Ayrıntı' },
       },
       {
-        term: 'Eklentiyi güncelledim ama eski hâli çalışıyor.',
-        text: 'chrome://extensions sayfasında InstaAnalytic Köprüsü kartındaki ↻ simgesine tıkla, sonra Instagram sekmesini yenile.',
+        term: 'Eklentinin yeni sürümü gelmedi.',
+        text: 'Eklenti birkaç saatte bir bakar. Hemen bakmak için eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. "Elle kurulum gerekiyor" yazıyorsa eklentiyi bir kez uygulama klasöründen yeniden yükle.',
         link: { to: '#guncelle', label: 'Güncelleme' },
       },
-      { term: 'Eklentinin klasörünü sildim.', text: 'Chrome eklentiyi o klasörden çalıştırır. Eklentiyi yeniden indir, aç ve "Paketlenmemiş öğe yükle" ile tekrar seç.' },
+      {
+        term: 'Eklenti "güncellendi" dedi ama kayıt olmuyor.',
+        text: 'Açık Instagram sekmesini bir kez yenile. Güncellemeden önce açılmış sekme eski sürümle kalır.',
+      },
+      {
+        term: 'InstaAnalytic klasörünü başka yere taşıdım.',
+        text: 'Chrome eklentiyi o klasörden çalıştırır. chrome://extensions sayfasında eklentiyi kaldır, sonra "Paketlenmemiş öğe yükle" ile yeni yerdeki InstaAnalytic/frontend/extension klasörünü seç.',
+      },
       { term: 'Hayalet görünen biri aslında aktif.', text: 'Hesap kısa süre kapalı kalmış olabilir. Takipten çıkmadan önce profiline kendin bak.' },
       { term: 'Bütün verimi silmek istiyorum.', text: 'Ayarlar sayfasında profili seç ve "Tüm verimi sil"e bas. Geri alınamaz.' },
     ],
@@ -721,9 +771,9 @@ const tr: GuideContent = {
   files: {
     intro: 'Kurulumda ve denemede işine yarayacak dosyalar. Hepsi bu sayfada, bilgisayarında hazırlanır.',
     ext: {
-      title: 'Köprü eklentisi (.zip)',
-      text: 'Chrome eklentisinin klasörü. İndir, aç, Chrome\'a "Paketlenmemiş öğe" olarak yükle.',
-      button: 'Eklentiyi indir',
+      title: 'Köprü eklentisi, zip olarak (yedek yol)',
+      text: 'Klasöre ulaşamıyorsan: zip olarak indir. Ama bu kopya kendiliğinden güncellenmez. Asıl yol, eklentiyi InstaAnalytic/frontend/extension klasöründen yüklemek; o zaman güncellemeler kendiliğinden gelir.',
+      button: 'Zip olarak indir',
       building: 'Hazırlanıyor…',
       unavailable: 'Eklenti dosyaları bu kurulumda bulunamadı. Uygulamayı güncelleyip sayfayı yenile.',
       error: 'Eklenti paketlenemedi. Sayfayı yenileyip tekrar dene.',
@@ -769,15 +819,15 @@ const tr: GuideContent = {
       {
         title: '3. Köprü eklentisini kur (isteğe bağlı)',
         items: [
-          'Rehberdeki Referans dosyalar bölümünden eklentiyi indir (instaanalytic-kopru.zip)',
-          'ZIP\'e çift tıkla (Windows: sağ tık → Tümünü ayıkla), çıkan klasörü silme',
+          'InstaAnalytic klasörünü bul ("InstaAnalytic Kur.command" ya da "InstaAnalytic Kur.bat" dosyasının olduğu klasör)',
+          'İçinde frontend → extension klasörüne bak: manifest.json orada, klasörü silme ve taşıma',
           'Adres çubuğuna chrome://extensions yaz (tıklanmaz, elle yazılır)',
           'Sağ üstte Geliştirici modu → aç',
-          'Paketlenmemiş öğe yükle → instaanalytic-kopru klasörünü seç (içinde manifest.json olan)',
-          'Listede "InstaAnalytic Köprüsü 1.0.0" kartı var, "Hatalar" düğmesi yok',
+          'Paketlenmemiş öğe yükle → InstaAnalytic/frontend/extension klasörünü seç (içinde manifest.json olan)',
+          'Listede "InstaAnalytic Köprüsü" kartı var, "Hatalar" düğmesi yok',
           'Yapboz parçası → InstaAnalytic Köprüsü yanındaki raptiye',
           'Açık Instagram sekmesini bir kez yenile',
-          'Eklenti penceresinde profilini kontrol et, "Gezinirken beğenenleri kaydet"i aç',
+          'Eklenti penceresinde Durum sekmesinde "Gezinirken beğenenleri kaydet"i aç, Ayarlar sekmesinde profilini kontrol et',
           'Ayarlar sayfasında yeşil nokta ve "Dinliyor" görünüyor',
         ],
       },
@@ -802,12 +852,12 @@ const tr: GuideContent = {
         ],
       },
       {
-        title: 'Eklentiyi güncellerken',
+        title: 'Eklenti güncellemeleri',
         items: [
-          'Eklentiyi rehberden yeniden indir ve ZIP\'i aç',
-          'Eski instaanalytic-kopru klasörünün içindekileri yenileriyle değiştir',
-          'chrome://extensions → InstaAnalytic Köprüsü kartında ↻ (yenile)',
-          'Instagram sekmesini bir kez yenile',
+          'Yapman gereken bir şey yok: uygulama güncellenince eklenti kendini günceller',
+          '"Eklenti X sürümüne güncellendi" yazınca açık Instagram sekmesini bir kez yenile',
+          'Zip kopyasından kurduysan ve "elle kurulum gerekiyor" yazıyorsa (bir kez): chrome://extensions → eski kartta Kaldır',
+          'Sonra Paketlenmemiş öğe yükle → InstaAnalytic/frontend/extension klasörünü seç',
         ],
       },
       {
@@ -942,23 +992,15 @@ const en: GuideContent = {
       caption: 'Red banner and a "!" on the icon: stop opening likers lists for a while.',
     },
     installTitle: 'Installing, step by step (about 5 minutes)',
-    installIntro: 'Each picture marks what to click with a coloured frame and a number. The pictures are simplified versions of Chrome; yours may look a little different. You only do this once.',
+    installIntro: 'Each picture marks what to click with a coloured frame and a number. The pictures are simplified versions of Chrome; yours may look a little different. You load the extension from the app\'s own folder. So you only do this once; when the app is updated, the extension updates itself too.',
     install: [
       {
-        art: 'download',
-        title: 'Download the extension',
-        text: 'Scroll to Reference files at the bottom of this page and press "Download extension". A file named instaanalytic-kopru.zip is downloaded.',
-        link: { to: '#referans', label: 'Reference files' },
-        alt: 'The Reference files section of the guide. The "Download extension" button on the right of the bridge extension card is marked.',
-        caption: 'Press "Download extension".',
-      },
-      {
-        art: 'unzip',
-        title: 'Unzip the file',
-        text: 'Open your Downloads folder. Double-click instaanalytic-kopru.zip. A folder named instaanalytic-kopru appears next to it.',
-        tip: 'On Windows: right-click the file, choose "Extract All", then press "Extract". Do not delete or move the new folder. Chrome runs the extension from it.',
-        alt: 'The Downloads folder. instaanalytic-kopru.zip is double-clicked and an instaanalytic-kopru folder appears next to it.',
-        caption: 'Double-click it and a folder appears.',
+        art: 'appFolder',
+        title: 'Find the InstaAnalytic folder',
+        text: 'Open the folder where you installed the app. It is the one with the "InstaAnalytic Kur.command" file ("InstaAnalytic Kur.bat" on Windows). Go into the frontend folder, then into the extension folder inside it: InstaAnalytic → frontend → extension. If you see a manifest.json file, you are in the right place.',
+        tip: 'Do not delete or move this folder. Chrome runs the extension from it. If you do not remember where it is, search for "InstaAnalytic Kur" in Finder (File Explorer on Windows).',
+        alt: 'The InstaAnalytic folder open in columns. In the first column, the frontend folder next to the "InstaAnalytic Kur.command" file is marked. In the second column, the extension folder is marked. The third column shows the manifest.json file and the words "right folder".',
+        caption: 'InstaAnalytic → frontend → extension.',
       },
       {
         art: 'address',
@@ -986,18 +1028,18 @@ const en: GuideContent = {
       },
       {
         art: 'pickFolder',
-        title: 'Pick the instaanalytic-kopru folder',
-        text: 'In the window that opens, go to Downloads. Click the instaanalytic-kopru folder once, then press "Select".',
-        tip: 'Do not pick the ZIP file or the folder above it. The right folder has a file called manifest.json inside.',
-        alt: 'A folder picker. The instaanalytic-kopru folder is selected and marked; the zip file is labelled "not this". The "Select" button at the bottom right is marked.',
-        caption: 'Pick the folder, not the ZIP.',
+        title: 'Pick the extension folder',
+        text: 'In the window that opens, go to the InstaAnalytic folder and open the frontend folder. Click the extension folder inside it once, then press "Select". The folder you pick is InstaAnalytic/frontend/extension.',
+        tip: 'Do not pick the InstaAnalytic or the frontend folder. The right folder has a file called manifest.json inside.',
+        alt: 'A folder picker with InstaAnalytic › frontend open. The extension folder is selected and marked; below it, it says manifest.json is inside. The "Select" button at the bottom right is marked.',
+        caption: 'Pick the extension folder inside frontend.',
       },
       {
         art: 'card',
         title: 'Check that it is in the list',
-        text: 'A card named "InstaAnalytic Köprüsü 1.0.0" appears in the list. The switch at the bottom right of the card should be on.',
+        text: 'A card named "InstaAnalytic Köprüsü" appears in the list, with a version number under it (for example 2.2.0). The switch at the bottom right of the card should be on.',
         tip: 'If the card shows a red "Errors" button, something went wrong. See "If the install did not work" below.',
-        alt: 'The InstaAnalytic Köprüsü 1.0.0 card on the Extensions page is marked. Next to it, a red "Errors" button is shown as a sign of trouble.',
+        alt: 'The InstaAnalytic Köprüsü 2.2.0 card on the Extensions page is marked. Next to it, a red "Errors" button is shown as a sign of trouble.',
         caption: 'If the card is there, it is installed.',
       },
       {
@@ -1018,10 +1060,10 @@ const en: GuideContent = {
       {
         art: 'popup',
         title: 'Open the extension and start saving',
-        text: 'Click the extension icon in the toolbar. A small window opens. The Profil row should show your profile; if not, press "Değiştir" (change) and pick it. Then turn on the "Gezinirken beğenenleri kaydet" (save likers while browsing) switch at the top.',
+        text: 'Click the extension icon in the toolbar. A small window opens with three tabs at the top: Durum (status), Ayarlar (settings) and Güncelleme (update). On the Durum tab, turn on the "Gezinirken beğenenleri kaydet" (save likers while browsing) switch. Then go to the Ayarlar tab: the Profil row should show your profile. If not, press "Değiştir" (change) and pick it.',
         tip: 'The extension reads nothing on its own. It only listens while you browse Instagram. The next section shows how to use it.',
-        alt: 'The extension popup. The extension icon in the toolbar, the Profil row and the "Gezinirken beğenenleri kaydet" switch are marked in order. The status line shows a green dot and "Dinliyor".',
-        caption: 'Icon, profile, then the switch.',
+        alt: 'The extension popup with the Durum tab open. The extension icon in the toolbar, the "Gezinirken beğenenleri kaydet" switch and the Ayarlar tab are marked in order. The status line shows a green dot and "Dinliyor".',
+        caption: 'Icon, switch, then your profile on the Ayarlar tab.',
       },
       {
         art: 'connected',
@@ -1034,19 +1076,14 @@ const en: GuideContent = {
       },
     ],
     ui: {
-      zipName: 'instaanalytic-kopru.zip',
-      folderName: 'instaanalytic-kopru',
+      appFolder: 'InstaAnalytic',
+      installerFile: 'InstaAnalytic Kur.command',
+      appFolderHint: 'The folder with the Kur file',
+      rightFolder: 'right folder',
       appTab: 'InstaAnalytic',
-      guideHeading: 'Reference files',
-      extCardTitle: 'Bridge extension (.zip)',
-      extCardText: 'The Chrome extension folder.',
-      extButton: 'Download extension',
-      samplesTitle: 'Sample ZIP files',
       downloads: 'Downloads',
       desktop: 'Desktop',
       documents: 'Documents',
-      doubleClick: 'double-click',
-      winHint: 'Windows: right-click → Extract All',
       typeHere: 'Type here',
       newTab: 'New tab',
       enterKey: 'Enter ↵',
@@ -1060,9 +1097,8 @@ const en: GuideContent = {
       select: 'Select',
       cancel: 'Cancel',
       folderContents: 'inside: manifest.json, popup.html…',
-      notThis: 'not this',
       extName: 'InstaAnalytic Köprüsü',
-      extVersion: '1.0.0',
+      extVersion: '2.2.0',
       details: 'Details',
       remove: 'Remove',
       errors: 'Errors',
@@ -1071,8 +1107,10 @@ const en: GuideContent = {
       reloadOr: 'or',
       reloadWin: 'Windows',
       reloadMac: 'Mac',
-      refreshHint: 'reload',
       // Eklenti penceresi yalnızca Türkçe; resim gerçeğiyle aynı kalsın.
+      popupTabStatus: 'Durum',
+      popupTabSettings: 'Ayarlar',
+      popupTabUpdate: 'Güncelleme',
       popupToggle: 'Gezinirken beğenenleri kaydet',
       popupNote: "Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda, sayfanın zaten indirdiği listeyi kaydeder.",
       popupStatus: 'Dinliyor',
@@ -1086,6 +1124,14 @@ const en: GuideContent = {
       popupAppUrl: 'Uygulama adresi',
       popupAppUrlValue: 'http://localhost:3002',
       popupOpenApp: 'Uygulamayı aç',
+      popupInstalled: 'Yüklü sürüm',
+      popupAppVersion: 'Uygulamadaki sürüm',
+      popupVersionValue: '2.2.0',
+      popupNewVersionValue: '2.3.0',
+      popupUpToDate: 'Güncel',
+      popupManual: 'Yeni sürüm var, elle kurulum gerekiyor',
+      popupManualNote: 'Yeni sürüm var (2.3.0). Bu kopya kendiliğinden güncellenemiyor.',
+      popupCheckNow: 'Şimdi denetle',
       settingsHeading: 'Settings',
       bridgeTitle: 'Browser bridge',
       bridgeConnected: 'Listening',
@@ -1105,32 +1151,60 @@ const en: GuideContent = {
     },
     copy: { button: 'Copy', done: 'Copied', failed: 'Could not copy. Type it instead.' },
     stepLabel: 'Step',
-    devAlt: 'For developers: the same folder is in the repo at frontend/extension. You can pick it directly in step 6.',
+    zipNote: {
+      text: 'If you cannot get to the folder, you can also download the extension as a zip. But that copy does not update itself; when a new version comes out you will have to remove it once and load it from the app folder.',
+      link: { to: '#referans', label: 'Download as zip' },
+    },
     troubleTitle: 'If the install did not work',
     troubleIntro: 'The most common cases and how to fix them:',
     trouble: [
       { term: 'There is no "Load unpacked" button.', text: 'Developer mode is off. Turn on the switch at the top right of the Extensions page.' },
       {
         term: '"Manifest file is missing or unreadable" error',
-        text: 'The wrong folder was picked. Pick the instaanalytic-kopru folder that has manifest.json inside, not the ZIP and not the folder above it. Windows may put it one level deeper; if so, go one folder in.',
+        text: 'The wrong folder was picked. Pick the extension folder, not the InstaAnalytic or the frontend folder above it. The right folder has manifest.json inside.',
       },
       { term: 'The extension says to reload the Instagram tab.', text: 'The Instagram tab was opened before the install. Reload it once (F5, Cmd+R on a Mac).' },
       { term: 'The popup says "Uygulama kapalı" (app is closed).', text: 'InstaAnalytic is not running. Start the app. The extension reconnects on its own within a few minutes.' },
       { term: 'The extension card has a red "Errors" button.', text: 'Press it and read the message. Usually the wrong folder was picked. Remove the extension and load the right folder again.' },
       { term: 'The extension icon is not in the toolbar.', text: 'Click the puzzle-piece icon and press the pin next to InstaAnalytic Köprüsü.' },
       { term: 'The card still says the extension has not connected.', text: 'Is the switch in the popup on and a profile picked? Reload the Instagram tab once, then reload the app page too.' },
+      {
+        term: 'The card says "Eklentin güncel değil" (your extension is out of date).',
+        text: 'The extension updates itself within a few hours. If you do not want to wait, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, see the next row.',
+        link: { to: '#guncelle', label: 'Updating' },
+      },
+      {
+        term: 'The extension says "elle kurulum gerekiyor" (manual install needed).',
+        text: 'You installed it from a downloaded zip copy. That copy cannot update itself. Do this once: remove the old one on chrome://extensions, then use "Load unpacked" to pick the InstaAnalytic/frontend/extension folder. Later updates then arrive on their own.',
+        link: { to: '#guncelle', label: 'Step by step' },
+      },
+      {
+        term: 'It said it was updated, but nothing is saved.',
+        text: 'The open Instagram tab is still running the old version. Reload the tab once (F5, Cmd+R on a Mac).',
+      },
     ],
     update: {
       title: 'Updating the extension',
-      intro: 'When there is a new version of the extension, the installed one has to be refreshed. You do not need to install it from scratch.',
+      intro: 'Normally there is nothing to do. The extension is loaded from the app\'s folder, so it is updated together with the app.',
       steps: [
-        { text: 'Download the extension again from the bottom of this page and unzip it.', link: { to: '#referans', label: 'Reference files' } },
-        { text: 'Delete what is inside the old instaanalytic-kopru folder. Put the contents of the new folder in its place. Keep the folder name and location the same.' },
-        { text: 'Open chrome://extensions. Click the ↻ (reload) icon on the "InstaAnalytic Köprüsü" card.' },
-        { text: 'Reload the open Instagram tab once.' },
+        { text: 'When the app is updated, the extension\'s files are updated too. You do not need to download or copy anything.' },
+        { text: 'Every few hours the extension checks the app for a newer version. It also checks when you open its popup and when an Instagram page loads.' },
+        { text: 'If there is a newer version, the extension reloads itself and says "Eklenti X sürümüne güncellendi. Açık Instagram sekmesini bir kez yenileyin." (updated to version X, reload the open Instagram tab once).' },
+        { text: 'Reload the open Instagram tab once. That is all.' },
       ],
-      alt: 'The InstaAnalytic Köprüsü card on the Extensions page. The round arrow (reload) icon at the bottom right of the card, left of the switch, is marked.',
-      caption: 'Click the ↻ icon on the card.',
+      tip: 'To check right away, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If both versions match, it says "Güncel" (up to date).',
+      alt: 'The extension popup with the Güncelleme tab open. Yüklü sürüm (installed) 2.2.0, Uygulamadaki sürüm (in the app) 2.2.0; the status line shows a green dot and "Güncel". The Güncelleme tab and the "Şimdi denetle" button are marked in order.',
+      caption: 'The Güncelleme tab: matching versions mean "Güncel".',
+      fixTitle: 'If you installed it from a zip file (done once)',
+      fixIntro: 'A downloaded zip copy cannot update itself. When a new version comes out, the extension notices: an orange "↑" appears on its icon, and the Güncelleme tab says "Yeni sürüm var (X). Bu kopya kendiliğinden güncellenemiyor." (a new version exists; this copy cannot update itself). The Browser bridge card in the app also says your extension is out of date. Do this once, and later updates arrive on their own:',
+      fixSteps: [
+        { text: 'Open chrome://extensions. On the "InstaAnalytic Köprüsü" card, press "Remove". The likers you saved stay in the app; nothing is deleted. Do not do this while an Instagram warning is active; wait until it is over.' },
+        { text: 'Press "Load unpacked" and pick the InstaAnalytic/frontend/extension folder (the one with manifest.json).', link: { to: '#kurulum-1', label: 'Install steps' } },
+        { text: 'Open the popup. Check your profile on the Ayarlar tab and turn on "Gezinirken beğenenleri kaydet" on the Durum tab.' },
+        { text: 'Reload the open Instagram tab once. You can delete the old downloaded folder now.' },
+      ],
+      fixAlt: 'The extension popup with the Güncelleme tab open. The extension icon in the toolbar has an orange "↑". The status line shows an orange dot and "Yeni sürüm var, elle kurulum gerekiyor", with the note "Bu kopya kendiliğinden güncellenemiyor." under it. The icon and the status line are marked in order.',
+      fixCaption: 'Orange "↑": load this copy once more from the app folder.',
     },
   },
 
@@ -1141,9 +1215,9 @@ const en: GuideContent = {
       {
         art: 'useToggle',
         title: 'Turn the extension on',
-        text: 'Click the extension icon in the toolbar. The "Gezinirken beğenenleri kaydet" (save likers while browsing) switch should be on and the Profil row should show your profile. The status line shows a green dot and "Dinliyor" (listening).',
-        alt: 'The extension popup. The "Gezinirken beğenenleri kaydet" switch is on; the switch, the Profil row and the status line with a green dot and "Dinliyor" are marked in order.',
-        caption: 'Switch on, right profile, status "Dinliyor".',
+        text: 'Click the extension icon in the toolbar. On the Durum tab, the "Gezinirken beğenenleri kaydet" (save likers while browsing) switch should be on. The status line shows a green dot and "Dinliyor" (listening). You can check your profile on the Ayarlar tab.',
+        alt: 'The extension popup with the Durum tab open. The "Gezinirken beğenenleri kaydet" switch, the status line with a green dot and "Dinliyor", and the Ayarlar tab are marked in order.',
+        caption: 'Switch on, status "Dinliyor", profile on Ayarlar.',
       },
       {
         art: 'useProfile',
@@ -1266,7 +1340,7 @@ const en: GuideContent = {
     limits: [
       'Instagram does not publish its thresholds. The numbers here are estimates.',
       'No setting guarantees your account will not be restricted. Settings only lower the risk.',
-      'The extension does not depend on Instagram\'s addresses. But if the format of the data the page downloads changes a lot, it may not recognise the list; then the extension needs an update.',
+      'The extension does not depend on Instagram\'s addresses. But if the format of the data the page downloads changes a lot, it may not recognise the list; then a new version of the extension is needed. When you update the app, the extension updates itself too.',
       'Do not expose the app to the internet. Run it only on your own computer.',
     ],
   },
@@ -1296,11 +1370,18 @@ const en: GuideContent = {
         link: { to: '#uyari', label: 'Details' },
       },
       {
-        term: 'I updated the extension but the old version still runs.',
-        text: 'On chrome://extensions, click the ↻ icon on the InstaAnalytic Köprüsü card, then reload the Instagram tab.',
+        term: 'The new version of the extension has not arrived.',
+        text: 'The extension checks every few hours. To check now, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, load the extension once from the app folder.',
         link: { to: '#guncelle', label: 'Updating' },
       },
-      { term: "I deleted the extension's folder.", text: 'Chrome runs the extension from that folder. Download it again, unzip it and pick it with "Load unpacked".' },
+      {
+        term: 'It said it was updated, but nothing is saved.',
+        text: 'Reload the open Instagram tab once. A tab opened before the update keeps the old version.',
+      },
+      {
+        term: 'I moved the InstaAnalytic folder.',
+        text: 'Chrome runs the extension from that folder. Remove the extension on chrome://extensions, then use "Load unpacked" to pick the InstaAnalytic/frontend/extension folder in its new place.',
+      },
       { term: 'Someone marked as a ghost is actually active.', text: 'The account may have been off for a short time. Check their profile yourself before unfollowing.' },
       { term: 'I want to delete all my data.', text: 'On the Settings page, pick the profile and press "Delete all my data". This cannot be undone.' },
     ],
@@ -1309,9 +1390,9 @@ const en: GuideContent = {
   files: {
     intro: 'Files that help with setup and trying things out. All of them are prepared on your computer, in this page.',
     ext: {
-      title: 'Bridge extension (.zip)',
-      text: 'The Chrome extension folder. Download, unzip, and load it into Chrome as an unpacked extension.',
-      button: 'Download extension',
+      title: 'Bridge extension as a zip (fallback)',
+      text: 'If you cannot get to the folder: download it as a zip. But that copy does not update itself. The main way is to load the extension from the InstaAnalytic/frontend/extension folder; then updates arrive on their own.',
+      button: 'Download as zip',
       building: 'Preparing…',
       unavailable: 'The extension files were not found in this install. Update the app and reload the page.',
       error: 'Could not package the extension. Reload the page and try again.',
@@ -1357,15 +1438,15 @@ const en: GuideContent = {
       {
         title: '3. Install the bridge extension (optional)',
         items: [
-          'Download the extension from Reference files in the guide (instaanalytic-kopru.zip)',
-          'Double-click the ZIP (Windows: right-click → Extract All) and keep the new folder',
+          'Find the InstaAnalytic folder (the one with "InstaAnalytic Kur.command" or "InstaAnalytic Kur.bat")',
+          'Look inside frontend → extension: manifest.json is there; do not delete or move the folder',
           'Type chrome://extensions in the address bar (it cannot be clicked)',
           'Top right: turn on Developer mode',
-          'Load unpacked → pick the instaanalytic-kopru folder (the one with manifest.json)',
-          'The "InstaAnalytic Köprüsü 1.0.0" card is in the list, with no "Errors" button',
+          'Load unpacked → pick the InstaAnalytic/frontend/extension folder (the one with manifest.json)',
+          'The "InstaAnalytic Köprüsü" card is in the list, with no "Errors" button',
           'Puzzle piece → pin next to InstaAnalytic Köprüsü',
           'Reload the open Instagram tab once',
-          'In the popup, check your profile and turn on "Gezinirken beğenenleri kaydet"',
+          'In the popup, turn on "Gezinirken beğenenleri kaydet" on the Durum tab and check your profile on the Ayarlar tab',
           'Settings shows a green dot and "Listening"',
         ],
       },
@@ -1390,12 +1471,12 @@ const en: GuideContent = {
         ],
       },
       {
-        title: 'When updating the extension',
+        title: 'Extension updates',
         items: [
-          'Download the extension again from the guide and unzip it',
-          'Replace what is inside the old instaanalytic-kopru folder with the new files',
-          'chrome://extensions → ↻ (reload) on the InstaAnalytic Köprüsü card',
-          'Reload the Instagram tab once',
+          'Nothing to do: when the app is updated, the extension updates itself',
+          'When it says "Eklenti X sürümüne güncellendi", reload the open Instagram tab once',
+          'If you installed from a zip copy and it says manual install is needed (once): chrome://extensions → Remove on the old card',
+          'Then Load unpacked → pick the InstaAnalytic/frontend/extension folder',
         ],
       },
       {

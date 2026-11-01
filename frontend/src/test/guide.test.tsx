@@ -50,7 +50,7 @@ describe('GuidePage', () => {
     const followers = screen.getByRole('button', { name: /followers_1\.json/ })
     expect(screen.getByRole('button', { name: /following\.json/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Kontrol listesini indir/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Eklentiyi indir/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Zip olarak indir/ })).toBeInTheDocument()
 
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     await user.click(followers)
@@ -66,6 +66,7 @@ describe('GuidePage', () => {
     for (const s of C.bridge.install) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
     for (const s of C.use.steps) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: C.bridge.update.alt })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: C.bridge.update.fixAlt })).toBeInTheDocument()
     expect(screen.getByRole('note', { name: C.bridge.warning.title })).toBeInTheDocument()
   })
 
@@ -74,9 +75,13 @@ describe('GuidePage', () => {
     const B = guideContent('tr').bridge
     // Her adımın bir resmi var ve resmin ekran okuyucu için bir adı var
     const arts = B.install.map(s => s.art)
-    for (const id of ['download', 'unzip', 'address', 'devmode', 'loadUnpacked', 'pickFolder', 'card', 'pin', 'reload', 'popup', 'connected'] as const) {
+    for (const id of ['appFolder', 'address', 'devmode', 'loadUnpacked', 'pickFolder', 'card', 'pin', 'reload', 'popup', 'connected'] as const) {
       expect(arts).toContain(id)
     }
+    // Asıl yolda zip indirme ve açma adımı yok
+    expect(arts).not.toContain('download' as never)
+    expect(arts).not.toContain('unzip' as never)
+    expect(arts[0]).toBe('appFolder')
     B.install.forEach((s, i) => {
       const img = screen.getByRole('img', { name: s.alt })
       expect(img.tagName.toLowerCase()).toBe('svg')
@@ -87,7 +92,36 @@ describe('GuidePage', () => {
     // Kurulum sorunları listesi
     expect(screen.getByRole('heading', { level: 3, name: B.troubleTitle })).toBeInTheDocument()
     expect(screen.getByText(/Manifest dosyası eksik/)).toBeInTheDocument()
-    expect(screen.getByText(/frontend\/extension/)).toBeInTheDocument()
+  })
+
+  it('installs from the app folder: InstaAnalytic → frontend → extension', async () => {
+    const { container } = await renderGuide()
+    for (const lang of ['tr', 'en']) {
+      const B = guideContent(lang).bridge
+      const first = B.install[0]
+      expect(first.art).toBe('appFolder')
+      expect(first.text).toMatch(/InstaAnalytic Kur\.command/)
+      expect(first.text).toMatch(/frontend → extension/)
+      expect(first.text).toMatch(/manifest\.json/)
+      const pick = B.install.find(s => s.art === 'pickFolder')!
+      expect(pick.text).toMatch(/InstaAnalytic\/frontend\/extension/)
+      expect(pick.tip).toMatch(/manifest\.json/)
+      // Kurulum adımlarında zip indirme ya da açma yok
+      for (const s of B.install) expect(`${s.title} ${s.text} ${s.tip ?? ''}`).not.toMatch(/\.zip|unzip|ZIP dosyasını aç|ayıkla|Extract/i)
+    }
+    const C = guideContent('tr')
+    const section = container.querySelector(`section#${SECTION_ANCHOR.bridge}`) as HTMLElement
+    const folder = within(section).getByRole('img', { name: C.bridge.install[0].alt })
+    expect(folder).toHaveTextContent('frontend')
+    expect(folder).toHaveTextContent('extension')
+    expect(folder).toHaveTextContent('manifest.json')
+    expect(folder).toHaveTextContent('InstaAnalytic Kur.command')
+    const picker = within(section).getByRole('img', { name: C.bridge.install.find(s => s.art === 'pickFolder')!.alt })
+    expect(picker).toHaveTextContent('InstaAnalytic › frontend')
+    expect(picker).toHaveTextContent('extension')
+    // Zip yalnızca ikinci planda, kendiliğinden güncellenmediği söylenerek
+    expect(section).toHaveTextContent(C.bridge.zipNote.text)
+    expect(C.bridge.zipNote.text).toMatch(/kendiliğinden güncellenmez/)
   })
 
   it('copies chrome://extensions, which cannot be opened as a link', async () => {
@@ -125,6 +159,10 @@ describe('GuidePage', () => {
     expect(svg).toHaveTextContent('Bugün')
     expect(svg).toHaveTextContent('Son kayıt')
     expect(svg).toHaveTextContent('Uygulamayı aç')
+    // Sekmeler
+    expect(svg).toHaveTextContent('Durum')
+    expect(svg).toHaveTextContent('Ayarlar')
+    expect(svg).toHaveTextContent('Güncelleme')
     expect(svg).not.toHaveTextContent('Şimdi dene')
     const connected = B.install.find(s => s.art === 'connected')!
     expect(screen.getByRole('img', { name: connected.alt })).toHaveTextContent('Dinliyor')
@@ -153,17 +191,42 @@ describe('GuidePage', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('explains how to update an installed extension', async () => {
+  it('explains that the extension updates itself, with the Güncelleme tab and the one-time zip fix', async () => {
     const { container } = await renderGuide()
     const U = guideContent('tr').bridge.update
     const block = container.querySelector('#guncelle') as HTMLElement
     expect(block).not.toBeNull()
     expect(screen.getByRole('heading', { level: 3, name: U.title })).toBeInTheDocument()
-    expect(U.steps.length).toBeGreaterThanOrEqual(3)
-    expect(block.querySelectorAll('ol > li')).toHaveLength(U.steps.length)
-    expect(block).toHaveTextContent('↻')
-    expect(block).toHaveTextContent(/Instagram sekmesini/)
-    expect(screen.getByRole('img', { name: U.alt })).toBeInTheDocument()
+    expect(U.intro).toMatch(/yapman gereken bir şey yok/)
+    expect(block.querySelectorAll('ol > li')).toHaveLength(U.steps.length + U.fixSteps.length)
+    expect(block).toHaveTextContent(/Instagram sekmesini bir kez yenile/)
+    expect(block).toHaveTextContent('Eklenti X sürümüne güncellendi')
+    // Güncelleme sekmesinin resmi, erişilebilir adıyla
+    const tab = within(block).getByRole('img', { name: U.alt })
+    expect(tab.tagName.toLowerCase()).toBe('svg')
+    expect(tab).toHaveTextContent('Güncelleme')
+    expect(tab).toHaveTextContent('Yüklü sürüm')
+    expect(tab).toHaveTextContent('Uygulamadaki sürüm')
+    expect(tab).toHaveTextContent('Güncel')
+    expect(tab).toHaveTextContent('Şimdi denetle')
+    expect(tab.closest('figure')?.querySelector('figcaption')?.textContent).toBe(U.caption)
+    // Zip kopyası için bir kerelik düzeltme
+    expect(within(block).getByRole('heading', { level: 4, name: U.fixTitle })).toBeInTheDocument()
+    expect(U.fixIntro).toMatch(/kendiliğinden güncellenemez/)
+    expect(U.fixSteps.some(s => /Kaldır/.test(s.text))).toBe(true)
+    expect(U.fixSteps.some(s => /InstaAnalytic\/frontend\/extension/.test(s.text))).toBe(true)
+    const manual = within(block).getByRole('img', { name: U.fixAlt })
+    expect(manual).toHaveTextContent('elle kurulum gerekiyor')
+    expect(manual).toHaveTextContent('↑')
+  })
+
+  it('lists the update problems in troubleshooting', async () => {
+    const { container } = await renderGuide()
+    const section = container.querySelector(`section#${SECTION_ANCHOR.bridge}`) as HTMLElement
+    const table = within(section).getByRole('table', { name: guideContent('tr').bridge.troubleTitle })
+    expect(within(table).getByRole('rowheader', { name: /elle kurulum gerekiyor/ })).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: /güncellendi.*kayıt olmuyor/ })).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: /Eklentin güncel değil/ })).toBeInTheDocument()
   })
 
   it('shows the short ZIP export path', async () => {
@@ -189,7 +252,8 @@ describe('guide content', () => {
     for (const lang of ['tr', 'en']) {
       const C = guideContent(lang)
       const all = JSON.stringify(C) + checklistMarkdown(C)
-      expect(all).not.toMatch(/Şimdi dene|Try now/)
+      // Eski "Şimdi dene" düğmesi; yeni Güncelleme sekmesindeki "Şimdi denetle" ayrı bir şey
+      expect(all).not.toMatch(/Şimdi dene(?!tle)|Try now/)
       expect(all).not.toMatch(/25–80|25-80/)
       expect(all).not.toMatch(/günde 12|12 posts a day|12, 20/i)
       expect(all).not.toMatch(/bilgisayar(ın)? başında|at the computer/i)
@@ -199,6 +263,23 @@ describe('guide content', () => {
     }
   })
 
+  it('never tells the user to re-download or copy files on every update', () => {
+    for (const lang of ['tr', 'en']) {
+      const C = guideContent(lang)
+      const all = JSON.stringify(C) + checklistMarkdown(C)
+      expect(all).not.toMatch(/yeniden indir|tekrar indir|download (it|the extension) again/i)
+      expect(all).not.toMatch(/içindekileri (sil|yenileriyle)|Replace what is inside|Delete what is inside/i)
+      expect(all).not.toMatch(/instaanalytic-kopru klasör|instaanalytic-kopru folder/i)
+      expect(all).not.toMatch(/↻/)
+      const U = C.bridge.update
+      for (const s of U.steps) expect(s.text).not.toMatch(/\bindir\b|\.zip|Download the/i)
+    }
+    // Zip yolu kendiliğinden güncellenmediği söylenerek anlatılır
+    expect(guideContent('tr').files.ext.text).toMatch(/kendiliğinden güncellenmez/)
+    expect(guideContent('en').files.ext.text).toMatch(/does not update itself/)
+    expect(guideContent('en').bridge.zipNote.text).toMatch(/does not update itself/)
+  })
+
   it('both languages have the same install, usage and update steps', () => {
     const tr = guideContent('tr')
     const en = guideContent('en')
@@ -206,6 +287,9 @@ describe('guide content', () => {
     expect(new Set(tr.bridge.install.map(s => s.art)).size).toBe(tr.bridge.install.length)
     expect(en.use.steps.map(s => s.art)).toEqual(tr.use.steps.map(s => s.art))
     expect(en.bridge.update.steps).toHaveLength(tr.bridge.update.steps.length)
+    expect(en.bridge.update.fixSteps).toHaveLength(tr.bridge.update.fixSteps.length)
+    expect(en.bridge.trouble).toHaveLength(tr.bridge.trouble.length)
+    expect(en.faq.items).toHaveLength(tr.faq.items.length)
     expect(en.checklistDoc.groups.map(g => g.items.length)).toEqual(tr.checklistDoc.groups.map(g => g.items.length))
   })
 })

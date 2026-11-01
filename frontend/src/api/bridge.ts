@@ -13,6 +13,7 @@ export interface BridgeStatus {
   paused_until: string | null
   paused_reason: string | null
   paused_message?: string | null
+  extension_version?: string | null
 }
 
 export interface BridgeTodo {

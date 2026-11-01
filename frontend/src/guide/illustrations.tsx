@@ -1,4 +1,4 @@
-// Rehberin resimleri (kurulum, kullanım, güncelleme). chrome:// sayfalarının ekran görüntüsü alınamadığı
+// Rehberin resimleri (kurulum, kullanım, güncelleme sekmesi). chrome:// sayfalarının ekran görüntüsü alınamadığı
 // ve Instagram'ın gerçek ekranını göstermek istemediğimiz için Chrome'un ve Instagram'ın sadeleştirilmiş birer çizimi. Renkler temadan (CSS değişkenleri) gelir; açık ve koyu temada çalışır.
 // Tıklanacak yer vurgu rengiyle çerçevelenir ve numaralanır. Resimlerin içindeki yazılar content.ts'teki
 // `bridge.ui` alanından gelir; buradaki tek iş çizmek.
@@ -12,6 +12,7 @@ const K = {
 }
 const OK = '#22c55e'
 const BAD = '#dc2626'
+const AMBER = '#f59e0b'
 const FOLDER = '#5b9bd5'
 const W = 400
 
@@ -97,16 +98,19 @@ function PinIcon({ x, y, color = K.t2 }: { x: number; y: number; color?: string 
   )
 }
 
+/** Simgenin üstündeki rozet: Instagram uyarısında kırmızı "!", elle kurulum gereken yeni sürümde turuncu "↑". */
+type IconBadge = 'alert' | 'update'
+
 /** Eklentinin simgesi. manifest'te simge olmadığı için Chrome ilk harfi gri bir kare içinde gösterir. */
-function ExtIcon({ x, y, size = 16, alert = false }: { x: number; y: number; size?: number; alert?: boolean }) {
+function ExtIcon({ x, y, size = 16, badge }: { x: number; y: number; size?: number; badge?: IconBadge }) {
   return (
     <g>
       <rect x={x} y={y} width={size} height={size} rx={size / 4} style={{ fill: K.t3 }} />
       <text x={x + size / 2} y={y + size * 0.72} textAnchor="middle" style={{ fill: K.s1, fontSize: size * 0.62, fontWeight: 700 }}>I</text>
-      {alert && (
+      {badge && (
         <g>
-          <circle cx={x + size} cy={y + 1} r={6} style={{ fill: BAD, stroke: K.s1, strokeWidth: 1.5 }} />
-          <text x={x + size} y={y + 4.2} textAnchor="middle" style={{ fill: '#fff', fontSize: 9, fontWeight: 800 }}>!</text>
+          <circle cx={x + size} cy={y + 1} r={6} style={{ fill: badge === 'alert' ? BAD : AMBER, stroke: K.s1, strokeWidth: 1.5 }} />
+          <text x={x + size} y={y + 4.2} textAnchor="middle" style={{ fill: '#fff', fontSize: 9, fontWeight: 800 }}>{badge === 'alert' ? '!' : '↑'}</text>
         </g>
       )}
     </g>
@@ -117,12 +121,25 @@ function SmallFolder({ x, y }: { x: number; y: number }) {
   return <path transform={`translate(${x} ${y})`} d="M0 2a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2z" style={{ fill: FOLDER }} />
 }
 
-function SmallZip({ x, y }: { x: number; y: number }) {
+function SmallFile({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
       <path d="M0 0h8l4 4v11H0z" style={paint({ fill: K.s2, stroke: K.b2 })} />
-      <rect x={5} y={2} width={2} height={2} style={{ fill: K.t3 }} />
-      <rect x={5} y={6} width={2} height={2} style={{ fill: K.t3 }} />
+      <path d="M8 0v4h4" style={paint({ stroke: K.b2 })} />
+    </g>
+  )
+}
+
+/** Dosya penceresindeki bir satır: klasör ya da dosya simgesi ve adı. `on` seçili satırı boyar. */
+function FileRow({ x, y, w, name, folder = false, on = false, dim = false, bold = false }: {
+  x: number; y: number; w: number; name: string; folder?: boolean; on?: boolean; dim?: boolean; bold?: boolean
+}) {
+  return (
+    <g style={{ opacity: dim ? 0.55 : 1 }}>
+      {on && <Box x={x - 4} y={y - 12} w={w} h={17} r={4} fill={K.glow} />}
+      {folder ? <SmallFolder x={x} y={y - 10} /> : <SmallFile x={x + 3} y={y - 11} />}
+      <Txt x={x + 23} y={y} size={8} weight={on || bold ? 600 : undefined}>{name}</Txt>
+      {folder && <Txt x={x + w - 12} y={y} size={9} color={K.t3}>›</Txt>}
     </g>
   )
 }
@@ -156,8 +173,8 @@ function IgContent({ y = 72, w = 150 }: { y?: number; w?: number }) {
  * Chrome penceresi: sekme şeridi, adres çubuğu, sağda (isteğe bağlı) sabitlenmiş eklenti, yapboz parçası,
  * profil ve menü. İçerik alanı y=61'den başlar.
  */
-function Browser({ h, url, tab, pinned = false, alert = false, children }: {
-  h: number; url?: string; tab: string; pinned?: boolean; alert?: boolean; children?: ReactNode
+function Browser({ h, url, tab, pinned = false, badge, children }: {
+  h: number; url?: string; tab: string; pinned?: boolean; badge?: IconBadge; children?: ReactNode
 }) {
   return (
     <g>
@@ -174,7 +191,7 @@ function Browser({ h, url, tab, pinned = false, alert = false, children }: {
       <Box x={64} y={37} w={242} h={18} r={9} fill={K.s2} />
       <circle cx={76} cy={46} r={3} style={paint({ stroke: K.t3, sw: 1.1 })} />
       {url && <Txt x={86} y={49.5} size={9.5}>{url}</Txt>}
-      {pinned && <ExtIcon x={314} y={38} alert={alert} />}
+      {pinned && <ExtIcon x={314} y={38} badge={badge} />}
       <Puzzle x={338} y={38.5} />
       <circle cx={366} cy={46} r={6} style={{ fill: K.t3 }} />
       {[41, 46, 51].map(cy => <circle key={cy} cx={385} cy={cy} r={1.3} style={{ fill: K.t2 }} />)}
@@ -250,59 +267,45 @@ function OtherCards({ y }: { y: number }) {
 
 /* ── Adım resimleri ──────────────────────────────────────────────────────── */
 
-function DownloadArt({ ui }: { ui: ArtLabels }) {
-  const h = 210
-  return (
-    <Browser h={h} url="localhost:3002/guide#referans" tab={ui.appTab}>
-      <AppSidebar h={h} active={4} />
-      <Txt x={88} y={86} size={12} weight={600}>{ui.guideHeading}</Txt>
-      <Box x={88} y={98} w={296} h={62} r={8} fill={K.s2} stroke={K.b1} />
-      <Puzzle x={100} y={107} />
-      <Txt x={120} y={118.5} size={10} weight={600}>{ui.extCardTitle}</Txt>
-      <Txt x={100} y={142} size={8.5} color={K.t2}>{ui.extCardText}</Txt>
-      <Box x={274} y={115} w={98} h={24} r={6} fill={K.ac} />
-      <Txt x={323} y={130.5} size={9} weight={600} color="#fff" anchor="middle">{ui.extButton}</Txt>
-      <Focus x={274} y={115} w={98} h={24} n={1} />
-      <Cursor x={358} y={131} />
-      <Box x={88} y={170} w={296} h={30} r={8} fill={K.s2} op={0.6} />
-      <Txt x={100} y={189} size={9} color={K.t2}>{ui.samplesTitle}</Txt>
-    </Browser>
-  )
-}
-
-function UnzipArt({ ui }: { ui: ArtLabels }) {
+/** Uygulamanın kurulduğu klasör, sütun görünümünde: InstaAnalytic → frontend → extension. */
+function AppFolderArt({ ui }: { ui: ArtLabels }) {
+  const h = 200
+  const c1 = 12
+  const c2 = 166
+  const c3 = 282
+  const row = (i: number) => 50 + i * 20
   return (
     <g>
-      <Box x={2} y={2} w={396} h={206} r={10} fill={K.s1} />
+      <Box x={2} y={2} w={396} h={h - 4} r={10} fill={K.s1} />
       <path d="M2 12a10 10 0 0 1 10-10h376a10 10 0 0 1 10 10v18H2z" style={{ fill: K.s2 }} />
       {[16, 28, 40].map(cx => <circle key={cx} cx={cx} cy={16} r={3.5} style={{ fill: K.t3 }} />)}
-      <Txt x={200} y={20} size={10} weight={600} anchor="middle">{ui.downloads}</Txt>
+      <Txt x={200} y={20} size={10} weight={600} anchor="middle">{ui.appFolder}</Txt>
       <Line x1={2} y1={30} x2={398} y2={30} />
-      <path d="M2 30H96V206H12a10 10 0 0 1-10-10z" style={{ fill: K.bg }} />
-      <Box x={8} y={42} w={82} h={18} r={5} fill={K.glow} />
-      <Txt x={16} y={54.5} size={9} weight={600}>{ui.downloads}</Txt>
-      <Txt x={16} y={76} size={9} color={K.t2}>{ui.desktop}</Txt>
-      <Txt x={16} y={96} size={9} color={K.t2}>{ui.documents}</Txt>
+      <Line x1={c2 - 8} y1={30} x2={c2 - 8} y2={h - 2} />
+      <Line x1={c3 - 8} y1={30} x2={c3 - 8} y2={h - 2} />
 
-      {/* ZIP dosyası */}
-      <path d="M138 64h26l10 10v40h-36z" style={paint({ fill: K.s2, stroke: K.b2 })} />
-      <path d="M164 64v10h10" style={paint({ stroke: K.b2 })} />
-      {[0, 1, 2, 3, 4].map(i => <rect key={i} x={i % 2 ? 156 : 153} y={68 + i * 5} width={4} height={3} style={{ fill: K.t3 }} />)}
-      <Txt x={156} y={106} size={7} weight={700} color={K.t2} anchor="middle">ZIP</Txt>
-      <Txt x={156} y={134} size={8.5} anchor="middle">{ui.zipName}</Txt>
-      <Focus x={132} y={60} w={48} h={60} n={1} />
-      <Cursor x={160} y={92} />
-      <Txt x={156} y={150} size={9} weight={600} color={K.ac} anchor="middle">{ui.doubleClick}</Txt>
+      {/* 1. sütun: InstaAnalytic klasörünün içi */}
+      <FileRow x={c1} y={row(0)} w={142} name="backend" folder />
+      <FileRow x={c1} y={row(1)} w={142} name="docs" folder />
+      <FileRow x={c1} y={row(2)} w={142} name="frontend" folder on />
+      <FileRow x={c1} y={row(3)} w={142} name={ui.installerFile} bold />
+      <FileRow x={c1} y={row(4)} w={142} name="README.md" dim />
+      <Focus x={c1 - 4} y={row(2) - 12} w={142} h={17} r={4} n={1} />
+      <Txt x={c1} y={row(5) + 8} size={7.5} color={K.t2}>{ui.appFolderHint}</Txt>
 
-      {/* Ok ve çıkan klasör */}
-      <Line x1={214} y1={90} x2={240} y2={90} color={K.ac} sw={2} />
-      <path d="M240 85l8 5-8 5z" style={{ fill: K.ac }} />
-      <path d="M274 74a4 4 0 0 1 4-4h14l5 5h25a4 4 0 0 1 4 4v27a4 4 0 0 1-4 4h-44a4 4 0 0 1-4-4z" style={{ fill: FOLDER }} />
-      <Txt x={300} y={134} size={8.5} weight={600} anchor="middle">{ui.folderName}</Txt>
-      <Focus x={266} y={62} w={68} h={54} n={2} />
+      {/* 2. sütun: frontend */}
+      <FileRow x={c2} y={row(0)} w={108} name="extension" folder on />
+      <FileRow x={c2} y={row(1)} w={108} name="src" folder dim />
+      <FileRow x={c2} y={row(2)} w={108} name="package.json" dim />
+      <Focus x={c2 - 4} y={row(0) - 12} w={108} h={17} r={4} n={2} />
 
-      <Txt x={247} y={186} size={8.5} color={K.t2} anchor="middle">{ui.winHint}</Txt>
-      <Box x={2} y={2} w={396} h={206} r={10} stroke={K.b2} />
+      {/* 3. sütun: extension */}
+      <FileRow x={c3} y={row(0)} w={110} name="manifest.json" bold />
+      <FileRow x={c3} y={row(1)} w={110} name="popup.html" />
+      <FileRow x={c3} y={row(2)} w={110} name="popup.js" />
+      <FileRow x={c3} y={row(3)} w={110} name="background.js" />
+      <Txt x={c3} y={row(5) + 8} size={8.5} weight={600} color={OK}>✓ {ui.rightFolder}</Txt>
+      <Box x={2} y={2} w={396} h={h - 4} r={10} stroke={K.b2} />
     </g>
   )
 }
@@ -351,26 +354,25 @@ function PickFolderArt({ ui }: { ui: ArtLabels }) {
       <ExtButtons ui={ui} />
       <path d={`M2 62H398V${h - 12}a10 10 0 0 1-10 10H12a10 10 0 0 1-10-10z`} style={{ fill: K.bg, opacity: 0.7 }} />
 
-      {/* Klasör seçme penceresi */}
+      {/* Klasör seçme penceresi, InstaAnalytic › frontend açık */}
       <Box x={42} y={47} w={320} h={176} r={10} fill="rgba(0,0,0,0.18)" />
       <Box x={40} y={44} w={320} h={176} r={10} fill={K.s1} stroke={K.b2} />
       <path d="M40 54a10 10 0 0 1 10-10h300a10 10 0 0 1 10 10v12H40z" style={{ fill: K.s2 }} />
       <Txt x={200} y={59} size={10} weight={600} anchor="middle">{ui.pickTitle}</Txt>
       <Line x1={40} y1={66} x2={360} y2={66} />
       <path d="M40 66H120V220H50a10 10 0 0 1-10-10z" style={{ fill: K.bg }} />
-      <Box x={46} y={76} w={68} h={18} r={5} fill={K.glow} />
-      <Txt x={52} y={88.5} size={8.5} weight={600}>{ui.downloads}</Txt>
-      <Txt x={52} y={110} size={8.5} color={K.t2}>{ui.desktop}</Txt>
+      <Txt x={52} y={88.5} size={8.5} color={K.t2}>{ui.desktop}</Txt>
+      <Txt x={52} y={110} size={8.5} color={K.t2}>{ui.downloads}</Txt>
       <Txt x={52} y={130} size={8.5} color={K.t2}>{ui.documents}</Txt>
 
-      <Focus x={128} y={76} w={220} h={22} n={1} />
-      <SmallFolder x={136} y={80} />
-      <Txt x={160} y={91} size={9} weight={600}>{ui.folderName}</Txt>
-      <Txt x={160} y={113} size={7.5} color={K.t2}>{ui.folderContents}</Txt>
+      <Txt x={132} y={82} size={8} color={K.t2}>{`${ui.appFolder} › frontend`}</Txt>
+      <Line x1={120} y1={89} x2={360} y2={89} />
 
-      <SmallZip x={139} y={124} />
-      <Txt x={160} y={135} size={9} color={K.t3}>{ui.zipName}</Txt>
-      <Txt x={346} y={135} size={8} weight={600} color={BAD} anchor="end">✕ {ui.notThis}</Txt>
+      <Focus x={128} y={96} w={220} h={32} n={1} />
+      <FileRow x={136} y={110} w={212} name="extension" folder on />
+      <Txt x={159} y={122} size={7.5} color={K.t2}>{ui.folderContents}</Txt>
+      <FileRow x={136} y={148} w={212} name="src" folder dim />
+      <FileRow x={136} y={168} w={212} name="package.json" dim />
 
       <Box x={212} y={188} w={62} h={22} r={6} fill={K.s1} stroke={K.b2} />
       <Txt x={243} y={202.5} size={9} color={K.t2} anchor="middle">{ui.cancel}</Txt>
@@ -463,14 +465,44 @@ function Para({ x, y, text, max, lh, size, color = K.t2 }: {
 }
 
 const POPUP_W = 230
-const POPUP_H = 254
+const POPUP_H = 208
+
+type PopupFocus = Partial<Record<'toggle' | 'status' | 'settingsTab' | 'updateTab' | 'check', number>>
+
+/** Eklenti penceresinin sekme şeridi: Durum, Ayarlar, Güncelleme. Etkin sekmenin altı çizili. */
+function PopupTabs({ L, R, y, ui, active, focus }: {
+  L: number; R: number; y: number; ui: ArtLabels; active: 'status' | 'update'; focus: PopupFocus
+}) {
+  const tabs = [
+    { key: 'status', label: ui.popupTabStatus, x: L, n: undefined },
+    { key: 'settings', label: ui.popupTabSettings, x: L + 60, n: focus.settingsTab },
+    { key: 'update', label: ui.popupTabUpdate, x: L + 124, n: focus.updateTab },
+  ]
+  return (
+    <g>
+      <Line x1={L} y1={y + 19} x2={R} y2={y + 19} />
+      {tabs.map(t => {
+        const on = t.key === active
+        const w = t.label.length * 5
+        return (
+          <g key={t.key}>
+            <Txt x={t.x} y={y + 12} size={9} weight={on ? 600 : 500} color={on ? K.t1 : K.t2}>{t.label}</Txt>
+            {on && <Box x={t.x} y={y + 17.5} w={w} h={2.5} r={1.2} fill={K.ac} />}
+            {t.n && <Focus x={t.x - 2} y={y + 2} w={w + 4} h={14} r={4} n={t.n} bx={t.x + w + 12} by={y + 9} />}
+          </g>
+        )
+      })}
+    </g>
+  )
+}
 
 /**
- * Eklenti penceresi; frontend/extension/popup.html ile aynı düzen: başlık, kayıt anahtarı, not, durum,
- * profil, uygulama adresi ve "Uygulamayı aç". `focus` hangi parçanın kaçıncı numarayla işaretleneceğini söyler.
+ * Eklenti penceresi; frontend/extension/popup.html ile aynı düzen: başlık ve sürüm, sekmeler, sekmenin içi
+ * ve her sekmede altta "Uygulamayı aç". Durum sekmesi: kayıt anahtarı, not, durum. Güncelleme sekmesi: iki sürüm,
+ * durum satırı ve "Şimdi denetle". `manual` zip kopyasının elle kurulum isteyen hâlini çizer.
  */
-function PopupPanel({ x, y, ui, focus }: {
-  x: number; y: number; ui: ArtLabels; focus: Partial<Record<'toggle' | 'profile' | 'status', number>>
+function PopupPanel({ x, y, ui, tab = 'status', manual = false, focus = {} }: {
+  x: number; y: number; ui: ArtLabels; tab?: 'status' | 'update'; manual?: boolean; focus?: PopupFocus
 }) {
   const L = x + 14
   const R = x + POPUP_W - 14
@@ -478,44 +510,60 @@ function PopupPanel({ x, y, ui, focus }: {
     <g>
       <Box x={x + 3} y={y + 3} w={POPUP_W} h={POPUP_H} r={8} fill="rgba(0,0,0,0.18)" />
       <Box x={x} y={y} w={POPUP_W} h={POPUP_H} r={8} fill={K.bg} stroke={K.b2} />
-      <Txt x={L} y={y + 22} size={11} weight={600}>{ui.extName}</Txt>
+      <Txt x={L} y={y + 20} size={11} weight={600}>{ui.extName}</Txt>
+      <Txt x={R} y={y + 20} size={8} color={K.t3} anchor="end">{ui.popupVersionValue}</Txt>
+      <PopupTabs L={L} R={R} y={y + 28} ui={ui} active={tab} focus={focus} />
 
-      <Toggle x={L} y={y + 32} />
-      <Txt x={L + 32} y={y + 42.5} size={9.5} weight={500}>{ui.popupToggle}</Txt>
-      {focus.toggle && <Focus x={L - 3} y={y + 29} w={186} h={20} n={focus.toggle} />}
+      {tab === 'status' ? (
+        <g>
+          <Toggle x={L} y={y + 56} />
+          <Txt x={L + 32} y={y + 66.5} size={9.5} weight={500}>{ui.popupToggle}</Txt>
+          {focus.toggle && <Focus x={L - 3} y={y + 53} w={186} h={20} n={focus.toggle} />}
 
-      <Para x={L} y={y + 64} text={ui.popupNote} max={50} lh={9.5} size={7.5} />
+          <Para x={L} y={y + 86} text={ui.popupNote} max={50} lh={9.5} size={7.5} />
 
-      <Box x={L} y={y + 100} w={R - L} h={46} r={6} fill={K.s1} stroke={K.b1} />
-      <circle cx={L + 11} cy={y + 112} r={3.5} style={{ fill: OK }} />
-      <Txt x={L + 20} y={y + 115.5} size={9} weight={600}>{ui.popupStatus}</Txt>
-      {focus.status && <Focus x={L + 4} y={y + 105} w={70} h={14} r={4} n={focus.status} />}
-      <Txt x={L + 10} y={y + 129} size={7.5} color={K.t2}>{ui.popupToday}</Txt>
-      <Txt x={L + 10} y={y + 139.5} size={8.5}>{ui.popupTodayValue}</Txt>
-      <Txt x={L + 124} y={y + 129} size={7.5} color={K.t2}>{ui.popupLast}</Txt>
-      <Txt x={L + 124} y={y + 139.5} size={8.5}>{ui.popupLastValue}</Txt>
+          <Box x={L} y={y + 114} w={R - L} h={46} r={6} fill={K.s1} stroke={K.b1} />
+          <circle cx={L + 11} cy={y + 126} r={3.5} style={{ fill: OK }} />
+          <Txt x={L + 20} y={y + 129.5} size={9} weight={600}>{ui.popupStatus}</Txt>
+          {focus.status && <Focus x={L + 4} y={y + 119} w={70} h={14} r={4} n={focus.status} />}
+          <Txt x={L + 10} y={y + 143} size={7.5} color={K.t2}>{ui.popupToday}</Txt>
+          <Txt x={L + 10} y={y + 153.5} size={8.5}>{ui.popupTodayValue}</Txt>
+          <Txt x={L + 124} y={y + 143} size={7.5} color={K.t2}>{ui.popupLast}</Txt>
+          <Txt x={L + 124} y={y + 153.5} size={8.5}>{ui.popupLastValue}</Txt>
+        </g>
+      ) : (
+        <g>
+          <Txt x={L} y={y + 66} size={8} color={K.t2}>{ui.popupInstalled}</Txt>
+          <Txt x={R} y={y + 66} size={9} weight={600} anchor="end">{ui.popupVersionValue}</Txt>
+          <Txt x={L} y={y + 82} size={8} color={K.t2}>{ui.popupAppVersion}</Txt>
+          <Txt x={R} y={y + 82} size={9} weight={600} anchor="end">{manual ? ui.popupNewVersionValue : ui.popupVersionValue}</Txt>
 
-      <Txt x={L} y={y + 166} size={8} color={K.t2}>{ui.popupProfile}</Txt>
-      <Txt x={L + 32} y={y + 166} size={9.5}>{ui.popupProfileValue}</Txt>
-      <Txt x={R} y={y + 166} size={9} weight={600} color={K.ac} anchor="end">{ui.popupChange}</Txt>
-      {focus.profile && <Focus x={L - 3} y={y + 155} w={R - L + 6} h={15} r={5} n={focus.profile} bx={R - 2} by={y + 152} />}
+          <Box x={L} y={y + 92} w={R - L} h={manual ? 44 : 26} r={6} fill={K.s1} stroke={manual ? AMBER : K.b1} />
+          <circle cx={L + 11} cy={y + 105} r={3.5} style={{ fill: manual ? AMBER : OK }} />
+          <Txt x={L + 20} y={y + 108} size={manual ? 8 : 9} weight={600}>{manual ? ui.popupManual : ui.popupUpToDate}</Txt>
+          {manual && <Para x={L + 20} y={y + 120} text={ui.popupManualNote} max={44} lh={9} size={7.5} />}
+          {focus.status && (
+            <Focus x={L} y={y + 92} w={R - L} h={manual ? 44 : 26} r={6} n={focus.status} bx={R + 3} by={y + 92 + (manual ? 44 : 26) + 3} />
+          )}
 
-      <Txt x={L} y={y + 186} size={7.5} color={K.t2}>{ui.popupAppUrl}</Txt>
-      <Box x={L} y={y + 191} w={R - L} h={18} r={5} fill={K.s1} stroke={K.b1} />
-      <Txt x={L + 7} y={y + 203} size={8} mono>{ui.popupAppUrlValue}</Txt>
+          <Box x={L} y={y + 144} w={92} h={20} r={5} fill={K.s2} stroke={K.b2} />
+          <Txt x={L + 46} y={y + 157} size={8.5} weight={600} anchor="middle">{ui.popupCheckNow}</Txt>
+          {focus.check && <Focus x={L} y={y + 144} w={92} h={20} r={5} n={focus.check} />}
+        </g>
+      )}
 
-      <Box x={L} y={y + 218} w={R - L} h={24} r={6} stroke={K.b2} />
-      <Txt x={(L + R) / 2} y={y + 233.5} size={9} anchor="middle">{ui.popupOpenApp}</Txt>
+      <Box x={L} y={y + 172} w={R - L} h={24} r={6} stroke={K.b2} />
+      <Txt x={(L + R) / 2} y={y + 187.5} size={9} anchor="middle">{ui.popupOpenApp}</Txt>
     </g>
   )
 }
 
 function PopupArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={330} url="instagram.com" tab="Instagram" pinned>
+    <Browser h={64 + POPUP_H + 12} url="instagram.com" tab="Instagram" pinned>
       <IgContent w={124} />
       <Focus x={314} y={38} w={16} h={16} r={4} n={1} bx={298} by={46} />
-      <PopupPanel x={160} y={64} ui={ui} focus={{ profile: 2, toggle: 3 }} />
+      <PopupPanel x={160} y={64} ui={ui} focus={{ toggle: 2, settingsTab: 3 }} />
     </Browser>
   )
 }
@@ -560,7 +608,7 @@ function ConnectedArt({ ui }: { ui: ArtLabels }) {
 function UseToggleArt({ ui }: { ui: ArtLabels }) {
   return (
     <g>
-      <PopupPanel x={85} y={6} ui={ui} focus={{ toggle: 1, profile: 2, status: 3 }} />
+      <PopupPanel x={85} y={6} ui={ui} focus={{ toggle: 1, status: 2, settingsTab: 3 }} />
     </g>
   )
 }
@@ -705,28 +753,25 @@ function UseNextArt({ ui }: { ui: ArtLabels }) {
   )
 }
 
-/* ── Güncelleme resmi ────────────────────────────────────────────────────── */
+/* ── Güncelleme resimleri ────────────────────────────────────────────────── */
 
-function RefreshArt({ ui }: { ui: ArtLabels }) {
+/** Güncelleme sekmesi, olağan hâli: iki sürüm aynı, "Güncel". */
+function UpdateTabArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={220} url="chrome://extensions" tab={ui.extensionsTitle}>
-      <ExtHeader ui={ui} />
-      <ExtButtons ui={ui} />
-      <Box x={14} y={138} w={220} h={70} r={8} fill={K.s2} stroke={K.b1} />
-      <ExtIcon x={26} y={150} size={22} />
-      <Txt x={58} y={160} size={10} weight={600}>{ui.extName}</Txt>
-      <Txt x={58} y={173} size={8.5} color={K.t2}>{ui.extVersion}</Txt>
-      <Txt x={26} y={198} size={8.5} weight={600} color={K.ac}>{ui.details}</Txt>
-      <Txt x={84} y={198} size={8.5} weight={600} color={K.ac}>{ui.remove}</Txt>
-      {/* Yenile simgesi (yuvarlak ok) */}
-      <g style={{ fill: 'none', stroke: K.t1, strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' }}>
-        <path d="M180.5 191.5A5 5 0 1 0 182 195" />
-        <path d="M181 187.5v4h-4" />
-      </g>
-      <Toggle x={200} y={188} />
-      <Focus x={169} y={187} w={16} h={16} r={5} n={1} />
-      <Cursor x={183} y={199} />
-      <Txt x={250} y={198} size={9.5} weight={600} color={K.ac}>↻ = {ui.refreshHint}</Txt>
+    <g>
+      <PopupPanel x={85} y={6} ui={ui} tab="update" focus={{ updateTab: 1, check: 2 }} />
+    </g>
+  )
+}
+
+/** Zip kopyası: simgede turuncu "↑", Güncelleme sekmesinde elle kurulum uyarısı. */
+function UpdateManualArt({ ui }: { ui: ArtLabels }) {
+  return (
+    <Browser h={64 + POPUP_H + 12} url="instagram.com" tab="Instagram" pinned badge="update">
+      <IgContent w={124} />
+      {/* Çerçeve simgenin köşesindeki turuncu "↑"yü de içine alsın */}
+      <Focus x={313} y={32} w={25} h={24} r={5} n={1} bx={298} by={46} />
+      <PopupPanel x={160} y={64} ui={ui} tab="update" manual focus={{ status: 2 }} />
     </Browser>
   )
 }
@@ -734,7 +779,7 @@ function RefreshArt({ ui }: { ui: ArtLabels }) {
 /** Uyarı sonrası: uygulamada kırmızı şerit, eklenti simgesinde kırmızı "!". */
 function WarningArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={150} url="localhost:3002" tab={ui.appTab} pinned alert>
+    <Browser h={150} url="localhost:3002" tab={ui.appTab} pinned badge="alert">
       <Box x={3} y={62} w={394} h={24} fill={BAD} op={0.92} />
       <circle cx={18} cy={74} r={6} style={{ fill: '#fff' }} />
       <Txt x={18} y={77.5} size={9} weight={800} color={BAD} anchor="middle">!</Txt>
@@ -749,8 +794,7 @@ function WarningArt({ ui }: { ui: ArtLabels }) {
 
 /** `crop` resmin yalnızca bir kısmını gösterir (viewBox: x, y, genişlik, yükseklik). */
 const ARTS: Record<ArtId, { h: number; crop?: [number, number, number, number]; Draw: (p: { ui: ArtLabels }) => JSX.Element }> = {
-  download: { h: 210, Draw: DownloadArt },
-  unzip: { h: 210, Draw: UnzipArt },
+  appFolder: { h: 200, Draw: AppFolderArt },
   address: { h: 160, Draw: AddressArt },
   devmode: { h: 190, Draw: DevModeArt },
   loadUnpacked: { h: 210, Draw: LoadUnpackedArt },
@@ -758,15 +802,15 @@ const ARTS: Record<ArtId, { h: number; crop?: [number, number, number, number]; 
   card: { h: 220, Draw: CardArt },
   pin: { h: 210, Draw: PinArt },
   reload: { h: 180, Draw: ReloadArt },
-  popup: { h: 330, Draw: PopupArt },
+  popup: { h: 64 + POPUP_H + 12, Draw: PopupArt },
   connected: { h: 200, Draw: ConnectedArt },
   useToggle: { h: POPUP_H + 12, Draw: UseToggleArt },
   useProfile: { h: 250, Draw: UseProfileArt },
   useOpenPost: { h: 230, Draw: UseOpenPostArt },
   useLikes: { h: 250, Draw: UseLikesArt },
   useNext: { h: 240, Draw: UseNextArt },
-  // Uzantılar sayfasının yalnızca eklenti kartı; ↻ düğmesi küçük olduğu için yakından.
-  refresh: { h: 220, crop: [4, 130, 330, 86], Draw: RefreshArt },
+  updateTab: { h: POPUP_H + 12, Draw: UpdateTabArt },
+  updateManual: { h: 64 + POPUP_H + 12, Draw: UpdateManualArt },
 }
 
 export const ART_IDS = Object.keys(ARTS) as ArtId[]

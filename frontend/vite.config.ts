@@ -1,9 +1,24 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite'
+import { cpSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Eklenti dosyaları /extension/ altında sunulur: eklenti güncelleme denetimi /extension/manifest.json'u okur.
+// Geliştirme sunucusu bunu kökten zaten sunar; üretim derlemesine de kopyalanır.
+function copyExtension(): Plugin {
+  return {
+    name: 'copy-extension',
+    apply: 'build',
+    closeBundle() {
+      const src = resolve(__dirname, 'extension')
+      if (existsSync(src)) cpSync(src, resolve(__dirname, 'dist/extension'), { recursive: true })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), copyExtension()],
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

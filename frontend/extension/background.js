@@ -10,6 +10,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const VIEWER_RE = /^\d{1,20}$/;
 const MAX_BODY_CHARS = 8 * 1024 * 1024;
 const MAX_QUEUE = 20;            // uygulama yavaşsa bekleyen yanıt birikmesin; fazlası atılır
+const UPDATE_EVERY_MS = 6 * 3600 * 1000;
+const VERSION_RE = /^\d+(\.\d+){0,3}$/;
 
 // ── Depolama ─────────────────────────────────────────────────────────────────
 
@@ -48,14 +50,62 @@ async function setStatus(patch) {
   return next;
 }
 
-// Instagram uyarısı kritik: süre bitene kadar simgede kırmızı "!" kalır.
+// Instagram uyarısı kritik: süre bitene kadar simgede kırmızı "!" kalır (güncelleme işaretinden önce gelir).
 async function updateBadge(s) {
   const warn = !!(s && s.warningUntil && s.warningUntil > Date.now());
-  await chrome.action.setBadgeText({ text: warn ? '!' : '' });
-  if (warn) await chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+  const { update } = await chrome.storage.local.get('update');
+  const manual = !!(update && update.state === 'manual');
+  await chrome.action.setBadgeText({ text: warn ? '!' : manual ? '↑' : '' });
+  if (warn || manual) await chrome.action.setBadgeBackgroundColor({ color: warn ? '#d93025' : '#c98a1b' });
   await chrome.action.setTitle({
-    title: warn ? 'InstaAnalytic Köprüsü: Instagram uyarı verdi' : 'InstaAnalytic Köprüsü',
+    title: warn ? 'InstaAnalytic Köprüsü: Instagram uyarı verdi'
+      : manual ? 'InstaAnalytic Köprüsü: yeni sürüm var' : 'InstaAnalytic Köprüsü',
   });
+}
+
+// ── Güncelleme ───────────────────────────────────────────────────────────────
+// Paketlenmemiş eklentiler Chrome'da kendiliğinden güncellenmez. Eklenti uygulamanın klasöründen
+// (InstaAnalytic/frontend/extension) yüklendiyse, uygulama güncellendiğinde dosyalar da güncellenir;
+// burada uygulamanın sunduğu sürüm daha yeniyse eklenti kendini yeniden yükler. İndirilmiş bir kopyadan
+// yüklendiyse yeniden yükleme yeni dosya getirmez: bir kez denenir, sonra elle kurulum istenir.
+
+function cmpVersion(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+async function checkUpdate(force = false) {
+  const { update } = await chrome.storage.local.get('update');
+  const prev = update && typeof update === 'object' ? update : {};
+  if (!force && prev.checkedAt && Date.now() - prev.checkedAt < UPDATE_EVERY_MS) return prev;
+  const current = chrome.runtime.getManifest().version;
+  const cfg = await getCfg();
+  const r = await callApp(cfg.appUrl, '/extension/manifest.json', undefined, 10000);
+  const latest = r.status === 200 && r.data && VERSION_RE.test(String(r.data.version || '')) ? String(r.data.version) : null;
+  const next = { checkedAt: Date.now(), current, latest, reloadedFor: prev.reloadedFor || null };
+
+  if (!latest) {
+    next.state = 'unreachable';
+  } else if (cmpVersion(latest, current) <= 0) {
+    next.state = 'current';
+  } else if (prev.reloadedFor === latest) {
+    next.state = 'manual';                      // yeniden yükleme yeni dosya getirmedi: kopyadan kurulmuş
+  } else {
+    next.state = 'reloading';
+    next.reloadedFor = latest;
+    await chrome.storage.local.set({ update: next });
+    chrome.runtime.reload();                    // diskteki yeni dosyalarla yeniden başlar
+    return next;
+  }
+  await chrome.storage.local.set({ update: next });
+  const { status } = await chrome.storage.local.get('status');
+  await updateBadge(status);
+  return next;
 }
 
 async function setProfile(viewerId, profile) {
@@ -129,6 +179,7 @@ async function resolveProfile(cfg, viewerId) {
 // ── İçerik betiği için ayar ──────────────────────────────────────────────────
 
 async function configFor(viewer) {
+  checkUpdate().catch(() => {});                // en çok 6 saatte bir; Instagram sayfası açıldıkça
   const cfg = await getCfg();
   if (!cfg.enabled || !VIEWER_RE.test(String(viewer || ''))) return { on: false };
   await chrome.storage.local.set({ lastViewer: String(viewer) });
@@ -162,6 +213,7 @@ async function handleObserved(msg) {
     req_body: req.toString(),
     status: msg.status,
     body: msg.text,
+    ext_version: chrome.runtime.getManifest().version,
   }, 60000);
 
   if (rep.status === 0) {
@@ -293,6 +345,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     chooseProfile(msg.id || '', msg.username || '').then(sendResponse);
     return true;
   }
+  if (msg.type === 'ia-update') {
+    checkUpdate(msg.force === true).then(sendResponse, () => sendResponse(null));
+    return true;
+  }
   return false;
 });
 
@@ -302,16 +358,28 @@ chrome.storage.onChanged.addListener((changes, area) => {
   else setStatus({ state: 'off', message: 'Kapalı.' });
 });
 
-chrome.runtime.onInstalled.addListener(async () => {
-  const s = await chrome.storage.local.get(['enabled', 'appUrl']);
+chrome.runtime.onInstalled.addListener(async (details) => {
+  const s = await chrome.storage.local.get(['enabled', 'appUrl', 'update']);
   const init = {};
   if (typeof s.enabled !== 'boolean') init.enabled = false; // kullanıcı açana kadar kapalı
   if (!normalizeAppUrl(s.appUrl)) init.appUrl = DEFAULT_APP;
   if (Object.keys(init).length) await chrome.storage.local.set(init);
-  await setStatus({ state: s.enabled === true ? 'listening' : 'off', message: s.enabled === true ? 'Dinliyor.' : 'Kapalı.' });
+
+  const version = chrome.runtime.getManifest().version;
+  const prev = s.update || {};
+  if (details && details.reason === 'update' && prev.current && cmpVersion(version, prev.current) > 0) {
+    // Kendini güncelledi: açık Instagram sekmelerindeki eski betikler kopuktur, bir kez yenilenmeli
+    await chrome.storage.local.set({ update: { ...prev, current: version, state: 'current', reloadedFor: null } });
+    await setStatus({ state: s.enabled === true ? 'listening' : 'off',
+      message: `Eklenti ${version} sürümüne güncellendi. Açık Instagram sekmesini bir kez yenileyin.` });
+  } else {
+    await setStatus({ state: s.enabled === true ? 'listening' : 'off', message: s.enabled === true ? 'Dinliyor.' : 'Kapalı.' });
+  }
+  checkUpdate(true).catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   const { status } = await chrome.storage.local.get('status');
   await updateBadge(status);
+  checkUpdate().catch(() => {});
 });

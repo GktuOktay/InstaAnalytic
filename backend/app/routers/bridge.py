@@ -39,6 +39,7 @@ class ObserveRequest(BaseModel):
     req_body: str = Field(default="", max_length=bridge.MAX_REQ_CHARS)
     status: int
     body: str = Field(default="", max_length=bridge.MAX_BODY_CHARS)
+    ext_version: str | None = Field(default=None, max_length=20, pattern=r"^\d+(\.\d+){0,3}$")
 
 
 @router.get("/bridge/hello")
@@ -57,6 +58,8 @@ async def observe(body: ObserveRequest, db: AsyncSession = Depends(get_db), kv=D
         raise HTTPException(409, f"Instagram'da başka bir hesap açık; bu profil @{s.ig_username}")
     if not body.url.startswith("https://www.instagram.com/"):
         raise HTTPException(400, "Yalnızca instagram.com yanıtları kabul edilir")
+    if body.ext_version:
+        await bridge.remember_extension(kv, s.id, body.ext_version)
     if await bridge.is_stopped(kv, s.id):
         return {"posts": 0, "likers": 0, "comments": 0, "warning": False, "ignored": True, "stopped": True}
     return await bridge.observe(db, kv, s, url=body.url, page_url=body.page_url, req_body=body.req_body,

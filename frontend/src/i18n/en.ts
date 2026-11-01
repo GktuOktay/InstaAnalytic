@@ -560,6 +560,8 @@ const en: Translations = {
     stop:         'Stop',
     resume:       'Resume',
     guide:        'How to use',
+    outdated:     'Your extension is out of date ({from} → {to}).',
+    outdatedHow:  'How to update',
   },
   problems: {
     detail:       'Technical detail',

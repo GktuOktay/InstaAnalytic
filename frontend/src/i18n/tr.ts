@@ -558,6 +558,8 @@ const tr = {
     stop:         'Durdur',
     resume:       'Devam et',
     guide:        'Nasıl kullanılır?',
+    outdated:     'Eklentin güncel değil ({from} → {to}).',
+    outdatedHow:  'Nasıl güncellenir?',
   },
   problems: {
     detail:       'Teknik ayrıntı',

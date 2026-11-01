@@ -52,13 +52,16 @@ eklentilerin de kullandığı bir yöntemdir.
 
 ## Kurulum
 
-1. Uygulamadaki **Kılavuz → Referans dosyalar** bölümünden eklentiyi indirip zip'i açın.
-2. Chrome'da adres çubuğuna `chrome://extensions` yazın.
-3. Sağ üstteki **Geliştirici modu**nu açın.
-4. **Paketlenmemiş öğe yükle** düğmesine basın ve açtığınız `instaanalytic-kopru` klasörünü seçin.
-5. Açık Instagram sekmelerini yenileyin.
-6. Eklenti simgesine tıklayın, **Gezinirken beğenenleri kaydet**'i açın. Profil otomatik eşleşmezse
-   listeden seçin.
+1. Chrome'da adres çubuğuna `chrome://extensions` yazın.
+2. Sağ üstteki **Geliştirici modu**nu açın.
+3. **Paketlenmemiş öğe yükle** düğmesine basın ve InstaAnalytic klasöründeki `frontend/extension`
+   klasörünü seçin (içinde `manifest.json` olan klasör).
+4. Açık Instagram sekmelerini yenileyin.
+5. Eklenti simgesine tıklayın, **Durum** sekmesinde **Gezinirken beğenenleri kaydet**'i açın. Profil otomatik
+   eşleşmezse **Ayarlar** sekmesinden seçin.
+
+Klasöre ulaşamıyorsanız eklentiyi uygulamadaki **Kılavuz → Referans dosyalar**'dan zip olarak da
+indirebilirsiniz; ama o kopya kendiliğinden güncellenmez.
 
 ## Kullanım
 
@@ -80,8 +83,17 @@ eklenti bunu fark eder. Simgede kırmızı **!** çıkar, uygulama her sayfada k
 
 ## Güncelleme
 
-Yeni sürümü indirin, eski klasörün içeriğini yenisiyle değiştirin, `chrome://extensions` sayfasında
-eklentinin kartındaki **↻** düğmesine basın ve Instagram sekmesini yenileyin.
+Normalde yapmanız gereken bir şey yok. Eklenti uygulamanın klasöründen yüklendiyse, uygulama
+güncellendiğinde dosyaları da güncellenir. Eklenti birkaç saatte bir (ve açılır pencere açıldığında,
+Instagram sayfası yüklendiğinde) uygulamadaki sürümü denetler; daha yeniyse kendini yeniden yükler ve
+"güncellendi" der. Ardından açık Instagram sekmesini bir kez yenileyin.
+
+Zip kopyasından kurduysanız yeniden yükleme yeni dosya getiremez. Eklenti bunu fark eder, simgede sarı **↑**
+gösterir ve **Güncelleme** sekmesinde tek seferlik çözümü anlatır: eski eklentiyi kaldırıp `frontend/extension`
+klasörünü yükleyin. Bundan sonra güncellemeler kendiliğinden gelir.
+
+**Güncelleme** sekmesinde yüklü sürümü, uygulamadaki sürümü ve son denetim zamanını görürsünüz;
+**Şimdi denetle** beklemeden denetler. Denetim yalnızca bu bilgisayardaki uygulamaya sorulur.
 
 ## Uygulama adresi
 

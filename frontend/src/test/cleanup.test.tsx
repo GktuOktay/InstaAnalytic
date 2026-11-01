@@ -84,3 +84,16 @@ describe('BridgeWarningBanner', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+describe('BridgeStatusCard version check', () => {
+  it('tells the user when the extension is older than the app', async () => {
+    ;(insightsApi.cleanup as any).mockResolvedValue(res())
+    ;(bridgeApi.status as any).mockResolvedValue({
+      posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
+      connected: true, stopped: false, paused_until: null, paused_reason: null, extension_version: '1.0.0',
+    })
+    renderApp(<CleanupPage />)
+    expect(await screen.findByText(/Eklentin güncel değil \(1\.0\.0 →/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Nasıl güncellenir?' })).toHaveAttribute('href', '/guide#guncelle')
+  })
+})

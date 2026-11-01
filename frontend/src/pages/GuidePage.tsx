@@ -243,7 +243,9 @@ function BridgeSection({ C }: { C: GuideContent }) {
       <ol className="space-y-3">
         {B.install.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix="kurulum" />)}
       </ol>
-      <p className="text-xs text-gray-500 mt-3">{B.devAlt}</p>
+      <p className="text-xs text-gray-500 mt-3">
+        {B.zipNote.text} <GLink link={B.zipNote.link} />
+      </p>
 
       <Sub>{B.troubleTitle}</Sub>
       <p className="text-sm text-gray-400 mb-2">{B.troubleIntro}</p>
@@ -254,7 +256,10 @@ function BridgeSection({ C }: { C: GuideContent }) {
   )
 }
 
-/** Kurulu eklentiyi yeni dosyalarla yenileme adımları ve karttaki ↻ düğmesinin resmi. */
+/**
+ * Eklenti uygulamanın klasöründen yüklendiği için kendiliğinden güncellenir; burada bunun nasıl göründüğü
+ * (Güncelleme sekmesi) ve zip kopyasından kurulmuş eklenti için bir kerelik düzeltme var.
+ */
 function UpdateBlock({ C }: { C: GuideContent }) {
   const U = C.bridge.update
   return (
@@ -265,7 +270,17 @@ function UpdateBlock({ C }: { C: GuideContent }) {
       <p className="text-sm text-gray-400 mb-3">{U.intro}</p>
       <Card>
         <Steps steps={U.steps} />
-        <Illustration id="refresh" ui={C.bridge.ui} alt={U.alt} caption={U.caption} className="max-w-md mt-4 sm:ml-9" />
+        <p className="flex gap-1.5 text-xs text-gray-400 mt-3 sm:ml-9">
+          <Info size={14} className="shrink-0 mt-px text-gray-500" aria-hidden="true" /> <span>{U.tip}</span>
+        </p>
+        <Illustration id="updateTab" ui={C.bridge.ui} alt={U.alt} caption={U.caption} className="max-w-sm mt-4 sm:ml-9" />
+      </Card>
+
+      <h4 className="font-semibold text-sm mt-4 mb-2">{U.fixTitle}</h4>
+      <p className="text-sm text-gray-400 mb-3">{U.fixIntro}</p>
+      <Card>
+        <Steps steps={U.fixSteps} />
+        <Illustration id="updateManual" ui={C.bridge.ui} alt={U.fixAlt} caption={U.fixCaption} className="max-w-md mt-4 sm:ml-9" />
       </Card>
     </div>
   )
@@ -464,12 +479,14 @@ function FaqSection({ C }: { C: GuideContent }) {
   )
 }
 
-function DownloadButton({ label, onClick, disabled, busy, describedBy }: {
-  label: string; onClick: () => void; disabled?: boolean; busy?: boolean; describedBy?: string
+function DownloadButton({ label, onClick, disabled, busy, describedBy, secondary = false }: {
+  label: string; onClick: () => void; disabled?: boolean; busy?: boolean; describedBy?: string; secondary?: boolean
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled || busy} aria-describedby={describedBy} aria-busy={busy || undefined}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:hover:bg-purple-600 text-white text-sm font-semibold">
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg disabled:opacity-40 text-sm ${secondary
+        ? 'bg-gray-800 hover:bg-gray-700 disabled:hover:bg-gray-800 border border-gray-700 font-medium'
+        : 'bg-purple-600 hover:bg-purple-500 disabled:hover:bg-purple-600 text-white font-semibold'}`}>
       {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />} {label}
     </button>
   )
@@ -508,7 +525,8 @@ function FilesSection({ C }: { C: GuideContent }) {
                 </p>
               )}
             </div>
-            <DownloadButton label={building ? F.ext.building : F.ext.button} onClick={downloadExtension}
+            {/* Yedek yol: zip kopyası kendiliğinden güncellenmez, bu yüzden düğme bilerek ikinci planda. */}
+            <DownloadButton label={building ? F.ext.building : F.ext.button} onClick={downloadExtension} secondary
               disabled={!ext.available} busy={building} describedBy={!ext.available ? 'ext-unavailable' : undefined} />
           </div>
           {!ext.available && <p id="ext-unavailable" className="text-xs text-amber-300 mt-2">{F.ext.unavailable}</p>}

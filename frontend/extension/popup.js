@@ -10,6 +10,7 @@ const el = {
   status: $('status'),
   warning: $('warning'),
   warningUntil: $('warning-until'),
+  warningTitle: $('warning-title'),
   statusText: $('status-text'),
   today: $('today'),
   last: $('last'),
@@ -22,7 +23,76 @@ const el = {
   appSave: $('app-save'),
   appHint: $('app-hint'),
   openApp: $('open-app'),
+  version: $('version'),
+  updateDot: $('update-dot'),
+  vCurrent: $('v-current'),
+  vLatest: $('v-latest'),
+  vChecked: $('v-checked'),
+  updateStatus: $('update-status'),
+  updateText: $('update-text'),
+  manualSteps: $('manual-steps'),
+  updateHint: $('update-hint'),
+  checkNow: $('check-now'),
 };
+
+// ── Sekmeler (ok tuşlarıyla da gezilir) ──────────────────────────────────────
+
+const TABS = ['status', 'settings', 'update'];
+
+function selectTab(name, focus = false) {
+  for (const t of TABS) {
+    const tab = $(`tab-${t}`);
+    const on = t === name;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(`panel-${t}`).hidden = !on;
+    if (on && focus) tab.focus();
+  }
+  try { sessionStorage.setItem('ia-tab', name); } catch { /* yoksay */ }
+  if (name === 'update') loadUpdate(false);
+}
+
+for (const t of TABS) {
+  const tab = $(`tab-${t}`);
+  tab.addEventListener('click', () => selectTab(t));
+  tab.addEventListener('keydown', (e) => {
+    const i = TABS.indexOf(t);
+    if (e.key === 'ArrowRight') selectTab(TABS[(i + 1) % TABS.length], true);
+    else if (e.key === 'ArrowLeft') selectTab(TABS[(i + TABS.length - 1) % TABS.length], true);
+  });
+}
+
+// ── Güncelleme ───────────────────────────────────────────────────────────────
+
+const UPDATE_TEXT = {
+  current: 'Güncel.',
+  reloading: 'Yeni sürüm yükleniyor…',
+  manual: 'Yeni sürüm var ama bu kopya kendiliğinden güncellenemiyor. Aşağıdaki adımları bir kez yapın.',
+  unreachable: 'Uygulamaya ulaşılamadı; denetlenemedi.',
+};
+
+function renderUpdate(u) {
+  const own = chrome.runtime.getManifest().version;
+  el.version.textContent = `v${own}`;
+  const state = (u && u.state) || 'unknown';
+  el.updateStatus.dataset.state = state;
+  el.updateText.textContent = UPDATE_TEXT[state] || 'Denetlenmedi.';
+  el.vCurrent.textContent = own;
+  el.vLatest.textContent = (u && u.latest) || '—';
+  el.vChecked.textContent = u && u.checkedAt ? fmtTime(u.checkedAt) : '—';
+  el.manualSteps.hidden = state !== 'manual';
+  el.updateHint.hidden = state === 'manual';
+  el.updateDot.hidden = state !== 'manual';
+}
+
+async function loadUpdate(force) {
+  el.checkNow.disabled = true;
+  const u = await send({ type: 'ia-update', force });
+  if (u) renderUpdate(u);
+  el.checkNow.disabled = false;
+}
+
+el.checkNow.addEventListener('click', () => loadUpdate(true));
 
 let appUrl = DEFAULT_APP;
 let hello = null;
@@ -69,6 +139,7 @@ function renderStatus(status, enabled) {
   // Instagram uyarısı: kapalıyken bile görünür, en üstte
   const warnOn = s.state === 'warning' && (!s.warningUntil || s.warningUntil > Date.now());
   el.warning.hidden = !warnOn;
+  if (warnOn) el.warningTitle.textContent = s.message || 'Instagram uyarı verdi.';   // metni uygulama verir
   el.warningUntil.textContent = warnOn && s.warningUntil
     ? `Bu tarihe kadar bekleyin: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
     : '';
@@ -84,7 +155,8 @@ function renderStatus(status, enabled) {
 }
 
 async function refresh() {
-  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl']);
+  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update']);
+  renderUpdate(s.update);
   appUrl = normalizeAppUrl(s.appUrl) || DEFAULT_APP;
   el.enabled.checked = s.enabled === true;
   if (document.activeElement !== el.appUrl) el.appUrl.value = appUrl;
@@ -145,6 +217,7 @@ async function loadHello() {
 
 function showPicker() {
   if (!el.profilePicker.hidden) return;
+  selectTab('settings');                         // yalnızca ilk açılışta; sonra kullanıcı sekmeler arasında serbest
   el.profilePicker.hidden = false;
   el.profileChange.hidden = true;
   if (!hello || !hello.ok) loadHello();
@@ -190,9 +263,17 @@ el.openApp.addEventListener('click', () => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl)) refresh();
+  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update)) refresh();
+let startTab = 'status';
+try { startTab = sessionStorage.getItem('ia-tab') || 'status'; } catch { /* yoksay */ }
+selectTab(TABS.includes(startTab) ? startTab : 'status');
+loadUpdate(false);
 });
 
 refresh();
+let startTab = 'status';
+try { startTab = sessionStorage.getItem('ia-tab') || 'status'; } catch { /* yoksay */ }
+selectTab(TABS.includes(startTab) ? startTab : 'status');
+loadUpdate(false);
 // Uygulamada bekleyen bir Instagram uyarısı varsa pencere açılınca hemen yansısın
 send({ type: 'ia-refresh' }).then(refresh);

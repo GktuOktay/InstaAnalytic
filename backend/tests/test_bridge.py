@@ -266,3 +266,20 @@ async def test_status_explains_pause_in_user_language(db, make_session):
     await _obs(db, kv, s, GQL, '{"message":"challenge_required"}', status=400, req=likers_req(1))
     st = await bridge.status(db, kv, s)
     assert st["paused_until"] and "doğrulama" in st["paused_message"]
+
+
+@pytest.mark.asyncio
+async def test_extension_reports_its_version(client, make_session):
+    from app.main import app
+    from app.routers.bridge import get_kv
+    kv = FakeKV()
+    app.dependency_overrides[get_kv] = lambda: kv
+    try:
+        s = await make_session(username="me")
+        base = {"session_id": str(s.id), "viewer_id": 1001, "status": 200, "url": GQL, "body": "{}"}
+        assert (await client.post("/api/bridge/observe", json={**base, "ext_version": "2.1.0"})).status_code == 200
+        assert (await client.get(f"/api/sessions/{s.id}/bridge/status")).json()["extension_version"] == "2.1.0"
+        bad = await client.post("/api/bridge/observe", json={**base, "ext_version": "<script>"})
+        assert bad.status_code == 422
+    finally:
+        app.dependency_overrides.pop(get_kv, None)

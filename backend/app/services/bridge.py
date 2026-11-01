@@ -532,6 +532,7 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
         "paused_until": session.paused_until.isoformat() if paused else None,
         "paused_reason": session.paused_reason if paused else None,
         "paused_message": _pause_message(session.paused_reason) if paused else None,
+        "extension_version": await _get(kv, sid, "ext_version"),
     }
 
 
@@ -555,6 +556,11 @@ async def diagnostics(kv: KV, session_id) -> list[dict]:
         except ValueError:
             pass
     return out
+
+
+async def remember_extension(kv: KV, session_id, version: str) -> None:
+    """Eklentinin bildirdiği sürüm; arayüz uygulamadaki sürümle karşılaştırıp eskiyse uyarır."""
+    await kv.set(_k(session_id, "ext_version"), version, ex=STATE_TTL_S)
 
 
 async def set_stopped(kv: KV, session_id: uuid.UUID, stopped: bool) -> None:

@@ -8,57 +8,93 @@
 <body>
   <header>
     <h1>InstaAnalytic Köprüsü</h1>
+    <span class="version" id="version"></span>
   </header>
 
-  <label class="toggle">
-    <input type="checkbox" id="enabled">
-    <span class="switch" aria-hidden="true"></span>
-    <span class="toggle-text">Gezinirken beğenenleri kaydet</span>
-  </label>
+  <nav class="tabs" role="tablist" aria-label="Bölümler">
+    <button type="button" role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true">Durum</button>
+    <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Ayarlar</button>
+    <button type="button" role="tab" id="tab-update" aria-controls="panel-update" aria-selected="false" tabindex="-1">
+      Güncelleme <span class="tab-dot" id="update-dot" hidden></span>
+    </button>
+  </nav>
 
-  <p class="note">
-    Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda,
-    sayfanın zaten indirdiği listeyi kaydeder.
-  </p>
+  <!-- Durum -->
+  <section class="panel" role="tabpanel" id="panel-status" aria-labelledby="tab-status">
+    <label class="toggle">
+      <input type="checkbox" id="enabled">
+      <span class="switch" aria-hidden="true"></span>
+      <span class="toggle-text">Gezinirken beğenenleri kaydet</span>
+    </label>
 
-  <section class="warning" id="warning" role="alert" hidden>
-    <strong>Instagram uyarı verdi. Toplama durduruldu.</strong>
-    <p id="warning-until"></p>
-    <ul>
-      <li>Beğenen listelerini açmayı bu süre boyunca bırakın.</li>
-      <li>Instagram'ı telefonunuzdan normal şekilde kullanın.</li>
-      <li>Instagram bir doğrulama isterse onu kendiniz tamamlayın.</li>
-      <li>Süre dolunca daha yavaş devam edin: bir oturumda birkaç gönderi yeter.</li>
-    </ul>
+    <p class="note">
+      Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda,
+      sayfanın zaten indirdiği listeyi kaydeder.
+    </p>
+
+    <section class="warning" id="warning" role="alert" hidden>
+      <strong id="warning-title">Instagram uyarı verdi.</strong>
+      <p id="warning-until"></p>
+      <ul>
+        <li>Beğenen listelerini açmayı bu süre boyunca bırakın.</li>
+        <li>Instagram'ı telefonunuzdan normal şekilde kullanın.</li>
+        <li>Instagram bir doğrulama isterse onu kendiniz tamamlayın.</li>
+        <li>Süre dolunca daha yavaş devam edin: bir oturumda birkaç gönderi yeter.</li>
+      </ul>
+    </section>
+
+    <section class="status" id="status" data-state="off">
+      <div class="status-line"><span class="dot"></span><span id="status-text">Kapalı.</span></div>
+      <dl class="facts">
+        <div><dt>Bugün</dt><dd id="today">0 gönderi, 0 kişi</dd></div>
+        <div><dt>Son kayıt</dt><dd id="last">—</dd></div>
+      </dl>
+    </section>
   </section>
 
-  <section class="status" id="status" data-state="off">
-    <div class="status-line"><span class="dot"></span><span id="status-text">Kapalı.</span></div>
-    <dl class="facts">
-      <div><dt>Bugün</dt><dd id="today">0 gönderi, 0 kişi</dd></div>
-      <div><dt>Son kayıt</dt><dd id="last">—</dd></div>
+  <!-- Ayarlar -->
+  <section class="panel" role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" hidden>
+    <section class="block first">
+      <div class="row">
+        <span class="label">Profil</span>
+        <span id="profile-name" class="value">—</span>
+        <button type="button" id="profile-change" class="link">Değiştir</button>
+      </div>
+      <div id="profile-picker" hidden>
+        <select id="profile-select" aria-label="Profil seçin"></select>
+        <p id="profile-hint" class="hint"></p>
+      </div>
+    </section>
+
+    <section class="block">
+      <label class="label" for="app-url">Uygulama adresi</label>
+      <div class="row">
+        <input type="url" id="app-url" placeholder="http://localhost:3002" spellcheck="false" autocomplete="off">
+        <button type="button" id="app-save" class="secondary">Kaydet</button>
+      </div>
+      <p id="app-hint" class="hint"></p>
+    </section>
+  </section>
+
+  <!-- Güncelleme -->
+  <section class="panel" role="tabpanel" id="panel-update" aria-labelledby="tab-update" hidden>
+    <dl class="facts versions">
+      <div><dt>Yüklü sürüm</dt><dd id="v-current">—</dd></div>
+      <div><dt>Uygulamadaki sürüm</dt><dd id="v-latest">—</dd></div>
+      <div><dt>Son denetim</dt><dd id="v-checked">—</dd></div>
     </dl>
-  </section>
-
-  <section class="block">
-    <div class="row">
-      <span class="label">Profil</span>
-      <span id="profile-name" class="value">—</span>
-      <button type="button" id="profile-change" class="link">Değiştir</button>
+    <div class="status" id="update-status" data-state="off">
+      <div class="status-line"><span class="dot"></span><span id="update-text">Denetlenmedi.</span></div>
     </div>
-    <div id="profile-picker" hidden>
-      <select id="profile-select" aria-label="Profil seçin"></select>
-      <p id="profile-hint" class="hint"></p>
-    </div>
-  </section>
-
-  <section class="block">
-    <label class="label" for="app-url">Uygulama adresi</label>
-    <div class="row">
-      <input type="url" id="app-url" placeholder="http://localhost:3002" spellcheck="false" autocomplete="off">
-      <button type="button" id="app-save" class="secondary">Kaydet</button>
-    </div>
-    <p id="app-hint" class="hint"></p>
+    <ol class="steps" id="manual-steps" hidden>
+      <li><code>chrome://extensions</code> sayfasında bu eklentinin kartındaki <b>Kaldır</b>'a basın.</li>
+      <li><b>Paketlenmemiş öğe yükle</b> ile InstaAnalytic klasöründeki <code>frontend/extension</code> klasörünü seçin.</li>
+      <li>Instagram sekmesini yenileyin. Bundan sonra güncellemeler kendiliğinden gelir.</li>
+    </ol>
+    <p class="hint" id="update-hint">
+      Eklenti uygulamanın klasöründen yüklendiyse, uygulama güncellendiğinde kendini yeniler.
+    </p>
+    <button type="button" id="check-now" class="secondary wide">Şimdi denetle</button>
   </section>
 
   <footer>
