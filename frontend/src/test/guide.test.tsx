@@ -149,9 +149,20 @@ describe('GuidePage', () => {
     expect(note).toHaveTextContent('72 saat')
     expect(note).toHaveTextContent(/kırmızı/)
     expect(note).toHaveTextContent(/429/)
-    expect(note).toHaveTextContent(/Beğenen listelerini açmayı bırak/)
-    expect(note).toHaveTextContent(/doğrulama/)
+    // Uyarı bir engel değil: öneri 24/72 saat ara, telefondan normal kullanım, doğrulamayı kendin yap, yavaş git
+    expect(note).toHaveTextContent(/uyarı, engel değil/)
+    expect(note).toHaveTextContent(/Ara ver/)
+    expect(note).toHaveTextContent(/telefonundan/)
+    expect(note).toHaveTextContent(/doğrulama isterse onu kendin tamamla/)
+    expect(note).toHaveTextContent(/Devam edersen daha yavaş git/)
     expect(note).toHaveTextContent(/aşmaya çalışma/)
+    // Kendiliğinden durdurma, duraklatma ya da engelleme anlatılmaz
+    expect(note).not.toHaveTextContent(/durduruldu\b|\bdurur\b|duraklat|engellen|beğenen listesi açma|açmayı bırak/i)
+    // Resimdeki şerit uygulamanınkiyle aynı: ara önerisi ve "Hiçbir şey durdurulmadı"
+    const art = within(note).getByRole('img', { name: W.alt })
+    // Şeridin ilk satırı iki satıra bölünür (tspan'ler arasında boşluk yok)
+    expect(art).toHaveTextContent(/tarihine kadar ara vermeni\s*öneririz/)
+    expect(art).toHaveTextContent('Hiçbir şey durdurulmadı; devam edip etmemek senin kararın.')
   })
 
   it('draws the popup as it is now: logo, master switch, Araçlar tab and the three tool cards', async () => {
@@ -162,15 +173,17 @@ describe('GuidePage', () => {
     // Uygulama çubuğu: logo, ad, sürüm
     expect(svg.querySelector('rect[width="128"][rx="30"]')).not.toBeNull()
     expect(svg).toHaveTextContent('InstaAnalytic')
-    expect(svg).toHaveTextContent('Köprü v2.3.0')
+    expect(svg).toHaveTextContent('Köprü v2.4.0')
     // Sekmeler
     expect(svg).toHaveTextContent('Araçlar')
     expect(svg).toHaveTextContent('Ayarlar')
     expect(svg).toHaveTextContent('Güncelleme')
-    // Üç araç kartı, düğmeleri ve sayıları
-    for (const t of ['Gönderi listesi', 'Beğenenler', 'Yorumlar', 'Profilimi aç', 'Sıradaki gönderiyi aç']) {
+    // Üç araç kartı, iş düğmeleri ve sayıları
+    for (const t of ['Gönderi listesi', 'Beğenenler', 'Yorumlar', 'Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek']) {
       expect(svg).toHaveTextContent(t)
     }
+    expect(svg).not.toHaveTextContent('Profilimi aç')
+    expect(svg).not.toHaveTextContent('Sıradaki gönderiyi aç')
     expect(svg).toHaveTextContent('50 gönderi bulundu')
     expect(svg).toHaveTextContent('12 / 50 gönderi okundu')
     expect(svg).toHaveTextContent('9 gönderinin yorumları kaydedildi')
@@ -204,7 +217,7 @@ describe('GuidePage', () => {
     expect(manual).toHaveTextContent('↑')
   })
 
-  it('explains the three tools as separate, illustrated blocks in the usage section', async () => {
+  it('explains the three jobs, where to start them and how to stop them', async () => {
     const { container } = await renderGuide()
     const C = guideContent('tr')
     const section = container.querySelector(`section#${SECTION_ANCHOR.use}`) as HTMLElement
@@ -212,12 +225,40 @@ describe('GuidePage', () => {
     expect(SECTION_ANCHOR.use).toBe('kullanim')
     const within_ = within(section)
 
-    // Önce: pencereyi aç
-    const start = within_.getByRole('img', { name: C.use.steps[0].alt })
-    for (const t of ['Araçlar', 'Gönderi listesi', 'Beğenenler', 'Yorumlar']) expect(start).toHaveTextContent(t)
+    // İşi başlatmanın üç yolu: uygulamanın Gönderiler sayfası, tek gönderi paneli, eklenti penceresi
+    expect(C.use.steps.map(s => s.art)).toEqual(['appJobs', 'postDetail', 'popupJobs'])
+    C.use.steps.forEach((s, i) => {
+      const img = within_.getByRole('img', { name: s.alt })
+      expect(img.tagName.toLowerCase()).toBe('svg')
+      expect(img.closest('figure')?.querySelector('figcaption')?.textContent).toBe(s.caption)
+      expect(within_.getByRole('heading', { level: 4, name: `${C.bridge.stepLabel} ${i + 1}: ${s.title}` })).toBeInTheDocument()
+    })
+    const art = (id: string) => within_.getByRole('img', { name: C.use.steps.find(s => s.art === id)!.alt })
+    // Uygulamanın Gönderiler sayfası: üç düğme ve iş kutusu ("Beğenenler: 3 / 12", "Durdur")
+    for (const t of ['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek', 'Beğenenler: 3 / 12', 'Durdur']) {
+      expect(art('appJobs')).toHaveTextContent(t)
+    }
+    // Gönderi paneli: yalnızca bu gönderi için iki düğme
+    expect(art('postDetail')).toHaveTextContent('Bu gönderinin beğenenlerini çek')
+    expect(art('postDetail')).toHaveTextContent('Bu gönderinin yorumlarını çek')
+    // Eklenti penceresi: kartlarda iş düğmeleri, üstte iş çubuğu
+    for (const t of ['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek', 'Beğenenler: 3 / 12', 'Durdur']) {
+      expect(art('popupJobs')).toHaveTextContent(t)
+    }
+    // Metinde de: üç düğme, tek gönderi düğmeleri, eklenti bulunamadı notu
+    for (const t of ['"Gönderileri çek"', '"Beğenenleri çek"', '"Yorumları çek"', '"Bu gönderinin beğenenlerini çek"', '"Bu gönderinin yorumlarını çek"']) {
+      expect(section).toHaveTextContent(t)
+    }
+    expect(section).toHaveTextContent(/eklenti bu sayfada bulunamadı/)
+    expect(section).toHaveTextContent(/sayfayı bir kez yenile/)
+    // Durdurmak: "Durdur" ya da sekmeyi kapatmak
+    expect(C.use.stop.text).toMatch(/"Durdur"/)
+    expect(C.use.stop.text).toMatch(/sekmesini kapatmak da işi durdurur/)
+    expect(section).toHaveTextContent(C.use.stop.text)
 
-    // Her araç için ayrı, başlıklı bir blok
+    // Her iş için ayrı, başlıklı bir blok
     expect(C.use.tools.map(t => t.id)).toEqual(TOOL_IDS)
+    expect(C.use.tools.map(t => t.title)).toEqual(['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek'])
     for (const tool of C.use.tools) {
       const block = within_.getByRole('region', { name: tool.title })
       expect(block).toHaveAttribute('id', TOOL_ANCHOR[tool.id])
@@ -232,32 +273,55 @@ describe('GuidePage', () => {
       })
     }
     const block = (id: 'posts' | 'likers' | 'comments') => within_.getByRole('region', { name: C.use.tools.find(t => t.id === id)!.title })
-    // Gönderi listesi: "Profilimi aç", sona kadar kaydır, "N gönderi bulundu"
-    expect(block('posts')).toHaveTextContent('Profilimi aç')
-    expect(block('posts')).toHaveTextContent(/sonuna gelene kadar aşağı kaydır/)
+    expect(block('posts')).toHaveTextContent(/sonuna gelene kadar yavaşça aşağı kaydırır/)
     expect(block('posts')).toHaveTextContent('N gönderi bulundu')
-    // Beğenenler: "Sıradaki gönderiyi aç", beğenme sayısına tıkla, sona kadar kaydır, çubuk dolar, 5–10
-    expect(block('likers')).toHaveTextContent('Sıradaki gönderiyi aç')
-    expect(block('likers')).toHaveTextContent(/"X beğenme" yazısına tıkla/)
-    expect(block('likers')).toHaveTextContent(/en alta kadar kaydır/)
-    expect(block('likers')).toHaveTextContent(/çubuk biraz dolar/)
+    expect(block('likers')).toHaveTextContent(/"X beğenme" yazısına tıklar/)
+    expect(block('likers')).toHaveTextContent('6–18 saniye')
     expect(block('likers')).toHaveTextContent('Hepsi okundu')
     expect(block('likers')).toHaveTextContent('5–10')
-    // Yorumlar: ayrıca bir şey yapmaya gerek yok
-    expect(block('comments')).toHaveTextContent(/Ayrıca bir şey yapman gerekmez/)
-    expect(block('comments')).toHaveTextContent(/yorum yapanları kendiliğinden kaydeder/)
+    expect(block('comments')).toHaveTextContent(/"daha fazla yorum" düğmesine basar/)
+    expect(within(block('comments')).getByRole('img')).toHaveTextContent('Daha fazla yorum yükle')
 
-    // Kapatılan araç hiçbir şey kaydetmez
+    // Kendin gezerken de kaydeder; anahtarlar yalnızca bunu açıp kapatır
+    expect(within_.getByRole('heading', { level: 3, name: C.use.passive.title })).toBeInTheDocument()
     expect(within_.getByRole('heading', { level: 3, name: C.use.off.title })).toBeInTheDocument()
     expect(C.use.off.text).toMatch(/hiçbir şey kaydetmez/)
+    expect(C.use.off.text).toMatch(/İş düğmeleri anahtarlardan bağımsız/)
     expect(C.use.off.text).toMatch(/Köprü kapalı\. Sağ üstteki anahtarla açın\./)
-    const off = within_.getByRole('img', { name: C.use.off.alt })
-    expect(off).toHaveTextContent('Yorumlar')
+    expect(within_.getByRole('img', { name: C.use.off.alt })).toHaveTextContent('Yorumlar')
 
-    expect(within_.getByRole('heading', { level: 3, name: C.use.troubleTitle })).toBeInTheDocument()
+    // Sorunlar: eklenti bulunamadı, beğenenler gelmedi, sekme kapatıldı
+    const table = within_.getByRole('table', { name: C.use.troubleTitle })
+    expect(within(table).getByRole('rowheader', { name: /eklenti bu sayfada bulunamadı/ })).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: /İş başladı ama beğenenler gelmedi/ })).toBeInTheDocument()
+    expect(within(table).getByRole('rowheader', { name: /Sekmeyi kapattım/ })).toBeInTheDocument()
+    expect(table).toHaveTextContent(/uygulama sayfasını bir kez yenile/)
+    expect(table).toHaveTextContent(/beğeni sayısı gizli/)
+    expect(table).toHaveTextContent(/"Bu gönderinin beğenenlerini çek"i dene/)
+    expect(table).toHaveTextContent(/İşi yeniden başlat/)
+
+    // Açık konuşalım: görünen sekme, insan gibi; uyarır ama durdurmaz
+    expect(C.use.limit).toMatch(/görünen bir Instagram sekmesinde/)
+    expect(C.use.limit).toMatch(/uyarı gösterebilir/)
+    expect(C.use.limit).toMatch(/uyarır ama seni durdurmaz/)
+
     // Başlık kimlikleri kurulum adımlarıyla çakışmasın
     const ids = Array.from(container.querySelectorAll('[id]')).map(e => e.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('shows the job buttons in English too, and keeps the popup in Turkish', async () => {
+    const { container } = await renderGuide({ lang: 'en' })
+    const C = guideContent('en')
+    const section = container.querySelector(`section#${SECTION_ANCHOR.use}`) as HTMLElement
+    const app = within(section).getByRole('img', { name: C.use.steps[0].alt })
+    for (const t of ['Fetch posts', 'Fetch likers', 'Fetch comments', 'Stop']) expect(app).toHaveTextContent(t)
+    const panel = within(section).getByRole('img', { name: C.use.steps[1].alt })
+    expect(panel).toHaveTextContent("Fetch this post's likers")
+    expect(panel).toHaveTextContent("Fetch this post's comments")
+    const popup = within(section).getByRole('img', { name: C.use.steps[2].alt })
+    for (const t of ['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek', 'Durdur']) expect(popup).toHaveTextContent(t)
+    expect(C.use.limit).toMatch(/warns you but does not stop you/)
   })
 
   it('explains that the extension updates itself, with the Güncelleme tab and the one-time zip fix', async () => {
@@ -344,7 +408,51 @@ describe('guide content', () => {
       expect(popup.text).toMatch(/sağ üstteki anahtar|switch at the top right/)
       expect(popup.text).toMatch(/Araçlar/)
       expect(checklistMarkdown(C)).toMatch(/sağ üstteki anahtar|switch at the top right/)
-      for (const t of ['Profilimi aç', 'Sıradaki gönderiyi aç']) expect(checklistMarkdown(C)).toContain(t)
+      expect(checklistMarkdown(C)).not.toMatch(/Profilimi aç|Sıradaki gönderiyi aç/)
+    }
+    expect(checklistMarkdown(guideContent('tr'))).toMatch(/"Gönderileri çek"/)
+    expect(checklistMarkdown(guideContent('tr'))).toMatch(/"Bu gönderinin beğenenlerini çek"/)
+    expect(checklistMarkdown(guideContent('en'))).toMatch(/"Fetch posts"/)
+    expect(checklistMarkdown(guideContent('en'))).toMatch(/"Fetch this post's likers"/)
+  })
+
+  it('no longer mentions the old popup buttons ("Profilimi aç", "Sıradaki gönderiyi aç")', () => {
+    for (const lang of ['tr', 'en']) {
+      const C = guideContent(lang)
+      const all = JSON.stringify(C) + checklistMarkdown(C)
+      expect(all).not.toMatch(/Profilimi aç|Sıradaki gönderiyi aç|open my profile|open the next post/i)
+      // Eklenti penceresindeki üç kartın her birinde iş düğmesi var; sürüm 2.4.0
+      expect(Object.values(C.bridge.ui.popupTools).map(t => t.action)).toEqual(['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek'])
+      expect(C.bridge.ui.popupVersionValue).toBe('2.4.0')
+      expect(C.bridge.ui.extVersion).toBe('2.4.0')
+    }
+  })
+
+  it('never says collection is stopped, paused or blocked when Instagram warns', () => {
+    const tr = /durduruldu\b|\bdurur\b|\bdurdu\b|duraklat|engellen|kilitlenir|beğenen listesi açma|açmayı bırak|dur ve bekle/i
+    // "nothing was stopped" doğru cümle; "collection is stopped" gibi olanlar yasak
+    const en = /(?<!nothing )\b(is|are|was|were|get|gets) (stopped|paused|blocked)\b|\bstops? for\b|stop opening|do not open likers|stop and wait/i
+    for (const lang of ['tr', 'en'] as const) {
+      const C = guideContent(lang)
+      const W = C.bridge.warning
+      const warnGroup = C.checklistDoc.groups[C.checklistDoc.groups.length - 1]
+      const warnRow = C.safety.rows.find(r => r.link?.to === '#uyari')!
+      const warnFaq = C.faq.items.find(r => r.link?.to === '#uyari')!
+      const texts = [
+        W.intro, ...W.effects, ...W.do, W.never, W.alt, W.caption,
+        warnRow.text, warnFaq.text, ...warnGroup.items, C.checklistDoc.footer,
+        C.bridge.ui.warnBanner, C.bridge.ui.warnBannerTodo,
+        C.bridge.rules[C.bridge.rules.length - 1], C.use.limit,
+      ]
+      for (const t of texts) expect(t).not.toMatch(lang === 'tr' ? tr : en)
+      // Bir uyarı, engel değil; önerimiz 24 saat (bir hafta içinde tekrarlarsa 72 saat)
+      const joined = texts.join(' ')
+      expect(joined).toMatch(lang === 'tr' ? /uyarı, engel değil/ : /warning, not a block/)
+      expect(joined).toMatch(/24/)
+      expect(joined).toMatch(/72/)
+      expect(warnRow.text).toMatch(/24/)
+      // Takip/çıkış kuyruğunun boşaltılması uyarı satırında anlatılmaz (köprü uyarısıyla ilgisi yok)
+      expect(warnRow.text).not.toMatch(/kuyruk|queue|6 saat|6 hours/)
     }
   })
 
@@ -355,6 +463,9 @@ describe('guide content', () => {
         const { container, unmount } = render(<Illustration id={id} ui={ui} alt={id} caption={id} />)
         expect(container).not.toHaveTextContent('Gezinirken beğenenleri kaydet')
         expect(container).not.toHaveTextContent('Durum')
+        expect(container).not.toHaveTextContent('Profilimi aç')
+        expect(container).not.toHaveTextContent('Sıradaki gönderiyi aç')
+        expect(container).not.toHaveTextContent('2.3.0')
         unmount()
       }
     }
@@ -387,6 +498,9 @@ describe('guide content', () => {
     expect(en.use.tools.map(t => t.steps.map(s => s.art))).toEqual(tr.use.tools.map(t => t.steps.map(s => s.art)))
     expect(en.use.tools.map(t => !!t.tip)).toEqual(tr.use.tools.map(t => !!t.tip))
     expect(en.use.trouble).toHaveLength(tr.use.trouble.length)
+    expect(en.safety.rows).toHaveLength(tr.safety.rows.length)
+    expect(en.safety.limits).toHaveLength(tr.safety.limits.length)
+    expect(Object.keys(en.bridge.ui).sort()).toEqual(Object.keys(tr.bridge.ui).sort())
     // Eklenti penceresi yalnızca Türkçe; iki dilde de aynı çizilir
     expect(en.bridge.ui.popupTools).toEqual(tr.bridge.ui.popupTools)
     expect(en.bridge.update.steps).toHaveLength(tr.bridge.update.steps.length)

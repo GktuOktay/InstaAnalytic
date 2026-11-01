@@ -184,12 +184,21 @@ async function resolveProfile(cfg, viewerId) {
 
 // ── İçerik betiği için ayar ──────────────────────────────────────────────────
 
-async function configFor(viewer) {
+async function configFor(viewer, tabId) {
   checkUpdate().catch(() => {});                // en çok 6 saatte bir; Instagram sayfası açıldıkça
   const cfg = await getCfg();
   if (!VIEWER_RE.test(String(viewer || ''))) return { on: false };
   // Hangi hesabın açık olduğu, eklenti kapalıyken de hatırlanır: profil seçimi buna dayanır
   await chrome.storage.local.set({ lastViewer: String(viewer), lastViewerAt: Date.now() });
+
+  // Bu sekme bir işin sekmesiyse: anahtarlardan bağımsız, işin türü kaydedilir ve iş adımı verilir
+  const job = await getJob();
+  if (job && job.state === 'running' && job.tabId === tabId) {
+    const profile = await resolveProfile(cfg, String(viewer));
+    if (!profile) return { on: false };
+    return { on: true, username: profile.username || null, tools: jobTools(job), job: { kind: job.kind, shortcode: job.queue[job.index] || null } };
+  }
+
   if (!cfg.enabled || !TOOL_KEYS.some((k) => cfg.tools[k])) return { on: false };
   const profile = await resolveProfile(cfg, String(viewer));
   if (!profile) return { on: false };
@@ -201,9 +210,12 @@ async function configFor(viewer) {
 let chain = Promise.resolve();
 let pending = 0;
 
-async function handleObserved(msg) {
+async function handleObserved(msg, tabId) {
   const cfg = await getCfg();
-  if (!cfg.enabled || !VIEWER_RE.test(String(msg.viewer || ''))) return;
+  const job = await getJob();
+  const jobTab = !!(job && job.state === 'running' && job.tabId === tabId);
+  if ((!cfg.enabled && !jobTab) || !VIEWER_RE.test(String(msg.viewer || ''))) return;
+  const allowed = jobTab ? jobTools(job) : cfg.tools;
   const viewerId = String(msg.viewer);
   const profile = await resolveProfile(cfg, viewerId);
   if (!profile) return;
@@ -223,7 +235,7 @@ async function handleObserved(msg) {
     body: msg.text,
     ext_version: chrome.runtime.getManifest().version,
     // Hangi araçların açık olduğu: uygulama yalnızca bunları kaydeder
-    kinds: TOOL_KEYS.filter((k) => cfg.tools[k] && Array.isArray(msg.kinds) && msg.kinds.includes(k)),
+    kinds: TOOL_KEYS.filter((k) => allowed[k] && Array.isArray(msg.kinds) && msg.kinds.includes(k)),
   }, 60000);
 
   if (rep.status === 0) {
@@ -243,7 +255,7 @@ async function handleObserved(msg) {
   if (rep.status !== 200 || !rep.data) return; // tek bir yanıt kabul edilmediyse dinlemeye devam
 
   const r = rep.data;
-  const until = r.paused_until ? Date.parse(r.paused_until) : null;
+  const until = r.warning_until ? Date.parse(r.warning_until) : null;
   if (until && until > Date.now()) {
     // Metni uygulama belirler (son kullanıcı dili)
     await setStatus({ state: 'warning', profile, message: String(r.message || 'Instagram uyarı verdi.'), warningUntil: until });
@@ -268,11 +280,128 @@ async function handleObserved(msg) {
   }
 }
 
-function enqueue(msg) {
+function enqueue(msg, tabId) {
   if (pending >= MAX_QUEUE) return;
   pending += 1;
-  chain = chain.then(() => handleObserved(msg)).catch(() => {}).finally(() => { pending -= 1; });
+  chain = chain.then(() => handleObserved(msg, tabId)).catch(() => {}).finally(() => { pending -= 1; });
 }
+
+// ── İşler ────────────────────────────────────────────────────────────────────
+// Uygulamadan ya da açılır pencereden başlatılır. Eklenti bir Instagram sekmesi açar ve içerik betiği
+// bir insanın yapacağını yapar (kaydırma, beğenme sayısına tıklama, "daha fazla yorum"). Instagram'a
+// doğrudan istek yine gönderilmez. Aynı anda tek iş çalışır; durum chrome.storage.session'da tutulur.
+
+const SHORTCODE_RE = /^[\w-]{5,40}$/;
+const KINDS = ['posts', 'likers', 'comments'];
+const BETWEEN_POSTS_MS = [6000, 18000];
+
+async function getJob() {
+  try {
+    const { job } = await chrome.storage.session.get('job');
+    return job && typeof job === 'object' ? job : null;
+  } catch {
+    return null;
+  }
+}
+
+async function setJob(job) {
+  await chrome.storage.session.set({ job });
+  await chrome.storage.local.set({ jobView: job });   // açılır pencere ve uygulama sayfası izlesin
+}
+
+function jobTools(job) {
+  // Gönderi sayfasındaki gönderinin kendisi de kaydedilsin (beğeni / yorum sayısı tazelenir)
+  return { posts: true, likers: job.kind === 'likers', comments: job.kind === 'comments' };
+}
+
+function jobUrl(job, i) {
+  if (job.kind === 'posts') return `https://www.instagram.com/${encodeURIComponent(job.username)}/`;
+  return `https://www.instagram.com/p/${encodeURIComponent(job.queue[i])}/`;
+}
+
+const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar' };
+
+async function startJob(cmd) {
+  const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
+  if (!kind) return { ok: false, error: 'Bilinmeyen iş.' };
+  const running = await getJob();
+  if (running && running.state === 'running') return { ok: false, error: `Zaten çalışan bir iş var (${KIND_LABEL[running.kind]}).` };
+
+  const cfg = await getCfg();
+  const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
+  if (!profile) return { ok: false, error: "Önce Instagram'ı bir sekmede açıp eklentide profilinizi seçin." };
+
+  let queue = [null];
+  if (kind === 'posts') {
+    if (!profile.username) return { ok: false, error: 'Profilin kullanıcı adı bilinmiyor; Ayarlar sekmesinden profili yeniden seçin.' };
+  } else {
+    let codes = Array.isArray(cmd.shortcodes) ? cmd.shortcodes.map(String).filter((c) => SHORTCODE_RE.test(c)) : [];
+    if (!codes.length) {
+      const limit = Math.max(1, Math.min(Number(cmd.count) || 50, 50));
+      const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?kind=${kind}&limit=${limit}`);
+      if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
+      codes = Array.isArray(r.data) ? r.data.map((p) => String(p.shortcode)).filter((c) => SHORTCODE_RE.test(c)) : [];
+    }
+    if (!codes.length) return { ok: false, error: kind === 'likers' ? 'Beğenenleri okunacak gönderi kalmadı.' : 'Yorumları okunacak gönderi kalmadı.' };
+    queue = codes.slice(0, 50);
+  }
+
+  const job = {
+    id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [],
+    username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0,
+    message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
+  };
+  const tab = await chrome.tabs.create({ url: jobUrl(job, 0), active: true });
+  job.tabId = tab.id;
+  await setJob(job);
+  return { ok: true, total: job.total };
+}
+
+async function finishJob(job, state, message) {
+  job.state = state;
+  job.message = message;
+  job.finishedAt = Date.now();
+  await setJob(job);
+  if (state === 'done' && job.tabId != null) {
+    setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
+  }
+}
+
+async function jobStepDone(tabId, error) {
+  const job = await getJob();
+  if (!job || job.state !== 'running' || job.tabId !== tabId) return;
+  if (error) job.errors.push({ shortcode: job.queue[job.index], error: String(error).slice(0, 200) });
+  job.index += 1;
+  if (job.index >= job.total) {
+    const ok = job.total - job.errors.length;
+    const msg = job.kind === 'posts' ? 'Gönderi listesi okundu.'
+      : `${KIND_LABEL[job.kind]}: ${ok} / ${job.total} gönderi okundu${job.errors.length ? `, ${job.errors.length} gönderide sorun çıktı` : ''}.`;
+    await finishJob(job, 'done', msg);
+    return;
+  }
+  job.message = `${KIND_LABEL[job.kind]}: ${job.index + 1} / ${job.total}`;
+  job.step = 0;
+  await setJob(job);
+  // Gönderiler arasında insan hızında, rastgele bekleme
+  const wait = BETWEEN_POSTS_MS[0] + Math.random() * (BETWEEN_POSTS_MS[1] - BETWEEN_POSTS_MS[0]);
+  setTimeout(async () => {
+    const cur = await getJob();
+    if (cur && cur.state === 'running' && cur.id === job.id) chrome.tabs.update(tabId, { url: jobUrl(cur, cur.index) }).catch(() => {});
+  }, wait);
+}
+
+async function stopJob() {
+  const job = await getJob();
+  if (!job || job.state !== 'running') return { ok: true };
+  await finishJob(job, 'stopped', 'Durduruldu.');
+  if (job.tabId != null) chrome.tabs.remove(job.tabId).catch(() => {});
+  return { ok: true };
+}
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const job = await getJob();
+  if (job && job.state === 'running' && job.tabId === tabId) await finishJob(job, 'stopped', 'Sekme kapatıldı, iş durdu.');
+});
 
 // ── Açılır pencere için yardımcılar ──────────────────────────────────────────
 
@@ -302,9 +431,10 @@ async function summaryForPopup() {
   const cfg = await getCfg();
   const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
   if (!profile) return { ok: false };
-  const [st, todo] = await Promise.all([
+  const [st, todo, todoComments] = await Promise.all([
     callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`),
-    callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?limit=1`),
+    callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?kind=likers&limit=1`),
+    callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?kind=comments&limit=1`),
   ]);
   if (st.status !== 200 || !st.data) return { ok: false, appDown: st.status === 0 };
   const next = todo.status === 200 && Array.isArray(todo.data) && todo.data[0] ? todo.data[0] : null;
@@ -315,6 +445,7 @@ async function summaryForPopup() {
     likersDone: Number(st.data.likers_done) || 0,
     commentsDone: Number(st.data.comments_done) || 0,
     next: next && /^[\w-]{5,40}$/.test(String(next.shortcode)) ? { shortcode: String(next.shortcode), likes: Number(next.like_count) || 0 } : null,
+    nextComments: todoComments.status === 200 && Array.isArray(todoComments.data) && todoComments.data.length > 0,
   };
 }
 
@@ -325,9 +456,9 @@ async function refreshFromApp() {
   if (!profile) return;
   const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`);
   if (r.status !== 200 || !r.data) return;
-  const until = r.data.paused_until ? Date.parse(r.data.paused_until) : null;
+  const until = r.data.warning_until ? Date.parse(r.data.warning_until) : null;
   if (until && until > Date.now()) {
-    await setStatus({ state: 'warning', profile, message: String(r.data.paused_message || 'Instagram uyarı verdi.'), warningUntil: until });
+    await setStatus({ state: 'warning', profile, message: String(r.data.warning_message || 'Instagram uyarı verdi.'), warningUntil: until });
   } else {
     const { status } = await chrome.storage.local.get('status');
     if (status && status.state === 'warning') await setStatus({ state: 'listening', message: 'Dinliyor.', warningUntil: null });
@@ -351,15 +482,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === 'ia-config') {
     if (!fromInstagram) return false;
-    configFor(msg.viewer).then(sendResponse, () => sendResponse({ on: false }));
+    configFor(msg.viewer, sender.tab.id).then(sendResponse, () => sendResponse({ on: false }));
     return true;
   }
   if (msg.type === 'ia-observed') {
     if (!fromInstagram) return false;
     if (typeof msg.url !== 'string' || !msg.url.startsWith('https://www.instagram.com/')) return false;
     if (typeof msg.text !== 'string' || msg.text.length > MAX_BODY_CHARS) return false;
-    enqueue(msg);
+    enqueue(msg, sender.tab.id);
     return false;
+  }
+  if (msg.type === 'ia-job-progress' || msg.type === 'ia-job-done') {
+    if (!fromInstagram) return false;
+    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null);
+    else getJob().then((job) => {
+      if (job && job.state === 'running' && job.tabId === sender.tab.id) { job.step = Number(msg.step) || 0; setJob(job); }
+    });
+    return false;
+  }
+
+  // İş başlatma / durdurma: açılır pencereden ya da uygulama sayfasından (app-bridge.js)
+  if (msg.type === 'ia-run' || msg.type === 'ia-stop' || msg.type === 'ia-job') {
+    const fromApp = !!(sender.tab && /^http:\/\/(localhost|127\.0\.0\.1):3002\//.test(String(sender.tab.url || '')));
+    if (sender.tab && !fromApp) return false;
+    const work = msg.type === 'ia-run' ? startJob(msg.cmd) : msg.type === 'ia-stop' ? stopJob() : getJob();
+    work.then(sendResponse, () => sendResponse({ ok: false, error: 'Beklenmeyen bir hata oldu.' }));
+    return true;
   }
 
   // Aşağıdakiler yalnızca eklentinin kendi açılır penceresinden

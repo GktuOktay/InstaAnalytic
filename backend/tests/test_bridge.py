@@ -157,19 +157,33 @@ async def test_someone_elses_posts_and_likers_are_ignored(db, make_session):
 
 
 @pytest.mark.asyncio
-async def test_instagram_warning_pauses_and_repeat_pauses_longer(db, make_session):
+async def test_instagram_warning_warns_but_never_blocks(db, make_session):
+    """Uyarı var, sınırlama yok: uyarıdan sonra da kayıt sürer, profil duraklatılmaz."""
     s = await make_session(username="me")
     kv = FakeKV()
     r = await _obs(db, kv, s, GQL, '{"message":"Please wait a few minutes","status":"fail"}', status=429, req=likers_req(1))
-    assert r["warning"] and r["warning_kind"] == "rate_limit" and "çok sık" in r["message"] and r["paused_until"]
+    assert r["warning"] and r["warning_kind"] == "rate_limit" and "çok sık" in r["message"]
+    assert abs((datetime.fromisoformat(r["warning_until"]) - NOW).total_seconds() - 24 * 3600) < 5
     await db.refresh(s)
-    assert abs((s.paused_until - NOW).total_seconds() - 24 * 3600) < 5 and s.paused_reason.startswith(bridge.PAUSE_PREFIX)
-    s.paused_until = None
+    assert s.paused_until is None                          # takip/çıkış ya da başka hiçbir şey durmaz
+
+    r = await _obs(db, kv, s, GQL, timeline_text())        # uyarı sürerken de kaydeder
+    assert r["posts"] == 2 and r["warning_until"]
+
+    r = await _obs(db, kv, s, GQL, '{"message":"feedback_required","spam":true}', status=400,
+                   req=urlencode({"fb_api_req_friendly_name": "PolarisPostCommentsQuery"}))
+    assert abs((datetime.fromisoformat(r["warning_until"]) - NOW).total_seconds() - 72 * 3600) < 5
+
+
+@pytest.mark.asyncio
+async def test_old_bridge_pause_becomes_a_warning(db, make_session):
+    s = await make_session(username="me")
+    s.paused_until = NOW + timedelta(hours=5)
+    s.paused_reason = f"{bridge.PAUSE_PREFIX} Instagram uyarı verdi (HTTP 429)"
     await db.commit()
-    await _obs(db, kv, s, GQL, '{"message":"feedback_required","spam":true}', status=400,
-               req=urlencode({"fb_api_req_friendly_name": "PolarisPostCommentsQuery"}))
+    st = await bridge.status(db, FakeKV(), s, now=NOW)
     await db.refresh(s)
-    assert abs((s.paused_until - NOW).total_seconds() - 72 * 3600) < 5
+    assert s.paused_until is None and st["warning_until"] and "çok sık" in st["warning_message"]
 
 
 @pytest.mark.asyncio
@@ -265,7 +279,7 @@ async def test_status_explains_pause_in_user_language(db, make_session):
     kv = FakeKV()
     await _obs(db, kv, s, GQL, '{"message":"challenge_required"}', status=400, req=likers_req(1))
     st = await bridge.status(db, kv, s)
-    assert st["paused_until"] and "doğrulama" in st["paused_message"]
+    assert st["warning_until"] and "doğrulama" in st["warning_message"]
 
 
 @pytest.mark.asyncio
@@ -301,3 +315,13 @@ async def test_only_the_tools_the_user_turned_on_are_saved(db, make_session):
     r = await bridge.observe(db, kv, s, url=GQL, page_url="https://www.instagram.com/p/OLD1/", req_body=likers_req(BIG_PK),
                              status=200, text=likers, now=NOW, kinds={"likers"})
     assert r["likers"] == 1
+
+
+
+@pytest.mark.asyncio
+async def test_comments_todo_is_separate(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    await _obs(db, kv, s, GQL, timeline_text())
+    assert [t["shortcode"] for t in await bridge.todo(db, s, kind="comments")] == ["OLD1"]   # yalnızca yorumu olan
+    assert {t["shortcode"] for t in await bridge.todo(db, s, kind="likers")} == {"OLD1", "NEW1"}

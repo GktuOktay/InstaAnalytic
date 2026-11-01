@@ -49,7 +49,7 @@ export default function BridgeStatusCard({ sessionId }: { sessionId: string }) {
   if (!st) return <div className="h-20 rounded-xl bg-gray-900 border border-gray-800 animate-pulse mb-4" aria-hidden />
 
   const when = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
-  const dot = st.paused_until ? 'bg-red-500' : st.connected && !st.stopped ? 'bg-green-400' : 'bg-gray-600'
+  const dot = st.warning_until ? 'bg-red-500' : st.connected && !st.stopped ? 'bg-green-400' : 'bg-gray-600'
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-4">
@@ -65,9 +65,9 @@ export default function BridgeStatusCard({ sessionId }: { sessionId: string }) {
           </div>
           <p className="text-xs text-gray-500 mt-0.5">{L.desc}</p>
 
-          {st.paused_until && (
+          {st.warning_until && (
             <div className="mt-2">
-              <ProblemNote raw={st.paused_reason} extra={fill(L.paused, { at: when(st.paused_until) })} />
+              <ProblemNote raw={st.warning_reason} extra={fill(L.paused, { at: when(st.warning_until) })} />
             </div>
           )}
           {st.stopped && <p className="text-xs text-gray-400 mt-2">{L.stopped}</p>}
@@ -97,7 +97,7 @@ export default function BridgeStatusCard({ sessionId }: { sessionId: string }) {
 
           {st.posts > 0 && (todo.length === 0 ? (
             <p className="text-xs text-green-400 mt-3">{L.allDone}</p>
-          ) : !st.paused_until && (
+          ) : (
             <div className="mt-3">
               <p className="text-xs font-medium text-gray-300">{L.todoTitle}</p>
               <p className="text-xs text-gray-500 mb-2">{L.todoHint}</p>

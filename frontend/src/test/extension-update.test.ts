@@ -4,7 +4,8 @@ import backgroundSrc from '../../extension/background.js?raw'
 import { extensionOutdated, cmpVersion, LATEST_EXTENSION_VERSION } from '../lib/extension'
 
 /** background.js'i sahte bir Chrome ortamında çalıştırır. */
-function loadBackground(installed: string, appVersion: string | null, store: Record<string, any> = {}) {
+function loadBackground(installed: string, appVersion: string | null, store: Record<string, any> = {},
+  todo: any[] = []) {
   const listeners: Record<string, Function> = {}
   const reload = vi.fn()
   const chrome = {
@@ -22,14 +23,25 @@ function loadBackground(installed: string, appVersion: string | null, store: Rec
       onChanged: { addListener: () => {} },
     },
     action: { setBadgeText: vi.fn(async () => {}), setBadgeBackgroundColor: async () => {}, setTitle: async () => {} },
+    tabs: {
+      create: vi.fn(async (o: any) => ({ id: 77, ...o })), update: vi.fn(async () => ({})), remove: vi.fn(async () => {}),
+      onRemoved: { addListener: (f: Function) => { listeners.removed = f } },
+    },
   }
-  const fetchStub = vi.fn(async () => appVersion === null
-    ? Promise.reject(new Error('down'))
-    : new Response(JSON.stringify({ version: appVersion }), { status: 200 }))
+  const session: Record<string, any> = {}
+  ;(chrome.storage as any).session = {
+    get: async (k: string) => ({ [k]: session[k] }),
+    set: async (o: Record<string, any>) => { Object.assign(session, o) },
+  }
+  const fetchStub = vi.fn(async (url: string) => {
+    if (appVersion === null) throw new Error('down')
+    if (String(url).includes('/bridge/todo')) return new Response(JSON.stringify(todo), { status: 200 })
+    return new Response(JSON.stringify({ version: appVersion }), { status: 200 })
+  })
   // eslint-disable-next-line no-new-func
   new Function('chrome', 'fetch', backgroundSrc)(chrome, fetchStub)
   const ask = (msg: any) => new Promise(res => listeners.message(msg, { id: 'ext' }, res))
-  return { store, reload, ask, chrome, fetchStub, listeners }
+  return { store, reload, ask, chrome, fetchStub, listeners, session }
 }
 
 describe('extension self-update', () => {
@@ -116,6 +128,61 @@ describe('tools', () => {
     const answer: any = await new Promise(res =>
       b.listeners.message({ type: 'ia-config', viewer: '525' }, { id: 'ext', tab: { url: 'https://www.instagram.com/' } }, res))
     expect(answer).toEqual({ on: false })
+  })
+})
+
+describe('jobs started from the app', () => {
+  const ME = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
+  const fromApp = { id: 'ext', tab: { url: 'http://localhost:3002/posts' } }
+  const fromIg = (id = 77) => ({ id: 'ext', tab: { id, url: 'https://www.instagram.com/p/AAAAA/' } })
+  const msg = (b: any, m: any, s: any) => new Promise<any>(res => { if (!b.listeners.message(m, s, res)) res(undefined) })
+
+  it('opens one tab per job and walks the queue post by post', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const b = loadBackground('2.4.0', '2.4.0', { ...ME }, [{ shortcode: 'AAAAA' }, { shortcode: 'BBBBB' }])
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'likers' } }, fromApp)
+    expect(r).toEqual({ ok: true, total: 2 })
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/p/AAAAA/', active: true })
+
+    // ikinci bir iş aynı anda başlamaz
+    expect((await msg(b, { type: 'ia-run', cmd: { kind: 'posts' } }, fromApp)).ok).toBe(false)
+
+    // iş sekmesi kendi adımını alır; anahtarlar kapalı olsa da beğenenler kaydedilir
+    const cfg = await msg(b, { type: 'ia-config', viewer: '525' }, fromIg())
+    expect(cfg.job).toEqual({ kind: 'likers', shortcode: 'AAAAA' })
+    expect(cfg.tools.likers).toBe(true)
+
+    b.listeners.message({ type: 'ia-job-done', error: null }, fromIg(), () => {})
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(b.chrome.tabs.update).toHaveBeenCalledWith(77, { url: 'https://www.instagram.com/p/BBBBB/' })
+
+    b.listeners.message({ type: 'ia-job-done', error: null }, fromIg(), () => {})
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(b.session.job.state).toBe('done')
+    expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    vi.useRealTimers()
+  })
+
+  it('a single post can be fetched on its own', async () => {
+    const b = loadBackground('2.4.0', '2.4.0', { ...ME })
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'comments', shortcodes: ['CCCCC', '../bad'] } }, fromApp)
+    expect(r.total).toBe(1)
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/p/CCCCC/', active: true })
+  })
+
+  it('posts job opens the own profile; closing the tab stops the job', async () => {
+    const b = loadBackground('2.4.0', '2.4.0', { ...ME })
+    await msg(b, { type: 'ia-run', cmd: { kind: 'posts' } }, fromApp)
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/gktuoktay/', active: true })
+    await b.listeners.removed(77)
+    expect(b.session.job.state).toBe('stopped')
+  })
+
+  it('only the app page and the popup may start jobs', async () => {
+    const b = loadBackground('2.4.0', '2.4.0', { ...ME })
+    expect(b.listeners.message({ type: 'ia-run', cmd: { kind: 'posts' } }, { id: 'ext', tab: { url: 'https://evil.example/' } }, () => {})).toBe(false)
+    expect(b.listeners.message({ type: 'ia-run', cmd: { kind: 'posts' } }, fromIg(), () => {})).toBe(false)
+    expect(b.chrome.tabs.create).not.toHaveBeenCalled()
   })
 })
 

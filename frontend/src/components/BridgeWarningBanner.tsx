@@ -23,7 +23,7 @@ export default function BridgeWarningBanner() {
     let live = true
     const load = () => Promise.all(sessions.map(s =>
       bridgeApi.status(s.id)
-        .then(st => (st.paused_until ? { username: s.ig_username, until: st.paused_until, reason: st.paused_reason } : null))
+        .then(st => (st.warning_until ? { username: s.ig_username, until: st.warning_until, reason: st.warning_reason } : null))
         .catch(() => null),
     )).then(list => { if (live) setPauses(list.filter((p): p is Pause => p !== null)) })
     load()

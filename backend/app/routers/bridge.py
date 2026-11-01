@@ -76,8 +76,9 @@ async def bridge_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 
 @router.get("/sessions/{session_id}/bridge/todo")
-async def bridge_todo(session_id: uuid.UUID, limit: int = 8, db: AsyncSession = Depends(get_db)):
-    return await bridge.todo(db, await _session(db, session_id), limit)
+async def bridge_todo(session_id: uuid.UUID, limit: int = 8, kind: Literal["likers", "comments"] = "likers",
+                      db: AsyncSession = Depends(get_db)):
+    return await bridge.todo(db, await _session(db, session_id), limit, kind)
 
 
 @router.get("/sessions/{session_id}/bridge/diagnostics")

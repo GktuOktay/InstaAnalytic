@@ -14,6 +14,10 @@ const el = {
   barLikers: $('bar-likers'),
   actPosts: $('act-posts'),
   actLikers: $('act-likers'),
+  actComments: $('act-comments'),
+  job: $('job'),
+  jobText: $('job-text'),
+  jobStop: $('job-stop'),
   status: $('status'),
   warning: $('warning'),
   warningUntil: $('warning-until'),
@@ -166,7 +170,8 @@ function renderStatus(status, enabled, seenAccount) {
 }
 
 async function refresh() {
-  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update', 'lastViewer', 'tools']);
+  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update', 'lastViewer', 'tools', 'jobView']);
+  renderJob(s.jobView);
   renderTools(toolsFrom(s.tools), s.enabled === true);
   renderUpdate(s.update);
   appUrl = normalizeAppUrl(s.appUrl) || DEFAULT_APP;
@@ -277,7 +282,8 @@ el.openApp.addEventListener('click', () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.status && area === 'local' && changes.status.newValue && changes.status.newValue.lastSavedAt
       !== (changes.status.oldValue || {}).lastSavedAt) loadSummary();   // yeni kayıt geldi: ilerlemeyi tazele
-  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update || changes.lastViewer || changes.tools)) {
+  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update || changes.lastViewer || changes.tools || changes.jobView)) {
+    if (changes.jobView && changes.jobView.newValue && changes.jobView.newValue.state !== 'running') loadSummary();
     refresh();
     if (changes.lastViewer && !el.profilePicker.hidden) loadHello();   // hesap az önce görüldü: listeyi tazele
   }
@@ -310,16 +316,20 @@ function renderTools(tools, enabled) {
     const text = s && s.appDown ? 'Uygulama kapalı' : 'Profil seçilince görünür';
     el.statPosts.textContent = el.statLikers.textContent = el.statComments.textContent = text;
     el.barLikers.style.width = '0%';
-    el.actPosts.disabled = el.actLikers.disabled = true;
+    el.actPosts.disabled = el.actLikers.disabled = el.actComments.disabled = true;
     return;
   }
   el.statPosts.textContent = s.posts ? `${s.posts} gönderi bulundu` : 'Henüz gönderi yok';
   el.statLikers.textContent = s.posts ? `${s.likersDone} / ${s.posts} gönderi okundu` : 'Önce gönderi listesi gerekli';
   el.statComments.textContent = s.commentsDone ? `${s.commentsDone} gönderinin yorumları kaydedildi` : 'Henüz kayıt yok';
   el.barLikers.style.width = s.posts ? `${Math.round((100 * s.likersDone) / s.posts)}%` : '0%';
-  el.actPosts.disabled = !enabled || !tools.posts || !s.username;
-  el.actLikers.disabled = !enabled || !tools.likers || !s.next;
-  el.actLikers.textContent = s.posts && !s.next ? 'Hepsi okundu' : 'Sıradaki gönderiyi aç';
+  // İş düğmeleri ana anahtardan bağımsızdır: açık bir komuttur. Aynı anda tek iş çalışır.
+  const busy = !!(jobView && jobView.state === 'running');
+  el.actPosts.disabled = busy || !s.username;
+  el.actLikers.disabled = busy || !s.next;
+  el.actLikers.textContent = s.posts && !s.next ? 'Hepsi okundu' : 'Beğenenleri çek';
+  el.actComments.disabled = busy || !s.nextComments;
+  el.actComments.textContent = s.posts && !s.nextComments ? 'Hepsi okundu' : 'Yorumları çek';
 }
 
 async function loadSummary() {
@@ -336,13 +346,27 @@ for (const input of document.querySelectorAll('[data-tool-switch]')) {
   });
 }
 
-// Eylemler yalnızca sekme açar; geri kalan her şey sizin tıklamanız
-el.actPosts.addEventListener('click', () => {
-  if (summary && summary.username) chrome.tabs.create({ url: `https://www.instagram.com/${encodeURIComponent(summary.username)}/` });
-});
-el.actLikers.addEventListener('click', () => {
-  if (summary && summary.next) chrome.tabs.create({ url: `https://www.instagram.com/p/${encodeURIComponent(summary.next.shortcode)}/` });
-});
+// İşler: eklenti bir Instagram sekmesi açar ve işi yapar; bitince sekmeyi kapatır
+let jobView = null;
+
+async function run(kind) {
+  const r = await send({ type: 'ia-run', cmd: { kind } });
+  if (!r || !r.ok) el.statusText.textContent = (r && r.error) || 'İş başlatılamadı.';
+}
+el.actPosts.addEventListener('click', () => run('posts'));
+el.actLikers.addEventListener('click', () => run('likers'));
+el.actComments.addEventListener('click', () => run('comments'));
+el.jobStop.addEventListener('click', () => send({ type: 'ia-stop' }));
+
+function renderJob(job) {
+  jobView = job || null;
+  const running = !!(job && job.state === 'running');
+  const recent = job && job.finishedAt && Date.now() - job.finishedAt < 10 * 60 * 1000;
+  el.job.hidden = !(running || recent);
+  el.job.dataset.state = job ? job.state : '';
+  el.jobText.textContent = job ? String(job.message || '') : '';
+  el.jobStop.hidden = !running;
+}
 
 refresh();
 loadSummary();

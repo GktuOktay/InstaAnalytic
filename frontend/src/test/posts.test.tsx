@@ -20,27 +20,37 @@ beforeEach(() => {
   ;(postsApi.stats as any).mockResolvedValue(null)
   ;(bridgeApi.status as any).mockResolvedValue({
     posts: 0, likers_done: 0, comments_done: 0, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
-    connected: false, stopped: false, paused_until: null, paused_reason: null,
+    connected: false, stopped: false, warning_until: null, warning_reason: null,
   })
   ;(bridgeApi.todo as any).mockResolvedValue([])
 })
 
 describe('PostsPage', () => {
-  it('ZIP profile: no server scan, points to the profile on Instagram instead', async () => {
+  it('each job is a separate button and runs through the extension', async () => {
     ;(sessionsApi.list as any).mockResolvedValue([makeSession({ source: 'zip', ig_username: 'gktuoktay' })])
+    const sent: any[] = []
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data
+      if (d?.__ia !== true) return
+      sent.push(d)
+      // sahte eklenti (app-bridge.js gibi davranır)
+      if (d.type === 'ia-ping') window.postMessage({ __ia: true, type: 'ia-ext', version: '2.4.0' }, window.location.origin)
+      if (d.type === 'ia-run') window.postMessage({ __ia: true, type: 'ia-reply', id: d.id, reply: { ok: true, total: 1 } }, window.location.origin)
+    }
+    window.addEventListener('message', onMsg)
     renderApp(<PostsPage />)
-    const link = await screen.findByRole('link', { name: /Profilimi Instagram'da aç/ })
-    expect(link).toHaveAttribute('href', 'https://www.instagram.com/gktuoktay/')
-    expect(screen.queryByRole('button', { name: /Gönderileri Çek/ })).toBeNull()
-    expect(screen.getByText(/Medya ya da dosya yüklemene gerek yok/)).toBeInTheDocument()
-    expect(await screen.findByText('Tarayıcı köprüsü')).toBeInTheDocument()
+    for (const name of ['Gönderileri çek', 'Beğenenleri çek', 'Yorumları çek']) {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument()
+    }
+    expect(screen.queryByRole('button', { name: /Gönderileri Çek$/ })).toBeNull()    // eski sunucu taraması yok
     expect(postsApi.syncPosts).not.toHaveBeenCalled()
+    window.removeEventListener('message', onMsg)
   })
 
-  it('browser profile keeps the scan buttons', async () => {
+  it('without the extension the buttons are disabled and the guide is linked', async () => {
     ;(sessionsApi.list as any).mockResolvedValue([makeSession({ source: 'browser' })])
     renderApp(<PostsPage />)
-    expect(await screen.findByRole('button', { name: /Gönderileri Çek/ })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /Profilimi Instagram'da aç/ })).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Beğenenleri çek' })).toBeDisabled()
+    expect(screen.getByRole('link', { name: 'Nasıl kurulur?' })).toHaveAttribute('href', '/guide#kopru')
   })
 })

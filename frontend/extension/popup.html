@@ -32,15 +32,21 @@
       <strong id="warning-title">Instagram uyarı verdi.</strong>
       <p id="warning-until"></p>
       <ul>
-        <li>Beğenen listelerini açmayı bu süre boyunca bırakın.</li>
+        <li>Eklenti sizi durdurmaz; önerimiz bu süre ara vermeniz.</li>
         <li>Instagram'ı telefonunuzdan normal şekilde kullanın.</li>
         <li>Instagram bir doğrulama isterse onu kendiniz tamamlayın.</li>
       </ul>
     </section>
 
     <p class="lead" id="lead">
-      Instagram'a kendisi istek göndermez. Siz gezerken sayfanın zaten indirdiği bilgiyi kaydeder.
+      Instagram'a kendisi istek göndermez. Siz gezerken ya da aşağıdaki düğmelerle başlattığınız işlerde
+      sayfanın indirdiği bilgiyi kaydeder. Her iş ayrı çalışır.
     </p>
+
+    <div class="job" id="job" hidden>
+      <div class="job-line"><span class="spinner" aria-hidden="true"></span><span id="job-text"></span></div>
+      <button type="button" class="secondary" id="job-stop">Durdur</button>
+    </div>
 
     <article class="tool" data-tool="posts">
       <div class="tool-head">
@@ -49,13 +55,13 @@
         </span>
         <div class="tool-title">
           <h2>Gönderi listesi</h2>
-          <p>Profilinizi açıp aşağı kaydırdığınızda gönderilerinizi tarih, beğeni ve yorum sayısıyla kaydeder.</p>
+          <p>Gönderilerinizi tarih, beğeni ve yorum sayısıyla kaydeder. Düğme profilinizi açıp sonuna kadar kaydırır.</p>
         </div>
         <label class="toggle small"><input type="checkbox" data-tool-switch="posts" aria-label="Gönderi listesi"><span class="switch" aria-hidden="true"></span></label>
       </div>
       <div class="tool-foot">
         <span class="stat" id="stat-posts">—</span>
-        <button type="button" class="secondary" id="act-posts">Profilimi aç</button>
+        <button type="button" class="secondary" id="act-posts">Gönderileri çek</button>
       </div>
     </article>
 
@@ -66,14 +72,14 @@
         </span>
         <div class="tool-title">
           <h2>Beğenenler</h2>
-          <p>Bir gönderinizin altındaki beğenme sayısına tıklayıp listeyi sonuna kadar kaydırdığınızda, beğenenleri kaydeder.</p>
+          <p>Gönderilerinizi kimin beğendiğini kaydeder. Düğme okunmamış gönderileri sırayla açar, beğenenler listesini sonuna kadar kaydırır.</p>
         </div>
         <label class="toggle small"><input type="checkbox" data-tool-switch="likers" aria-label="Beğenenler"><span class="switch" aria-hidden="true"></span></label>
       </div>
       <div class="progress" aria-hidden="true"><span id="bar-likers"></span></div>
       <div class="tool-foot">
         <span class="stat" id="stat-likers">—</span>
-        <button type="button" class="secondary" id="act-likers">Sıradaki gönderiyi aç</button>
+        <button type="button" class="secondary" id="act-likers">Beğenenleri çek</button>
       </div>
     </article>
 
@@ -84,12 +90,13 @@
         </span>
         <div class="tool-title">
           <h2>Yorumlar</h2>
-          <p>Bir gönderinizi açtığınızda yorum yapanları kendiliğinden kaydeder.</p>
+          <p>Kimin yorum yaptığını kaydeder. Düğme yorumu olan gönderileri sırayla açar, tüm yorumları yükler.</p>
         </div>
         <label class="toggle small"><input type="checkbox" data-tool-switch="comments" aria-label="Yorumlar"><span class="switch" aria-hidden="true"></span></label>
       </div>
       <div class="tool-foot">
         <span class="stat" id="stat-comments">—</span>
+        <button type="button" class="secondary" id="act-comments">Yorumları çek</button>
       </div>
     </article>
 

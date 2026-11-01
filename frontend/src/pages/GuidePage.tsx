@@ -288,9 +288,10 @@ function UpdateBlock({ C }: { C: GuideContent }) {
 }
 
 /**
- * Kullanım: önce pencereyi açıp ana anahtarı açmak, sonra eklentinin üç aracı ayrı ayrı bloklar hâlinde
- * (Gönderi listesi, Beğenenler, Yorumlar), en sonda bir aracı kapatmak. Her aracın ne kaydettiği ve ayrı bir iş
- * olduğu ilk bakışta görünsün diye her blok kendi başlığı, simgesi ve çerçevesiyle duruyor.
+ * Kullanım: önce işin nereden başlatıldığı (uygulamanın Gönderiler sayfası, tek gönderi paneli, eklenti penceresi)
+ * ve nasıl durdurulduğu; sonra eklentinin üç işi ayrı bloklar hâlinde (Gönderileri çek, Beğenenleri çek,
+ * Yorumları çek); en sonda kendin gezerken kaydetme ve araç anahtarları. Her iş ilk bakışta ayrı görünsün diye
+ * her blok kendi başlığı, simgesi ve çerçevesiyle duruyor.
  */
 function UseSection({ C }: { C: GuideContent }) {
   const U = C.use
@@ -298,15 +299,20 @@ function UseSection({ C }: { C: GuideContent }) {
     <Section id="use" C={C}>
       <p className="text-sm text-gray-400">{U.intro}</p>
       <Sub>{U.stepsTitle}</Sub>
+      <p className="text-sm text-gray-400 mb-3">{U.stepsIntro}</p>
       <ol className="space-y-3">
         {U.steps.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix="kullanim" />)}
       </ol>
+      <div className="mt-3"><Note kind="info" title={U.stop.title}>{U.stop.text}</Note></div>
 
       <Sub>{U.toolsTitle}</Sub>
       <p className="text-sm text-gray-400 mb-3">{U.toolsIntro}</p>
       <div className="space-y-4">
         {U.tools.map((t, i) => <ToolBlock key={t.id} tool={t} n={i + 1} C={C} />)}
       </div>
+
+      <Sub>{U.passive.title}</Sub>
+      <p className="text-sm text-gray-300">{U.passive.text}</p>
 
       <Sub>{U.off.title}</Sub>
       <Card>
@@ -329,7 +335,7 @@ function UseSection({ C }: { C: GuideContent }) {
 
 const TOOL_ICONS: Record<ToolId, typeof BookOpen> = { posts: LayoutGrid, likers: Heart, comments: MessageCircle }
 
-/** Eklentinin bir aracı: kendi çapası, başlığı ve ne kaydettiği; altında resimli adımları. */
+/** Eklentinin bir işi: kendi çapası, başlığı ve ne yaptığı; altında Instagram sekmesinde ne olduğunun resmi. */
 function ToolBlock({ tool, n, C }: { tool: UseTool; n: number; C: GuideContent }) {
   const anchor = TOOL_ANCHOR[tool.id]
   const Icon = TOOL_ICONS[tool.id]

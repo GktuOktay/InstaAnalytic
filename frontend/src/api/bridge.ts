@@ -10,9 +10,10 @@ export interface BridgeStatus {
   last_saved: string | null
   connected: boolean
   stopped: boolean
-  paused_until: string | null
-  paused_reason: string | null
-  paused_message?: string | null
+  // Instagram uyarısı: hiçbir şeyi durdurmaz, yalnızca gösterilir
+  warning_until: string | null
+  warning_reason: string | null
+  warning_message?: string | null
   extension_version?: string | null
 }
 
@@ -27,7 +28,8 @@ export interface BridgeTodo {
 
 export const bridgeApi = {
   status: (id: string) => api.get<BridgeStatus>(`/sessions/${id}/bridge/status`).then(r => r.data),
-  todo: (id: string, limit = 8) => api.get<BridgeTodo[]>(`/sessions/${id}/bridge/todo`, { params: { limit } }).then(r => r.data),
+  todo: (id: string, limit = 8, kind: 'likers' | 'comments' = 'likers') =>
+    api.get<BridgeTodo[]>(`/sessions/${id}/bridge/todo`, { params: { limit, kind } }).then(r => r.data),
   stop: (id: string) => api.post(`/sessions/${id}/bridge/stop`).then(r => r.data),
   resume: (id: string) => api.post(`/sessions/${id}/bridge/resume`).then(r => r.data),
 }

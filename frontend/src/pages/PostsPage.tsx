@@ -5,10 +5,10 @@ import { useSession } from '../contexts/SessionContext'
 import { postsApi, Post, PostLiker, PostComment, PostStats } from '../api/posts'
 import { analysisApi } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
-import { apiErrorMessage } from '../lib/problems'
+import { Link } from 'react-router-dom'
 import BridgeStatusCard from '../components/BridgeStatusCard'
-import { useTaskPoller } from '../hooks/useTaskPoller'
-import { RefreshCw, Heart, MessageCircle, Play, Image, Layers, X, Users, Download, ExternalLink, Info } from 'lucide-react'
+import { useExtension, JobKind } from '../lib/extensionBridge'
+import { RefreshCw, Heart, MessageCircle, Play, Image, Images, Layers, X, Users, Download, Info } from 'lucide-react'
 
 const IG_URL = (shortcode: string) => `https://www.instagram.com/p/${shortcode}/`
 
@@ -31,24 +31,8 @@ export default function PostsPage() {
   const [likers, setLikers] = useState<PostLiker[]>([])
   const [comments, setComments] = useState<PostComment[]>([])
   const [detailTab, setDetailTab] = useState<'likers' | 'comments'>('likers')
-  const [syncTaskId, setSyncTaskId] = useState<string | null>(null)
-  const [interactionTaskId, setInteractionTaskId] = useState<string | null>(null)
-  const [bulkTaskId, setBulkTaskId] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [syncingInteraction, setSyncingInteraction] = useState(false)
-  const [syncingBulk, setSyncingBulk] = useState(false)
-  const [syncError, setSyncError] = useState<string | null>(null)
-
-  const syncStatus = useTaskPoller(syncTaskId, () => {
-    setSyncing(false); setSyncTaskId(null); loadData()
-  })
-  const interactionStatus = useTaskPoller(interactionTaskId, () => {
-    setSyncingInteraction(false); setInteractionTaskId(null)
-    if (selected) loadDetail(selected)
-  })
-  const bulkStatus = useTaskPoller(bulkTaskId, () => {
-    setSyncingBulk(false); setBulkTaskId(null); loadData()
-  })
+  const ext = useExtension()
+  const [runError, setRunError] = useState<string | null>(null)
 
   useEffect(() => {
     if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
@@ -56,14 +40,17 @@ export default function PostsPage() {
 
   useEffect(() => { if (activeSession) loadData() }, [activeSession])
 
-  // ZIP profili: gönderiler sunucu taramasıyla değil, kullanıcı Instagram'da gezerken köprüden gelir
+  // Gönderiler, beğenenler ve yorumlar eklentiyle gelir: kayıt aktıkça listeyi tazele
   const profile = sessions.find(s => s.id === activeSession)
-  const isZip = profile?.source === 'zip'
+  const jobRunning = ext.job?.state === 'running'
   useEffect(() => {
-    if (!isZip || !activeSession) return
-    const t = setInterval(loadData, 20_000)
+    if (!activeSession) return
+    const t = setInterval(loadData, jobRunning ? 6_000 : 20_000)
     return () => clearInterval(t)
-  }, [isZip, activeSession])   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSession, jobRunning])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ext.job && ext.job.state !== 'running') { loadData(); if (selected) loadDetail(selected) }
+  }, [ext.job?.state])             // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     if (!activeSession) return
@@ -85,34 +72,12 @@ export default function PostsPage() {
     setComments(c)
   }
 
-  // 429 (bütçe/cooldown) ve 409 (tarama zaten çalışıyor) kullanıcıya gösterilir
-  const startSync = async <R extends { task_id: string }>(
-    begin: () => void, fail: () => void, call: () => Promise<R>, done: (id: string) => void,
-  ) => {
-    setSyncError(null)
-    begin()
-    try {
-      done((await call()).task_id)
-    } catch (e: any) {
-      setSyncError(apiErrorMessage(e, T, T.problems.unknown.title))
-      fail()
-    }
+  // İşi eklenti yapar: Instagram sekmesini açar, kaydırır / tıklar, bitince kapatır
+  const start = async (kind: JobKind, shortcodes?: string[]) => {
+    setRunError(null)
+    const r = await ext.run(kind, shortcodes ? { shortcodes } : {})
+    if (!r.ok) setRunError(r.error === 'timeout' ? T.posts.extNoAnswer : (r.error ?? T.problems.unknown.title))
   }
-
-  const handleSync = () => startSync(
-    () => setSyncing(true), () => setSyncing(false),
-    () => postsApi.syncPosts(activeSession), setSyncTaskId)
-
-  const handleSyncInteractions = (post: Post) => startSync(
-    () => setSyncingInteraction(true), () => setSyncingInteraction(false),
-    () => postsApi.syncInteractions(activeSession, post.shortcode), setInteractionTaskId)
-
-  const handleSyncAllInteractions = () => startSync(
-    () => setSyncingBulk(true), () => setSyncingBulk(false),
-    () => postsApi.syncAllInteractions(activeSession), setBulkTaskId)
-
-  const syncProgress = syncStatus?.status === 'PROGRESS' && syncStatus.progress
-  const bulkProgress = bulkStatus?.status === 'PROGRESS' && bulkStatus.progress
 
   return (
     <div>
@@ -125,58 +90,47 @@ export default function PostsPage() {
               {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
             </select>
           )}
-          {isZip ? (
-            <a href={`https://www.instagram.com/${profile!.ig_username}/`} target="_blank" rel="noreferrer noopener"
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm">
-              <ExternalLink size={13} /> {T.posts.openProfile}
-            </a>
-          ) : (<>
-          <button onClick={handleSyncAllInteractions} disabled={syncingBulk || syncing || !activeSession || posts.length === 0}
-            className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
-            <Users size={13} className={syncingBulk ? 'animate-spin' : ''} /> {T.posts.scanAll}
-          </button>
-          <button onClick={handleSync} disabled={syncing || !activeSession}
-            className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.posts.fetch}
-          </button>
-          </>)}
+          {([
+            ['posts', T.posts.runPosts, Images],
+            ['likers', T.posts.runLikers, Heart],
+            ['comments', T.posts.runComments, MessageCircle],
+          ] as const).map(([kind, label, Icon]) => (
+            <button key={kind} onClick={() => start(kind)} disabled={!ext.available || jobRunning || !activeSession}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
+              <Icon size={13} /> {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {syncError && (
-        <div className="bg-red-900/30 border border-red-700 rounded-xl px-4 py-3 text-sm text-red-300 mb-4">
-          {syncError}
-        </div>
+      {!ext.available && (
+        <p className="flex gap-2 text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-xl px-3 py-2 mb-4">
+          <Info size={14} className="shrink-0 mt-0.5" />
+          <span>{T.posts.extMissing} <Link to="/guide#kopru" className="underline">{T.posts.extHow}</Link></span>
+        </p>
       )}
 
-      {syncing && (
-        <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-purple-400">{T.posts.fetching}</span>
-            {syncProgress && <span>{syncProgress.current} / {syncProgress.total}</span>}
+      {runError && (
+        <div role="alert" className="bg-red-900/30 border border-red-700 rounded-xl px-4 py-3 text-sm text-red-300 mb-4">{runError}</div>
+      )}
+
+      {ext.job && (jobRunning || (ext.job.finishedAt && Date.now() - ext.job.finishedAt < 10 * 60_000)) && (
+        <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4" role="status">
+          <div className="flex items-center justify-between gap-3 text-sm mb-2">
+            <span className="flex items-center gap-2 text-purple-300">
+              {jobRunning && <RefreshCw size={13} className="animate-spin" />} {ext.job.message}
+            </span>
+            {jobRunning && (
+              <button onClick={() => ext.stop()} className="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs">{T.posts.stop}</button>
+            )}
           </div>
-          {syncProgress && (
+          {ext.job.total > 1 && (
             <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
               <div className="h-full bg-purple-500 transition-all"
-                style={{ width: `${Math.round((syncProgress.current / (syncProgress.total || 1)) * 100)}%` }} />
+                style={{ width: `${Math.round((Math.min(ext.job.index, ext.job.total) / ext.job.total) * 100)}%` }} />
             </div>
           )}
-        </div>
-      )}
-
-      {syncingBulk && (
-        <div className="bg-gray-900 border border-blue-800 rounded-xl p-4 mb-4">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-blue-400">{T.posts.scanning}</span>
-            {bulkProgress && <span>{bulkProgress.current} / {bulkProgress.total} {lang === 'en' ? 'posts' : 'gönderi'}</span>}
-          </div>
-          {bulkProgress && bulkProgress.total > 0 && (
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 transition-all"
-                style={{ width: `${Math.round((bulkProgress.current / bulkProgress.total) * 100)}%` }} />
-            </div>
-          )}
-          <p className="text-xs text-gray-500 mt-2">{T.posts.workerNote}</p>
+          {jobRunning && <p className="text-xs text-gray-500 mt-2">{T.posts.jobNote}</p>}
         </div>
       )}
 
@@ -197,17 +151,10 @@ export default function PostsPage() {
         </div>
       )}
 
-      {isZip && (
-        <>
-          <p className="flex gap-2 text-xs text-gray-400 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 mb-3">
-            <Info size={14} className="shrink-0 mt-0.5 text-purple-400" /> {T.posts.zipNote}
-          </p>
-          <BridgeStatusCard sessionId={activeSession} />
-        </>
-      )}
+      {activeSession && <BridgeStatusCard sessionId={activeSession} />}
 
       {posts.length === 0 ? (
-        <p className="text-gray-600 text-sm text-center py-16">{isZip ? T.posts.zipEmpty : T.posts.noPost}</p>
+        <p className="text-gray-600 text-sm text-center py-16">{T.posts.emptyRun}</p>
       ) : (
         <div className="grid grid-cols-3 gap-3">
           {posts.map(post => (
@@ -256,17 +203,15 @@ export default function PostsPage() {
                 </a>
               </div>
               <div className="flex items-center gap-2">
-                {isZip ? (
-                  <span className="text-xs text-gray-400 max-w-[14rem]">{T.posts.zipDetailHint}</span>
-                ) : (
-                <button
-                  onClick={() => handleSyncInteractions(selected)}
-                  disabled={syncingInteraction}
+                {/* Yalnızca bu gönderi için */}
+                <button onClick={() => start('likers', [selected.shortcode])} disabled={!ext.available || jobRunning}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
-                  <RefreshCw size={12} className={syncingInteraction ? 'animate-spin' : ''} />
-                  {lang === 'en' ? 'Fetch Likes/Comments' : 'Like/Yorum Çek'}
+                  <Heart size={12} /> {T.posts.runLikersOne}
                 </button>
-                )}
+                <button onClick={() => start('comments', [selected.shortcode])} disabled={!ext.available || jobRunning || !selected.comment_count}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-xs">
+                  <MessageCircle size={12} /> {T.posts.runCommentsOne}
+                </button>
                 <button onClick={() => setSelected(null)} className="p-1.5 text-gray-500 hover:text-white">
                   <X size={18} />
                 </button>
@@ -277,12 +222,6 @@ export default function PostsPage() {
               <p className="text-sm text-gray-400 px-4 py-3 border-b border-gray-800 line-clamp-3">
                 {selected.caption}
               </p>
-            )}
-
-            {syncingInteraction && (
-              <div className="px-4 py-2 text-xs text-purple-400 border-b border-gray-800">
-                {lang === 'en' ? 'Fetching interactions...' : 'Etkileşimler çekiliyor...'}
-              </div>
             )}
 
             <div className="flex gap-0 border-b border-gray-800">

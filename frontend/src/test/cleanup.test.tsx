@@ -28,7 +28,7 @@ beforeEach(() => {
   ;(sessionsApi.list as any).mockResolvedValue([makeSession()])
   ;(bridgeApi.status as any).mockResolvedValue({
     posts: 50, likers_done: 12, comments_done: 12, today_posts: 3, today_people: 214, last_seen: new Date().toISOString(),
-    last_saved: new Date().toISOString(), connected: true, stopped: false, paused_until: null, paused_reason: null,
+    last_saved: new Date().toISOString(), connected: true, stopped: false, warning_until: null, warning_reason: null,
   })
   ;(bridgeApi.todo as any).mockResolvedValue([
     { id: '77', shortcode: 'NEW1', thumbnail_url: null, like_count: 5, comment_count: 0, taken_at: null },
@@ -68,8 +68,8 @@ describe('BridgeWarningBanner', () => {
   it('shows a red alert on every page while Instagram has paused collection', async () => {
     ;(bridgeApi.status as any).mockResolvedValue({
       posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
-      connected: false, stopped: false, paused_until: '2026-11-02T10:00:00Z',
-      paused_reason: 'Köprü: Instagram uyarı verdi (feedback_required)',
+      connected: false, stopped: false, warning_until: '2026-11-02T10:00:00Z',
+      warning_reason: 'Köprü: Instagram uyarı verdi (feedback_required)',
     })
     renderApp(<BridgeWarningBanner />)
     const alert = await screen.findByRole('alert')
@@ -90,7 +90,7 @@ describe('BridgeStatusCard version check', () => {
     ;(insightsApi.cleanup as any).mockResolvedValue(res())
     ;(bridgeApi.status as any).mockResolvedValue({
       posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
-      connected: true, stopped: false, paused_until: null, paused_reason: null, extension_version: '1.0.0',
+      connected: true, stopped: false, warning_until: null, warning_reason: null, extension_version: '1.0.0',
     })
     renderApp(<CleanupPage />)
     expect(await screen.findByText(/Eklentin güncel değil \(1\.0\.0 →/)).toBeInTheDocument()

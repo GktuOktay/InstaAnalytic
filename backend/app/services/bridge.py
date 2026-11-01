@@ -381,14 +381,31 @@ async def _heal_and_upsert(db: AsyncSession, users: list[dict]) -> None:
         await db.execute(stmt)
 
 
-async def _pause(db: AsyncSession, kv: KV, session: Session, reason: str, now: datetime) -> None:
-    repeat = bool(await _get(kv, session.id, "risk_at"))
-    span = RISK_PAUSE_REPEAT if repeat else RISK_PAUSE
-    until = now + span
-    if not session.paused_until or session.paused_until < until:
-        session.paused_until = until
-        session.paused_reason = f"{PAUSE_PREFIX} {reason}"[:200]
-    await kv.set(_k(session.id, "risk_at"), str(now.timestamp()), ex=RISK_MEMORY_S)
+async def _warn(kv: KV, session_id, reason: str, now: datetime) -> datetime:
+    """Instagram uyarısını kaydeder. Hiçbir şeyi durdurmaz: arayüz ve eklenti uyarıyı gösterir,
+    ne yapılacağına kullanıcı karar verir. Süre, "bu süre ara vermeni öneririz" penceresidir."""
+    repeat = bool(await _get(kv, session_id, "risk_at"))
+    until = now + (RISK_PAUSE_REPEAT if repeat else RISK_PAUSE)
+    prev = await _get(kv, session_id, "warn_until")
+    if not prev or float(prev) < until.timestamp():
+        await kv.set(_k(session_id, "warn_until"), str(until.timestamp()), ex=RISK_MEMORY_S)
+        await kv.set(_k(session_id, "warn_reason"), f"{PAUSE_PREFIX} {reason}"[:200], ex=RISK_MEMORY_S)
+    await kv.set(_k(session_id, "risk_at"), str(now.timestamp()), ex=RISK_MEMORY_S)
+    return until
+
+
+async def _warning(db: AsyncSession, kv: KV, session: Session, now: datetime) -> tuple[datetime | None, str | None]:
+    """Geçerli uyarı (yoksa None). Eski sürümün profil düzeyindeki köprü duraklatması uyarıya dönüştürülür."""
+    if session.paused_reason and session.paused_reason.startswith(PAUSE_PREFIX):
+        if session.paused_until and session.paused_until > now:
+            await kv.set(_k(session.id, "warn_until"), str(session.paused_until.timestamp()), ex=RISK_MEMORY_S)
+            await kv.set(_k(session.id, "warn_reason"), session.paused_reason, ex=RISK_MEMORY_S)
+        session.paused_until = session.paused_reason = None
+        await db.commit()
+    raw = await _get(kv, session.id, "warn_until")
+    if not raw or float(raw) <= now.timestamp():
+        return None, None
+    return datetime.fromtimestamp(float(raw), tz=timezone.utc), await _get(kv, session.id, "warn_reason")
 
 
 async def _diag(kv: KV, sid, friendly: str | None, url: str, page_url: str, status: int, body: Any) -> None:
@@ -418,12 +435,11 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
     friendly, variables = parse_request(req_body, url)
     if is_risk(status, body, text) and relevant(url, friendly):
         msg = (body or {}).get("message") if isinstance(body, dict) else None
-        await _pause(db, kv, session, f"Instagram uyarı verdi ({msg or f'HTTP {status}'})", now)
-        await db.commit()
+        until = await _warn(kv, sid, f"Instagram uyarı verdi ({msg or f'HTTP {status}'})", now)
         result["warning"] = True
         result["warning_kind"] = warning_kind(status, body)
         result["message"] = warning_message(result["warning_kind"])
-        result["paused_until"] = session.paused_until.isoformat()
+        result["warning_until"] = until.isoformat()
         return result
     if status != 200 or body is None:
         result["ignored"] = True
@@ -497,9 +513,10 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
         await kv.set(_k(sid, "last_saved"), str(time.time()), ex=STATE_TTL_S)
     elif not result["ignored"] and ((friendly and _INTERESTING.search(friendly)) or "liker" in text[:200000].lower()):
         await _diag(kv, sid, friendly, url, page_url, status, body)   # ilgili görünüyor ama tanınmadı
-    if session.paused_until and session.paused_until > now:
-        result["paused_until"] = session.paused_until.isoformat()
-        result["message"] = _pause_message(session.paused_reason)
+    until, reason = await _warning(db, kv, session, now)
+    if until:
+        result["warning_until"] = until.isoformat()
+        result["message"] = _pause_message(reason)
     return result
 
 
@@ -527,7 +544,7 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
         raw = await _get(kv, sid, name)
         day, val = (raw.split("|") + ["0"])[:2] if raw else ("", "0")
         counts[name] = int(val) if day == today else 0
-    paused = bool(session.paused_until and session.paused_until > now)
+    warn_until, warn_reason = await _warning(db, kv, session, now)
     ts = lambda v: datetime.fromtimestamp(float(v), tz=timezone.utc).isoformat() if v else None  # noqa: E731
     return {
         "posts": row[0], "likers_done": row[1], "comments_done": row[2],
@@ -535,17 +552,22 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
         "last_seen": ts(seen), "last_saved": ts(saved),
         "connected": bool(seen and time.time() - float(seen) < 15 * 60),
         "stopped": bool(await _get(kv, sid, "off")),
-        "paused_until": session.paused_until.isoformat() if paused else None,
-        "paused_reason": session.paused_reason if paused else None,
-        "paused_message": _pause_message(session.paused_reason) if paused else None,
+        # Uyarı: hiçbir şeyi durdurmaz, yalnızca gösterilir ("bu süre ara vermeni öneririz")
+        "warning_until": warn_until.isoformat() if warn_until else None,
+        "warning_reason": warn_reason,
+        "warning_message": _pause_message(warn_reason) if warn_until else None,
         "extension_version": await _get(kv, sid, "ext_version"),
     }
 
 
-async def todo(db: AsyncSession, session: Session, limit: int = 8) -> list[dict]:
-    """Beğenenleri henüz okunmamış gönderiler, en yeniden."""
+async def todo(db: AsyncSession, session: Session, limit: int = 8, kind: str = "likers") -> list[dict]:
+    """Beğenenleri (kind="likers") ya da yorumları (kind="comments") henüz okunmamış gönderiler, en yeniden."""
+    if kind == "comments":
+        cond = (Post.comments_synced_at.is_(None), Post.comment_count > 0)
+    else:
+        cond = (Post.likers_synced_at.is_(None), Post.like_count > 0)
     rows = (await db.execute(
-        select(Post).where(Post.session_id == session.id, Post.likers_synced_at.is_(None), Post.like_count > 0)
+        select(Post).where(Post.session_id == session.id, *cond)
         .order_by(Post.taken_at.desc().nullslast()).limit(max(1, min(limit, 50)))
     )).scalars().all()
     return [{"id": str(p.id), "shortcode": p.shortcode, "thumbnail_url": p.thumbnail_url, "like_count": p.like_count,
