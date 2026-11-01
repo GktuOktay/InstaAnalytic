@@ -5,7 +5,7 @@ import { renderApp, makeSession } from './utils'
 
 vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn() } }))
 vi.mock('../api/insights', () => ({ insightsApi: { cleanup: vi.fn() }, downloadCsv: vi.fn() }))
-vi.mock('../api/bridge', () => ({ bridgeApi: { status: vi.fn(), stop: vi.fn(), resume: vi.fn() } }))
+vi.mock('../api/bridge', () => ({ bridgeApi: { status: vi.fn(), todo: vi.fn(), stop: vi.fn(), resume: vi.fn() } }))
 
 import { sessionsApi } from '../api/sessions'
 import { insightsApi } from '../api/insights'
@@ -27,9 +27,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   ;(sessionsApi.list as any).mockResolvedValue([makeSession()])
   ;(bridgeApi.status as any).mockResolvedValue({
-    posts: 50, likers_done: 12, comments_done: 12, refresh_pending: 1, today: 4, daily_cap: 12, last_seen: new Date().toISOString(),
-    connected: true, stopped: false, wrong_account: null, paused_until: null, paused_reason: null, next_at: null,
+    posts: 50, likers_done: 12, comments_done: 12, today_posts: 3, today_people: 214, last_seen: new Date().toISOString(),
+    last_saved: new Date().toISOString(), connected: true, stopped: false, paused_until: null, paused_reason: null,
   })
+  ;(bridgeApi.todo as any).mockResolvedValue([
+    { id: '77', shortcode: 'NEW1', thumbnail_url: null, like_count: 5, comment_count: 0, taken_at: null },
+  ])
 })
 
 describe('CleanupPage', () => {
@@ -39,7 +42,9 @@ describe('CleanupPage', () => {
     renderApp(<CleanupPage />)
     expect(await screen.findByText('@sessiz')).toBeInTheDocument()
     expect(screen.getByText('12 / 50 gönderinin beğenenleri okundu')).toBeInTheDocument()
-    expect(await screen.findByText('Eklenti bağlı')).toBeInTheDocument()
+    expect(await screen.findByText('Dinliyor')).toBeInTheDocument()
+    expect(screen.getByText('Bugün 3 gönderi, 214 kişi')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Instagram'da aç: 5 beğeni/ })).toHaveAttribute('href', 'https://www.instagram.com/p/NEW1/')
     await userEvent.click(screen.getByRole('tab', { name: /Hayalet/ }))
     expect(await screen.findByText('@kapali')).toBeInTheDocument()
     expect((insightsApi.cleanup as any).mock.calls[1][1]).toMatchObject({ group: 'ghost', page: 1 })
@@ -62,9 +67,9 @@ describe('CleanupPage', () => {
 describe('BridgeWarningBanner', () => {
   it('shows a red alert on every page while Instagram has paused collection', async () => {
     ;(bridgeApi.status as any).mockResolvedValue({
-      posts: 50, likers_done: 12, comments_done: 12, refresh_pending: 0, today: 4, daily_cap: 12, last_seen: null,
-      connected: false, stopped: false, wrong_account: null, paused_until: '2026-11-02T10:00:00Z',
-      paused_reason: 'Köprü: Instagram uyarı verdi (feedback_required)', next_at: null,
+      posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
+      connected: false, stopped: false, paused_until: '2026-11-02T10:00:00Z',
+      paused_reason: 'Köprü: Instagram uyarı verdi (feedback_required)',
     })
     renderApp(<BridgeWarningBanner />)
     const alert = await screen.findByRole('alert')

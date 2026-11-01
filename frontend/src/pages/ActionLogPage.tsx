@@ -3,6 +3,7 @@ import { Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi, ActionLogEntry } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
+import { explainProblem } from '../lib/problems'
 import { CheckCircle, XCircle, Clock, SkipForward } from 'lucide-react'
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -71,7 +72,7 @@ export default function ActionLogPage() {
                     {entry.action_type === 'unfollow' ? T.actionLog.unfollow : entry.action_type === 'remove_follower' ? T.actionLog.removeFollower : T.actionLog.follow}
                   </span>
                 </div>
-                {entry.error_msg && <p className="text-xs text-red-400 mt-0.5 truncate">{entry.error_msg}</p>}
+                {entry.error_msg && <p className="text-xs text-red-400 mt-0.5 truncate" title={entry.error_msg}>{explainProblem(entry.error_msg, T).title}</p>}
               </div>
               <div className="text-xs text-gray-600 shrink-0">
                 {entry.executed_at

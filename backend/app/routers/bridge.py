@@ -1,4 +1,4 @@
-"""Tarayıcı köprüsü (Chrome eklentisi) uç noktaları. Sunucu Instagram'a istek atmaz; bkz. services/bridge.py."""
+"""Tarayıcı köprüsü (Chrome eklentisi) uç noktaları. Kimse Instagram'a istek göndermez; bkz. services/bridge.py."""
 import uuid
 
 import redis.asyncio as aioredis
@@ -31,13 +31,12 @@ async def _session(db: AsyncSession, session_id: uuid.UUID) -> Session:
     return s
 
 
-class NextRequest(BaseModel):
+class ObserveRequest(BaseModel):
     session_id: uuid.UUID
     viewer_id: int | None = None
-
-
-class ReportRequest(NextRequest):
-    path: str = Field(max_length=600)
+    url: str = Field(max_length=4000)                 # Instagram sayfasının yaptığı isteğin adresi
+    page_url: str = Field(default="", max_length=4000)
+    req_body: str = Field(default="", max_length=bridge.MAX_REQ_CHARS)
     status: int
     body: str = Field(default="", max_length=bridge.MAX_BODY_CHARS)
 
@@ -48,31 +47,36 @@ async def hello(viewer_id: int | None = None, db: AsyncSession = Depends(get_db)
     sessions = [{"id": str(s.id), "username": s.ig_username, "source": s.source,
                  "matches": bool(viewer_id and s.ig_user_id == viewer_id)} for s in rows]
     matched = next((s["id"] for s in sessions if s["matches"]), None)
-    return {"app": "instaanalytic", "version": 1, "matched": matched, "sessions": sessions}
+    return {"app": "instaanalytic", "version": 2, "matched": matched, "sessions": sessions}
 
 
-@router.post("/bridge/next")
-async def next_job(body: NextRequest, db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
-    s = await _session(db, body.session_id)
-    return await bridge.plan_next(db, kv, s, body.viewer_id)
-
-
-@router.post("/bridge/report")
-async def report(body: ReportRequest, db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
+@router.post("/bridge/observe")
+async def observe(body: ObserveRequest, db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
     s = await _session(db, body.session_id)
     if s.ig_user_id > 0 and body.viewer_id and body.viewer_id != s.ig_user_id:
-        raise HTTPException(409, "Instagram'da başka bir hesap açık")
-    if not bridge.ALLOWED_PATH.match(body.path):
-        raise HTTPException(400, "İzin verilmeyen yol")
-    try:
-        return await bridge.handle_report(db, kv, s, body.path, body.status, body.body)
-    except bridge.ReportError as e:
-        raise HTTPException(409, str(e))
+        raise HTTPException(409, f"Instagram'da başka bir hesap açık; bu profil @{s.ig_username}")
+    if not body.url.startswith("https://www.instagram.com/"):
+        raise HTTPException(400, "Yalnızca instagram.com yanıtları kabul edilir")
+    if await bridge.is_stopped(kv, s.id):
+        return {"posts": 0, "likers": 0, "comments": 0, "warning": False, "ignored": True, "stopped": True}
+    return await bridge.observe(db, kv, s, url=body.url, page_url=body.page_url, req_body=body.req_body,
+                                status=body.status, text=body.body)
 
 
 @router.get("/sessions/{session_id}/bridge/status")
 async def bridge_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
     return await bridge.status(db, kv, await _session(db, session_id))
+
+
+@router.get("/sessions/{session_id}/bridge/todo")
+async def bridge_todo(session_id: uuid.UUID, limit: int = 8, db: AsyncSession = Depends(get_db)):
+    return await bridge.todo(db, await _session(db, session_id), limit)
+
+
+@router.get("/sessions/{session_id}/bridge/diagnostics")
+async def bridge_diagnostics(session_id: uuid.UUID, db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
+    await _session(db, session_id)
+    return await bridge.diagnostics(kv, session_id)
 
 
 @router.post("/sessions/{session_id}/bridge/stop")

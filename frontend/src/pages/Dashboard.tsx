@@ -7,6 +7,8 @@ import { sessionsApi, Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { analysisApi, AnalysisSummary } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
+import { apiErrorMessage } from '../lib/problems'
 import SetupGuide from '../components/SetupGuide'
 import {
   Users, Image, Network, History, FileBarChart2, CheckCircle,
@@ -296,6 +298,7 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
   lang: string; T: any; onClose: () => void
 }) {
   const { refresh: refreshSessions } = useSession()
+  const toast = useToast()
   const [agentConnected, setAgentConnected] = useState<boolean | null>(null)
   const [verifyStatus, setVerifyStatus] = useState<Record<string, 'loading' | boolean>>({})
   const [editingId,   setEditingId]   = useState<string | null>(null)
@@ -319,7 +322,7 @@ function SessionPanel({ sessions, setSessions, lang, T, onClose }: {
     if (!editingId || !editValue.trim()) return
     setEditSaving(true)
     try { await sessionsApi.updateUsername(editingId, editValue.trim().replace(/^@/, '')); await load(); setEditingId(null) }
-    catch (e: any) { alert(e?.response?.data?.detail ?? T.session.saveError) }
+    catch (e: any) { toast.error(apiErrorMessage(e, T, T.session.saveError)) }
     finally { setEditSaving(false) }
   }
 

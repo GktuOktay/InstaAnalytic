@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload, ShieldCheck, Clock } from 'lucide-react'
 import { importApi, ImportJob, ImportSummary, ScanStatus } from '../api/imports'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useToast } from '../contexts/ToastContext'
 import { extractExportJson } from '../lib/zipExtract'
 
@@ -59,7 +60,7 @@ export default function ImportScanPanel({ sessionId, refreshKey, onImported, sho
         await new Promise(r => setTimeout(r, 700))
       }
     } catch (e: any) {
-      if (alive.current) toast.error(e?.response?.data?.detail ?? e?.message ?? 'Hata')
+      if (alive.current) toast.error(apiErrorMessage(e, T, 'Hata'))
     } finally {
       if (alive.current) { setBusy(false); setUpload(null) }
     }
@@ -102,7 +103,7 @@ export default function ImportScanPanel({ sessionId, refreshKey, onImported, sho
       setUpload(null)
       await follow(jobId)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? e?.message ?? 'Hata')
+      toast.error(apiErrorMessage(e, T, 'Hata'))
       setBusy(false); setUpload(null)
     } finally {
       setExtract(null)

@@ -3,6 +3,7 @@ import api from '../api/client'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi, QueueStatus } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
+import { explainProblem } from '../lib/problems'
 import {
   Activity, Clock, CheckCircle2, XCircle, Loader2,
   RefreshCw, Trash2
@@ -255,6 +256,7 @@ export default function MonitorPage() {
 }
 
 function JobRow({ job, jobLabels, lang }: { job: SyncJob; jobLabels: Record<string, string>; lang: string }) {
+  const { T } = useLang()
   const pct = job.total_items && job.processed_items != null
     ? Math.round((job.processed_items / job.total_items) * 100)
     : null
@@ -291,7 +293,7 @@ function JobRow({ job, jobLabels, lang }: { job: SyncJob; jobLabels: Record<stri
         )}
         {job.error_msg && (
           <span className="text-red-400 truncate max-w-xs" title={job.error_msg}>
-            <XCircle size={10} className="inline mr-1" />{job.error_msg.slice(0, 60)}
+            <XCircle size={10} className="inline mr-1" />{explainProblem(job.error_msg, T).title}
           </span>
         )}
       </div>

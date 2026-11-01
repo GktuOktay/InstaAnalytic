@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { act, screen } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import { BlobReader, ZipReader } from '@zip.js/zip.js'
 import userEvent from '@testing-library/user-event'
 import { renderApp } from './utils'
@@ -64,6 +64,8 @@ describe('GuidePage', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Reference files' })).toBeInTheDocument()
     const C = guideContent('en')
     for (const s of C.bridge.install) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
+    for (const s of C.use.steps) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: C.bridge.update.alt })).toBeInTheDocument()
     expect(screen.getByRole('note', { name: C.bridge.warning.title })).toBeInTheDocument()
   })
 
@@ -106,8 +108,62 @@ describe('GuidePage', () => {
     expect(note).toHaveTextContent('24 saat')
     expect(note).toHaveTextContent('72 saat')
     expect(note).toHaveTextContent(/kırmızı/)
-    expect(note).toHaveTextContent(/Güvenli/)
+    expect(note).toHaveTextContent(/429/)
+    expect(note).toHaveTextContent(/Beğenen listelerini açmayı bırak/)
+    expect(note).toHaveTextContent(/doğrulama/)
     expect(note).toHaveTextContent(/aşmaya çalışma/)
+  })
+
+  it('draws the new popup: save toggle, "Dinliyor" status, no "Şimdi dene" button', async () => {
+    await renderGuide()
+    const B = guideContent('tr').bridge
+    const popup = B.install.find(s => s.art === 'popup')!
+    const svg = screen.getByRole('img', { name: popup.alt })
+    expect(svg).toHaveTextContent('InstaAnalytic Köprüsü')
+    expect(svg).toHaveTextContent('Gezinirken beğenenleri kaydet')
+    expect(svg).toHaveTextContent('Dinliyor')
+    expect(svg).toHaveTextContent('Bugün')
+    expect(svg).toHaveTextContent('Son kayıt')
+    expect(svg).toHaveTextContent('Uygulamayı aç')
+    expect(svg).not.toHaveTextContent('Şimdi dene')
+    const connected = B.install.find(s => s.art === 'connected')!
+    expect(screen.getByRole('img', { name: connected.alt })).toHaveTextContent('Dinliyor')
+  })
+
+  it('has an illustrated usage section with at least 5 named steps', async () => {
+    const { container } = await renderGuide()
+    const C = guideContent('tr')
+    const section = container.querySelector(`section#${SECTION_ANCHOR.use}`) as HTMLElement
+    expect(section).not.toBeNull()
+    expect(SECTION_ANCHOR.use).toBe('kullanim')
+    expect(C.use.steps.length).toBeGreaterThanOrEqual(5)
+    const within_ = within(section)
+    C.use.steps.forEach((s, i) => {
+      const img = within_.getByRole('img', { name: s.alt })
+      expect(img.tagName.toLowerCase()).toBe('svg')
+      expect(s.alt.length).toBeGreaterThan(20)
+      expect(img.closest('figure')?.querySelector('figcaption')?.textContent).toBe(s.caption)
+      expect(within_.getByRole('heading', { level: 4, name: `${C.bridge.stepLabel} ${i + 1}: ${s.title}` })).toBeInTheDocument()
+    })
+    expect(section).toHaveTextContent('5–10')
+    expect(within_.getByRole('heading', { level: 3, name: C.use.troubleTitle })).toBeInTheDocument()
+    expect(section).toHaveTextContent(/profilini aç/)
+    // Başlık kimlikleri kurulum adımlarıyla çakışmasın
+    const ids = Array.from(container.querySelectorAll('[id]')).map(e => e.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('explains how to update an installed extension', async () => {
+    const { container } = await renderGuide()
+    const U = guideContent('tr').bridge.update
+    const block = container.querySelector('#guncelle') as HTMLElement
+    expect(block).not.toBeNull()
+    expect(screen.getByRole('heading', { level: 3, name: U.title })).toBeInTheDocument()
+    expect(U.steps.length).toBeGreaterThanOrEqual(3)
+    expect(block.querySelectorAll('ol > li')).toHaveLength(U.steps.length)
+    expect(block).toHaveTextContent('↻')
+    expect(block).toHaveTextContent(/Instagram sekmesini/)
+    expect(screen.getByRole('img', { name: U.alt })).toBeInTheDocument()
   })
 
   it('shows the short ZIP export path', async () => {
@@ -129,11 +185,28 @@ describe('guide content', () => {
     }
   })
 
-  it('both languages have the same install steps', () => {
-    const tr = guideContent('tr').bridge.install.map(s => s.art)
-    const en = guideContent('en').bridge.install.map(s => s.art)
-    expect(en).toEqual(tr)
-    expect(new Set(tr).size).toBe(tr.length)
+  it('no longer describes timers or pacing of the old extension', () => {
+    for (const lang of ['tr', 'en']) {
+      const C = guideContent(lang)
+      const all = JSON.stringify(C) + checklistMarkdown(C)
+      expect(all).not.toMatch(/Şimdi dene|Try now/)
+      expect(all).not.toMatch(/25–80|25-80/)
+      expect(all).not.toMatch(/günde 12|12 posts a day|12, 20/i)
+      expect(all).not.toMatch(/bilgisayar(ın)? başında|at the computer/i)
+      expect(all).not.toMatch(/3 gününde|first 3 days/i)
+      expect(all).not.toMatch(/istekler arası|between requests/i)
+      expect(all).not.toMatch(/toplamaya izin ver/)
+    }
+  })
+
+  it('both languages have the same install, usage and update steps', () => {
+    const tr = guideContent('tr')
+    const en = guideContent('en')
+    expect(en.bridge.install.map(s => s.art)).toEqual(tr.bridge.install.map(s => s.art))
+    expect(new Set(tr.bridge.install.map(s => s.art)).size).toBe(tr.bridge.install.length)
+    expect(en.use.steps.map(s => s.art)).toEqual(tr.use.steps.map(s => s.art))
+    expect(en.bridge.update.steps).toHaveLength(tr.bridge.update.steps.length)
+    expect(en.checklistDoc.groups.map(g => g.items.length)).toEqual(tr.checklistDoc.groups.map(g => g.items.length))
   })
 })
 

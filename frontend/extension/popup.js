@@ -13,7 +13,6 @@ const el = {
   statusText: $('status-text'),
   today: $('today'),
   last: $('last'),
-  next: $('next'),
   profileName: $('profile-name'),
   profileChange: $('profile-change'),
   profilePicker: $('profile-picker'),
@@ -22,7 +21,6 @@ const el = {
   appUrl: $('app-url'),
   appSave: $('app-save'),
   appHint: $('app-hint'),
-  tryNow: $('try-now'),
   openApp: $('open-app'),
 };
 
@@ -66,26 +64,23 @@ function send(msg) {
 
 function renderStatus(status, enabled) {
   const s = status || {};
-  const state = enabled ? (s.state || 'waiting') : 'off';
+  const state = enabled ? (s.state || 'listening') : 'off';
   el.status.dataset.state = state;
   // Instagram uyarısı: kapalıyken bile görünür, en üstte
   const warnOn = s.state === 'warning' && (!s.warningUntil || s.warningUntil > Date.now());
   el.warning.hidden = !warnOn;
   el.warningUntil.textContent = warnOn && s.warningUntil
-    ? `Yeniden denenecek: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
+    ? `Bu tarihe kadar bekleyin: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
     : '';
-  el.statusText.textContent = enabled ? (s.message || 'Bekleniyor.') : 'Kapalı. Açtığınızda başlar.';
+  el.statusText.textContent = enabled ? (s.message || 'Dinliyor.') : 'Kapalı. Açtığınızda dinlemeye başlar.';
 
-  const count = s.todayDate === todayKey() ? Number(s.todayCount) || 0 : 0;
-  el.today.textContent = `${count} istek`;
-  el.last.textContent = fmtTime(s.lastActionAt);
-  el.next.textContent = enabled && s.nextRunAt && s.nextRunAt > Date.now() - 60000 ? fmtTime(s.nextRunAt) : '—';
+  const today = s.todayDate === todayKey();
+  el.today.textContent = `${today ? Number(s.todayPosts) || 0 : 0} gönderi, ${today ? Number(s.todayPeople) || 0 : 0} kişi`;
+  el.last.textContent = fmtTime(s.lastSavedAt);
 
   const p = s.profile;
   el.profileName.textContent = p ? (p.username ? `@${p.username}` : 'Seçili profil') : 'Seçilmedi';
   if (state === 'needs_profile') showPicker();
-
-  el.tryNow.disabled = !enabled;
 }
 
 async function refresh() {
@@ -190,12 +185,6 @@ async function saveAppUrl() {
 el.appSave.addEventListener('click', saveAppUrl);
 el.appUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveAppUrl(); });
 
-el.tryNow.addEventListener('click', async () => {
-  el.tryNow.disabled = true;
-  await send({ type: 'ia-tick' });
-  setTimeout(() => { el.tryNow.disabled = !el.enabled.checked; }, 3000);
-});
-
 el.openApp.addEventListener('click', () => {
   chrome.tabs.create({ url: appUrl });
 });
@@ -205,3 +194,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 refresh();
+// Uygulamada bekleyen bir Instagram uyarısı varsa pencere açılınca hemen yansısın
+send({ type: 'ia-refresh' }).then(refresh);

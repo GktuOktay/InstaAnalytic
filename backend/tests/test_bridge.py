@@ -1,9 +1,9 @@
 import json
-import random
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.models.ig_user import IgUser
 from app.models.interaction import Interaction
@@ -14,221 +14,187 @@ from app.services.user_ids import placeholder_id
 
 NOW = datetime.now(timezone.utc)
 BIG_PK = 3412345678901234567          # JS sayısına sığmaz; ham metinden doğru okunmalı
+GQL = "https://www.instagram.com/graphql/query"
 
 
 class FakeKV:
     def __init__(self):
-        self.d = {}
+        self.d, self.lists = {}, {}
 
     async def get(self, k): return self.d.get(k)
     async def set(self, k, v, ex=None): self.d[k] = str(v)
     async def delete(self, *keys):
         for k in keys: self.d.pop(k, None)
+    async def lpush(self, k, *v): self.lists.setdefault(k, [])[:0] = list(v)
+    async def ltrim(self, k, a, b): self.lists[k] = self.lists.get(k, [])[a:b + 1]
+    async def lrange(self, k, a, b): return self.lists.get(k, [])[a:b + 1]
+    async def expire(self, k, s): pass
 
-    def unpace(self, sid):
-        self.d.pop(f"bridge:{sid}:next_at", None)
 
-
-def feed_text(owner="me", owner_pk=1001):
+def timeline_text(owner="me", owner_pk=1001):
+    """Profil ızgarası (GraphQL biçimi): biri eski biri yeni iki gönderi."""
     old = int((NOW - timedelta(days=10)).timestamp())
     young = int((NOW - timedelta(days=1)).timestamp())
     return (
-        '{"items":['
-        f'{{"id":"{BIG_PK}_{owner_pk}","pk":{BIG_PK},"code":"OLD1","taken_at":{old},"media_type":8,'
-        f'"like_count":2,"comment_count":1,"caption":{{"text":"eski"}},"user":{{"pk":{owner_pk},"username":"{owner}"}},'
-        '"carousel_media":[{"image_versions2":{"candidates":[{"url":"big"},{"url":"small"}]}}]},'
-        f'{{"id":"77_{owner_pk}","pk":77,"code":"NEW1","taken_at":{young},"media_type":1,"like_count":5,'
-        f'"comment_count":0,"user":{{"pk":{owner_pk},"username":"{owner}"}}}}'
-        '],"more_available":false,"status":"ok"}'
+        '{"data":{"xdt_api__v1__feed__user_timeline_graphql_connection":{"edges":['
+        f'{{"node":{{"id":"{BIG_PK}_{owner_pk}","pk":"{BIG_PK}","code":"OLD1","taken_at":{old},"media_type":8,'
+        f'"like_count":2,"comment_count":1,"caption":{{"text":"eski"}},"user":{{"pk":"{owner_pk}","username":"{owner}"}},'
+        '"carousel_media":[{"image_versions2":{"candidates":[{"url":"big"},{"url":"small"}]}}]}},'
+        f'{{"node":{{"id":"77_{owner_pk}","pk":"77","code":"NEW1","taken_at":{young},"media_type":1,"like_count":5,'
+        f'"comment_count":0,"user":{{"pk":"{owner_pk}","username":"{owner}"}}}}}}'
+        '],"page_info":{"has_next_page":false}}},"status":"ok"}'
     )
+
+
+def likers_req(media_id):
+    return urlencode({"fb_api_req_friendly_name": "PolarisPostLikersQuery",
+                      "variables": json.dumps({"media_id": str(media_id)}), "doc_id": "123"})
+
+
+async def _obs(db, kv, s, url, body, page="https://www.instagram.com/me/", req="", status=200, now=NOW):
+    return await bridge.observe(db, kv, s, url=url, page_url=page, req_body=req, status=status, text=body, now=now)
 
 
 # ── ayrıştırma ───────────────────────────────────────────────────────────────
 
-def test_parse_feed_keeps_big_ids_and_owner():
-    posts, owner, nxt = bridge.parse_feed(bridge.parse_body(feed_text()))
-    assert [p["id"] for p in posts] == [BIG_PK, 77]
-    assert posts[0]["media_type"] == "ALBUM" and posts[0]["thumbnail_url"] == "small"
-    assert posts[0]["caption"] == "eski"
-    assert owner == {"pk": 1001, "username": "me"} and nxt is None
+def test_find_media_keeps_big_ids_thumbs_and_owner():
+    media = bridge.find_media(bridge.parse_body(timeline_text()))
+    assert [m["id"] for m in media] == [BIG_PK, 77]
+    assert media[0]["media_type"] == "ALBUM" and media[0]["thumbnail_url"] == "small"
+    assert media[0]["caption"] == "eski" and media[0]["owner"] == "me" and media[0]["like_count"] == 2
 
 
-def test_parse_comments_encodes_object_cursor():
-    body = {"comments": [{"user": {"pk": 5, "username": "a"}, "text": "güzel", "created_at": 1700000000}],
-            "has_more_comments": True, "next_min_id": {"cached_comments_cursor": "x", "bifilter_token": "y"}}
-    comments, nxt = bridge.parse_comments(body)
-    assert comments[0]["user"]["username"] == "a" and json.loads(nxt)["bifilter_token"] == "y"
-    path = bridge._with_cursor(bridge.COMMENTS_PATH.format(pid=1), "min_id", nxt)
-    assert bridge.ALLOWED_PATH.match(path)
+def test_find_media_understands_old_graphql_names():
+    body = {"data": {"user": {"edge_owner_to_timeline_media": {"edges": [{"node": {
+        "id": "55", "shortcode": "ABC", "taken_at_timestamp": 1700000000, "owner": {"id": "1", "username": "me"},
+        "edge_liked_by": {"count": 9}, "edge_media_to_comment": {"count": 2}, "display_url": "u"}}]}}}}
+    [m] = bridge.find_media(body)
+    assert (m["id"], m["shortcode"], m["like_count"], m["comment_count"], m["thumbnail_url"]) == (55, "ABC", 9, 2, "u")
+
+
+def test_find_likers_in_graphql_and_rest_shapes():
+    gql = {"data": {"xdt_api__v1__media__likers": {"users": [{"pk": "5", "username": "a"}, {"pk": "6", "username": "b"}]}}}
+    assert [u["username"] for u in bridge.find_likers(gql, GQL)] == ["a", "b"]
+    edges = {"data": {"shortcode_media": {"edge_liked_by": {"edges": [{"node": {"id": "7", "username": "c"}}]}}}}
+    assert [u["id"] for u in bridge.find_likers(edges, GQL)] == [7]
+    rest = {"users": [{"pk": 8, "username": "d"}], "status": "ok"}
+    assert bridge.find_likers(rest, "https://www.instagram.com/api/v1/media/42/likers/")[0]["id"] == 8
+    assert bridge.find_likers({"data": {"user": {"username": "x"}}}, GQL) is None
+    assert bridge.find_likers({"data": {"likers": {"users": []}}}, GQL) == []
+
+
+def test_find_comments_and_request_variables():
+    body = {"data": {"xdt_api__v1__media__media_id__comments__connection": {"edges": [
+        {"node": {"text": "süper", "created_at": 1700000000, "user": {"pk": "9", "username": "ali"}}}]}}}
+    [c] = bridge.find_comments(body, GQL)
+    assert c["user"]["username"] == "ali" and c["text"] == "süper"
+    friendly, variables = bridge.parse_request(likers_req(BIG_PK), GQL)
+    assert friendly == "PolarisPostLikersQuery" and variables["media_id"] == str(BIG_PK)
 
 
 def test_risk_signals():
-    assert bridge.is_risk(429, {})
-    assert bridge.is_risk(200, None)                                   # HTML giriş sayfası
-    assert bridge.is_risk(400, {"message": "challenge_required"})
+    assert bridge.is_risk(429, None)
     assert bridge.is_risk(400, {"message": "feedback_required", "spam": True})
-    assert not bridge.is_risk(200, {"users": []})
-    assert not bridge.is_risk(500, None)
+    assert bridge.is_risk(200, {"errors": [{"message": "Rate limit exceeded", "code": 1}]})
+    assert not bridge.is_risk(200, {"data": {}})
+    assert not bridge.is_risk(404, None)
 
 
-def test_allowed_paths_reject_anything_else():
-    ok = ["/api/v1/feed/user/1001/?count=12", "/api/v1/feed/user/1/?count=12&max_id=3412_1001",
-          "/api/v1/media/5/likers/", bridge.COMMENTS_PATH.format(pid=9)]
-    bad = ["/api/v1/friendships/create/5/", "/api/v1/media/5/like/", "https://evil/api/v1/media/5/likers/",
-           "/api/v1/media/5/likers/?max_id=1&x=2"]
-    assert all(bridge.ALLOWED_PATH.match(p) for p in ok)
-    assert not any(bridge.ALLOWED_PATH.match(p) for p in bad)
+def test_shape_has_no_values():
+    s = json.dumps(bridge.shape({"data": {"users": [{"username": "gizli", "pk": 5}]}}))
+    assert "gizli" not in s and "username" in s
 
 
 # ── akış ─────────────────────────────────────────────────────────────────────
 
-async def _report(db, kv, s, job, status, text):
-    return await bridge.handle_report(db, kv, s, job["path"], status, text, now=NOW, rng=random.Random(1))
-
-
 @pytest.mark.asyncio
-async def test_full_cycle_feed_likers_comments_and_heals_zip_names(db, make_session):
+async def test_browsing_own_profile_then_likers_and_comments(db, make_session):
     s = await make_session(username="me")
     kv = FakeKV()
-    # ZIP'ten gelmiş, ID'si bilinmeyen takipçi
-    ph = placeholder_id("ayse")
+    ph = placeholder_id("ayse")                       # ZIP'ten gelmiş, ID'si bilinmeyen takipçi
     db.add(IgUser(id=ph, username="ayse"))
     await db.flush()
     db.add(Relationship(session_id=s.id, ig_user_id=ph, we_follow=False, they_follow=True))
     await db.commit()
 
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    assert job["kind"] == "feed" and job["path"] == "/api/v1/feed/user/1001/?count=12"
-    r = await _report(db, kv, s, job, 200, feed_text())
-    assert r["posts"] == 2 and r["wait_s"] >= bridge.FEED_PAGE_S[0]
+    r = await _obs(db, kv, s, GQL, timeline_text())
+    assert r["posts"] == 2
 
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "pacing"
-    kv.unpace(s.id)
+    likers = '{"data":{"xdt_api__v1__media__likers":{"users":[{"pk":"555","username":"ayse"},{"pk":"1001","username":"me"}]}}}'
+    r = await _obs(db, kv, s, GQL, likers, page="https://www.instagram.com/p/OLD1/liked_by/", req=likers_req(BIG_PK))
+    assert r["likers"] == 1                                            # kendi beğenisi sayılmaz
 
-    # En yeni (1 günlük) gönderi beklemeden hemen okunur
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    assert job["kind"] == "likers" and job["post_id"] == 77
-    await _report(db, kv, s, job, 200, '{"users":[{"pk":557,"username":"veli"}]}')
-    kv.unpace(s.id)
-
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    assert job == {"action": "fetch", "kind": "likers", "path": f"/api/v1/media/{BIG_PK}/likers/", "post_id": BIG_PK}
-    likers = '{"users":[{"pk":555,"username":"ayse","full_name":"Ayşe"},{"pk":1001,"username":"me"}],"status":"ok"}'
-    r = await _report(db, kv, s, job, 200, likers)
-    assert r["saved"] == 1                                            # kendi beğenisi sayılmaz
-    assert r["wait_s"] <= bridge.WITHIN_POST_S[1] * 1.6               # yorum listesine geçiyor
-    kv.unpace(s.id)
-
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    assert job["kind"] == "comments" and job["post_id"] == BIG_PK
-    comments = '{"comments":[{"user":{"pk":556,"username":"ali"},"text":"süper","created_at":1700000000}],"has_more_comments":false}'
-    await _report(db, kv, s, job, 200, comments)
-    kv.unpace(s.id)
-
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "up_to_date"
+    comments = ('{"data":{"xdt_api__v1__media__media_id__comments__connection":{"edges":[{"node":'
+                '{"text":"süper","created_at":1700000000,"user":{"pk":"556","username":"ali"}}}]}}}')
+    r = await _obs(db, kv, s, GQL, comments, page="https://www.instagram.com/p/OLD1/")
+    assert r["comments"] == 1
 
     post = await db.get(Post, BIG_PK)
     await db.refresh(post)
     assert post.likers_synced_at and post.comments_synced_at and post.shortcode == "OLD1"
     kinds = {(i.ig_user_id, i.interaction_type) for i in (await db.execute(select(Interaction))).scalars()}
-    assert kinds == {(555, "like"), (556, "comment"), (557, "like")}
+    assert kinds == {(555, "like"), (556, "comment")}
     assert await db.get(IgUser, ph) is None                            # yer tutucu gerçek ID'ye bağlandı
-    rel = await db.get(Relationship, (s.id, 555))
-    assert rel and rel.they_follow
+    assert (await db.get(Relationship, (s.id, 555))).they_follow
 
     st = await bridge.status(db, kv, s, now=NOW)
-    assert st["posts"] == 2 and st["likers_done"] == 2 and st["refresh_pending"] == 1 and st["connected"]
-
-    # 3 günü dolunca geç gelen beğeniler için bir kez daha okunur, sonra bir daha istenmez
-    later = NOW + timedelta(days=3)
-    await db.execute(update(Post).values(last_synced_at=later))      # gönderi listesi taze
-    await db.commit()
-    job = await bridge.plan_next(db, kv, s, 1001, now=later)
-    assert job["kind"] == "likers" and job["post_id"] == 77
-    await bridge.handle_report(db, kv, s, job["path"], 200, '{"users":[{"pk":558,"username":"geç"}]}',
-                               now=later, rng=random.Random(1))
-    kv.unpace(s.id)
-    assert (await bridge.plan_next(db, kv, s, 1001, now=later))["reason"] == "up_to_date"
-    assert (await bridge.status(db, kv, s, now=later))["refresh_pending"] == 0
+    assert st["posts"] == 2 and st["likers_done"] == 1 and st["today_posts"] == 1 and st["today_people"] == 1
+    assert st["connected"] and st["last_saved"]
+    assert [t["shortcode"] for t in await bridge.todo(db, s)] == ["NEW1"]
 
 
 @pytest.mark.asyncio
-async def test_risk_signal_pauses_everything_and_repeat_pauses_longer(db, make_session):
+async def test_someone_elses_posts_and_likers_are_ignored(db, make_session):
     s = await make_session(username="me")
     kv = FakeKV()
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    r = await _report(db, kv, s, job, 429, '{"message":"Please wait a few minutes","status":"fail"}')
-    assert r["reason"] == "paused" and abs(r["wait_s"] - 24 * 3600) < 5
-    await db.refresh(s)
-    assert s.paused_reason.startswith(bridge.PAUSE_PREFIX)
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "paused"
+    r = await _obs(db, kv, s, GQL, timeline_text(owner="baskasi", owner_pk=2002))
+    assert r["posts"] == 0
+    likers = '{"data":{"xdt_api__v1__media__likers":{"users":[{"pk":"5","username":"a"}]}}}'
+    r = await _obs(db, kv, s, GQL, likers, page="https://www.instagram.com/p/XYZ/liked_by/", req=likers_req(999))
+    assert r["ignored"] and r["likers"] == 0
+    assert (await db.execute(select(Post))).first() is None
+    assert (await db.execute(select(Interaction))).first() is None
 
+
+@pytest.mark.asyncio
+async def test_instagram_warning_pauses_and_repeat_pauses_longer(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    r = await _obs(db, kv, s, GQL, '{"message":"Please wait a few minutes","status":"fail"}', status=429)
+    assert r["warning"]
+    await db.refresh(s)
+    assert abs((s.paused_until - NOW).total_seconds() - 24 * 3600) < 5 and s.paused_reason.startswith(bridge.PAUSE_PREFIX)
     s.paused_until = None
     await db.commit()
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    r = await _report(db, kv, s, job, 200, "<html>login</html>")
-    assert abs(r["wait_s"] - 72 * 3600) < 5
+    await _obs(db, kv, s, GQL, '{"message":"feedback_required","spam":true}', status=400)
+    await db.refresh(s)
+    assert abs((s.paused_until - NOW).total_seconds() - 72 * 3600) < 5
 
 
 @pytest.mark.asyncio
-async def test_wrong_account_is_refused(db, make_session):
+async def test_unrecognised_likers_like_response_is_kept_as_shape_only(db, make_session):
     s = await make_session(username="me")
     kv = FakeKV()
-    assert (await bridge.plan_next(db, kv, s, 99999, now=NOW))["reason"] == "wrong_account"
-    job = await bridge.plan_next(db, kv, s, 1001, now=NOW)
-    with pytest.raises(bridge.ReportError):
-        await _report(db, kv, s, job, 200, feed_text(owner="baskasi"))
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "wrong_account"
-    assert (await db.execute(select(Post))).first() is None
+    weird = '{"data":{"something_new":{"people_who_liked":[{"handle":"gizli"}]}}}'
+    await _obs(db, kv, s, GQL, weird, req=urlencode({"fb_api_req_friendly_name": "PolarisLikersSheetQuery"}))
+    [d] = await bridge.diagnostics(kv, s.id)
+    assert d["friendly"] == "PolarisLikersSheetQuery" and "gizli" not in json.dumps(d)
 
 
 @pytest.mark.asyncio
-async def test_report_must_match_pending_job(db, make_session):
-    s = await make_session(username="me")
-    kv = FakeKV()
-    with pytest.raises(bridge.ReportError):
-        await bridge.handle_report(db, kv, s, "/api/v1/media/5/likers/", 200, "{}", now=NOW)
-
-
-@pytest.mark.asyncio
-async def test_zip_profile_adopts_real_id_from_feed(db, make_session):
+async def test_zip_profile_learns_its_real_id(db, make_session):
     s = await make_session(username="me", source="zip")
     s.ig_user_id = placeholder_id("me")
     await db.commit()
-    kv = FakeKV()
-    job = await bridge.plan_next(db, kv, s, 4242, now=NOW)
-    assert job["path"] == "/api/v1/feed/user/4242/?count=12"
-    await _report(db, kv, s, job, 200, feed_text(owner_pk=4242))
+    await _obs(db, FakeKV(), s, GQL, timeline_text(owner_pk=4242))
     await db.refresh(s)
     assert s.ig_user_id == 4242
-
-
-@pytest.mark.asyncio
-async def test_daily_cap_stops_reading_more_posts(db, make_session):
-    s = await make_session(username="me")
-    kv = FakeKV()
-    for i in range(bridge.daily_cap("safe")):
-        db.add(Post(id=10 + i, session_id=s.id, shortcode=f"c{i}", like_count=1, comment_count=0,
-                    taken_at=NOW - timedelta(days=30), last_synced_at=NOW,
-                    likers_synced_at=NOW - timedelta(hours=1), comments_synced_at=NOW))
-    db.add(Post(id=99, session_id=s.id, shortcode="todo", like_count=3, taken_at=NOW - timedelta(days=40), last_synced_at=NOW))
-    await db.commit()
-    assert (await bridge.plan_next(db, kv, s, 1001, now=NOW))["reason"] == "daily_cap"
-
-
-@pytest.mark.asyncio
-async def test_break_cadence_inserts_long_pause():
-    kv = FakeKV()
-    rng = random.Random(3)
-    waits = [await bridge._post_done(kv, "s", rng) for _ in range(30)]
-    assert sum(w >= bridge.BREAK_S[0] for w in waits) >= 3
-    assert all(w >= bridge.BETWEEN_POSTS_S[0] for w in waits)
 
 
 # ── API ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_api_hello_next_report_and_cleanup(client, db, make_session):
+async def test_api_observe_status_todo_and_cleanup(client, db, make_session):
     from app.main import app
     from app.routers.bridge import get_kv
     kv = FakeKV()
@@ -236,36 +202,43 @@ async def test_api_hello_next_report_and_cleanup(client, db, make_session):
     try:
         s = await make_session(username="me")
         h = (await client.get("/api/bridge/hello?viewer_id=1001")).json()
-        assert h["matched"] == str(s.id)
+        assert h["matched"] == str(s.id) and h["version"] == 2
 
-        job = (await client.post("/api/bridge/next", json={"session_id": str(s.id), "viewer_id": 1001})).json()
-        assert job["kind"] == "feed"
-        bad = await client.post("/api/bridge/report", json={"session_id": str(s.id), "viewer_id": 1001,
-                                                             "path": "/api/v1/friendships/create/1/", "status": 200, "body": "{}"})
+        base = {"session_id": str(s.id), "viewer_id": 1001, "status": 200, "page_url": "https://www.instagram.com/me/"}
+        bad = await client.post("/api/bridge/observe", json={**base, "url": "https://evil.example/x", "body": "{}"})
         assert bad.status_code == 400
-        r = await client.post("/api/bridge/report", json={"session_id": str(s.id), "viewer_id": 1001,
-                                                           "path": job["path"], "status": 200, "body": feed_text()})
+        other = await client.post("/api/bridge/observe", json={**base, "viewer_id": 9, "url": GQL, "body": "{}"})
+        assert other.status_code == 409
+        r = await client.post("/api/bridge/observe", json={**base, "url": GQL, "body": timeline_text()})
         assert r.status_code == 200 and r.json()["posts"] == 2
 
-        # takip ettiğim ama beni takip etmeyen ve hiç beğenmeyen biri + beğenen bir takipçi
+        todo = (await client.get(f"/api/sessions/{s.id}/bridge/todo")).json()
+        assert {t["shortcode"] for t in todo} == {"OLD1", "NEW1"} and todo[0]["id"] == "77"
+
         for uid, name, we, they in [(701, "sessiz", True, False), (702, "sadik", False, True)]:
             db.add(IgUser(id=uid, username=name))
             await db.flush()
             db.add(Relationship(session_id=s.id, ig_user_id=uid, we_follow=we, they_follow=they))
         db.add(Interaction(session_id=s.id, ig_user_id=702, post_id=BIG_PK, interaction_type="like"))
         await db.commit()
-
         c = (await client.get(f"/api/sessions/{s.id}/insights/cleanup")).json()
-        groups = {r["username"]: r["group"] for r in c["rows"]}
-        assert groups == {"sessiz": "one_way_silent", "sadik": "loyal"}
-        assert c["enough_data"] is False and c["counts"]["one_way_silent"] == 1
+        assert {r["username"]: r["group"] for r in c["rows"]} == {"sessiz": "one_way_silent", "sadik": "loyal"}
         only = (await client.get(f"/api/sessions/{s.id}/insights/cleanup?group=one_way_silent")).json()
         assert [r["username"] for r in only["rows"]] == ["sessiz"] and only["total_rows"] == 1
-        csv = await client.get(f"/api/sessions/{s.id}/insights/cleanup.csv")
-        assert "sessiz" in csv.text
+        assert "sessiz" in (await client.get(f"/api/sessions/{s.id}/insights/cleanup.csv")).text
 
         assert (await client.post(f"/api/sessions/{s.id}/bridge/stop")).json()["stopped"]
+        r = await client.post("/api/bridge/observe", json={**base, "url": GQL, "body": timeline_text()})
+        assert r.json()["stopped"]
         st = (await client.get(f"/api/sessions/{s.id}/bridge/status")).json()
         assert st["stopped"] and st["posts"] == 2
+        assert (await client.get(f"/api/sessions/{s.id}/bridge/diagnostics")).json() == []
     finally:
         app.dependency_overrides.pop(get_kv, None)
+
+
+def test_warning_kind_for_user_language():
+    assert bridge.warning_kind(429, None) == "rate_limit"
+    assert bridge.warning_kind(400, {"message": "challenge_required"}) == "verify"
+    assert bridge.warning_kind(400, {"message": "feedback_required", "spam": True}) == "action_blocked"
+    assert bridge.warning_kind(401, {"message": "login_required"}) == "logged_out"

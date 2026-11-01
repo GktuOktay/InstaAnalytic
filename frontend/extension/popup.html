@@ -13,31 +13,30 @@
   <label class="toggle">
     <input type="checkbox" id="enabled">
     <span class="switch" aria-hidden="true"></span>
-    <span class="toggle-text">Beğenenleri toplamaya izin ver</span>
+    <span class="toggle-text">Gezinirken beğenenleri kaydet</span>
   </label>
 
   <p class="note">
-    Yalnızca Instagram bir sekmede açıkken ve siz bilgisayar başındayken çalışır.
-    Bilerek yavaş ilerler; bir listeyi okuduktan sonra bir süre bekler.
+    Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda,
+    sayfanın zaten indirdiği listeyi kaydeder.
   </p>
 
   <section class="warning" id="warning" role="alert" hidden>
     <strong>Instagram uyarı verdi. Toplama durduruldu.</strong>
     <p id="warning-until"></p>
     <ul>
-      <li>Hiçbir şeyi zorlamayın, eklentiyi yeniden açıp kapatmak süreyi kısaltmaz.</li>
+      <li>Beğenen listelerini açmayı bu süre boyunca bırakın.</li>
       <li>Instagram'ı telefonunuzdan normal şekilde kullanın.</li>
       <li>Instagram bir doğrulama isterse onu kendiniz tamamlayın.</li>
-      <li>Süre dolunca kendiliğinden devam eder. Tekrarlanırsa uygulamada risk profilini <b>Güvenli</b> yapın.</li>
+      <li>Süre dolunca daha yavaş devam edin: bir oturumda birkaç gönderi yeter.</li>
     </ul>
   </section>
 
   <section class="status" id="status" data-state="off">
     <div class="status-line"><span class="dot"></span><span id="status-text">Kapalı.</span></div>
     <dl class="facts">
-      <div><dt>Bugün</dt><dd id="today">0 istek</dd></div>
-      <div><dt>Son istek</dt><dd id="last">—</dd></div>
-      <div><dt>Sonraki</dt><dd id="next">—</dd></div>
+      <div><dt>Bugün</dt><dd id="today">0 gönderi, 0 kişi</dd></div>
+      <div><dt>Son kayıt</dt><dd id="last">—</dd></div>
     </dl>
   </section>
 
@@ -63,8 +62,7 @@
   </section>
 
   <footer>
-    <button type="button" id="try-now">Şimdi dene</button>
-    <button type="button" id="open-app" class="secondary">Uygulamayı aç</button>
+    <button type="button" id="open-app">Uygulamayı aç</button>
   </footer>
 
   <script src="popup.js"></script>

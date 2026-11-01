@@ -7,6 +7,7 @@ import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useToast } from '../contexts/ToastContext'
 import { ghostsApi } from '../api/ghosts'
 import GhostPanel from '../components/GhostPanel'
@@ -62,7 +63,7 @@ export default function FollowersPage() {
       toast.success(ghost === null ? T.ghosts.unmarked : T.ghosts.marked)
       loadData()
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? T.common.error)
+      toast.error(apiErrorMessage(e, T, T.common.error))
     }
   }
 
@@ -78,7 +79,7 @@ export default function FollowersPage() {
       setUsers(list)
       setSelected(new Set())
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? e?.message ?? 'Veri yüklenemedi')
+      toast.error(apiErrorMessage(e, T, 'Veri yüklenemedi'))
     }
   }, [activeSession, fetchTab])
 
@@ -117,7 +118,7 @@ export default function FollowersPage() {
       setSyncTaskId(resp.task_id)
     } catch (e: any) {
       // 429: bütçe/cooldown, 409: tarama zaten çalışıyor
-      toast.error(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
+      toast.error(apiErrorMessage(e, T, 'Senkronizasyon başlatılamadı'))
       setSyncing(false)
     }
   }

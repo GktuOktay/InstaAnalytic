@@ -2,10 +2,13 @@
   "manifest_version": 3,
   "name": "InstaAnalytic Köprüsü",
   "short_name": "IA Köprüsü",
-  "version": "1.0.0",
-  "description": "Kendi gönderilerinizi kimin beğendiğini, açık Instagram sekmenizden yavaşça okuyup bu bilgisayardaki InstaAnalytic'e iletir.",
+  "version": "2.0.0",
+  "description": "Kendi gönderilerinizin beğenenlerini, siz Instagram'da açtığınızda kaydeder. Instagram'a kendisi hiçbir istek göndermez.",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "alarms", "idle", "cookies", "tabs"],
+  "permissions": [
+    "storage",
+    "cookies"
+  ],
   "host_permissions": [
     "https://www.instagram.com/*",
     "http://localhost:3002/*",
@@ -16,9 +19,23 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "listener.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
     }
   ],
   "action": {

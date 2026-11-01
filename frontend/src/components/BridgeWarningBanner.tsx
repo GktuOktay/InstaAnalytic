@@ -5,6 +5,7 @@ import { bridgeApi } from '../api/bridge'
 import { useSession } from '../contexts/SessionContext'
 import { useLang } from '../contexts/LangContext'
 import { fill } from '../lib/text'
+import { explainProblem } from '../lib/problems'
 
 const POLL_MS = 60_000
 
@@ -41,14 +42,28 @@ export default function BridgeWarningBanner() {
           <AlertOctagon size={18} className="text-red-400 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold">{fill(L.bannerTitle, { name: p.username, at: when(p.until) })}</p>
-            {p.reason && <p className="text-xs text-red-200/80 mt-0.5">{p.reason}</p>}
+            {p.reason ? <Explained raw={p.reason} /> : <p className="text-xs mt-1">{L.bannerTodo}</p>}
             <p className="text-xs mt-1">
-              {L.bannerTodo}{' '}
               <Link to="/guide#uyari" className="underline font-medium">{L.bannerMore}</Link>
             </p>
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function Explained({ raw }: { raw: string }) {
+  const { T } = useLang()
+  const p = explainProblem(raw, T)
+  return (
+    <div className="text-xs mt-1">
+      <p className="font-medium">{p.title}</p>
+      <p className="text-red-200/90">{p.body} {p.todo.join(' ')}</p>
+      <details className="mt-1 text-red-200/70">
+        <summary className="cursor-pointer select-none">{T.problems.detail}</summary>
+        <code className="block mt-1 break-all">{p.detail}</code>
+      </details>
     </div>
   )
 }

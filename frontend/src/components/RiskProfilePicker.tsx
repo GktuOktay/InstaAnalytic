@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ShieldCheck, Gauge, Flame } from 'lucide-react'
 import { riskApi, RiskKey, RiskProfileState } from '../api/risk'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useToast } from '../contexts/ToastContext'
 
 interface Props {
@@ -34,7 +35,7 @@ export default function RiskProfilePicker({ sessionId, onChanged }: Props) {
       setPending(null); setAck(false)
       load(); onChanged?.()
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? R.saveError)
+      toast.error(apiErrorMessage(e, T, R.saveError))
     }
   }
 

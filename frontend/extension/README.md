@@ -1,61 +1,62 @@
 # InstaAnalytic Köprüsü (Chrome eklentisi)
 
-InstaAnalytic, gönderilerinizi kimin beğendiğini ve kimin yorum yaptığını bilmek ister. Bunu sunucudan
-Instagram'a istek atarak yapmak bot gibi görünür. Bu eklenti onun yerine, zaten giriş yapmış olduğunuz
-Chrome'dan, Instagram web sitesinin bir gönderide "beğenenler"e tıkladığınızda yaptığı isteğin aynısını yapar.
+Kendi Instagram gönderilerinizi kimin beğendiğini ve kimin yorum yaptığını, siz Instagram'da gezerken
+kaydeder ve bu bilgisayarda çalışan InstaAnalytic uygulamasına iletir.
 
-Ne isteneceğine ve ne kadar bekleneceğine bu bilgisayarda çalışan InstaAnalytic karar verir. Eklenti
-yalnızca sırayla şunu yapar:
+## Nasıl çalışır
 
-1. Uygulamaya "sıradaki iş ne?" diye sorar.
-2. İstenen adresi açık Instagram sekmenizin içinden getirir.
-3. Yanıtı olduğu gibi uygulamaya geri yollar ve söylenen süre kadar bekler.
+Eklenti **Instagram'a kendisi hiçbir istek göndermez.** Zamanlayıcısı yoktur, arka planda bir şey açmaz,
+tıklamaz, kaydırmaz.
+
+Siz kendi gönderinizi açıp altındaki "beğenme" sayısına tıkladığınızda Instagram'ın sayfası beğenenler
+listesini zaten indirir. Eklenti bu yanıtın bir kopyasını okur ve uygulamaya gönderir. Profilinizi açıp
+aşağı kaydırdığınızda gönderi listeniz, bir gönderiyi açtığınızda yorumlar da aynı şekilde gelir.
+
+Instagram'ın gördüğü her istek sizin kendi tıklamanızdır. Bu yüzden normal kullanımdan ayırt edilemez ve
+Instagram adreslerini değiştirse de çalışmaya devam eder.
+
+Uygulama yalnızca **sizin gönderilerinize** ait beğenen ve yorumları saklar. Gezinirken gelen diğer her şey
+(akış, başkalarının gönderileri) uygulamada atılır. Mesajlar ve bildirimler hiç okunmaz.
 
 ## Kurulum
 
-1. Chrome'da `chrome://extensions` adresini açın.
-2. Sağ üstten **Geliştirici modu**'nu açın.
-3. **Paketlenmemiş öğe yükle**'ye tıklayın ve bu klasörü (`frontend/extension`) seçin.
-4. Instagram zaten bir sekmede açıksa o sekmeyi bir kez yenileyin.
+1. Uygulamadaki **Kılavuz → Referans dosyalar** bölümünden eklentiyi indirip zip'i açın.
+2. Chrome'da adres çubuğuna `chrome://extensions` yazın.
+3. Sağ üstteki **Geliştirici modu**nu açın.
+4. **Paketlenmemiş öğe yükle** düğmesine basın ve açtığınız `instaanalytic-kopru` klasörünü seçin.
+5. Açık Instagram sekmelerini yenileyin.
+6. Eklenti simgesine tıklayın, **Gezinirken beğenenleri kaydet**'i açın. Profil otomatik eşleşmezse
+   listeden seçin.
 
 ## Kullanım
 
-1. InstaAnalytic'i başlatın (varsayılan adres `http://localhost:3002`).
-2. Chrome'da Instagram'a giriş yapın ve bir sekmede açık bırakın.
-3. Araç çubuğundaki eklenti simgesine tıklayın, **Beğenenleri toplamaya izin ver**'i açın.
-4. Instagram hesabınız uygulamadaki bir profille otomatik eşleşmezse listeden profili seçin.
+1. Instagram'da kendi profilinizi açın ve bir kez en aşağı kaydırın. Gönderileriniz uygulamada görünür.
+2. Bir gönderiyi açın, altındaki "beğenme" sayısına tıklayın ve açılan listeyi sonuna kadar kaydırın.
+3. Listeyi kapatıp sonraki gönderiye geçin. Uygulamadaki "Tarayıcı köprüsü" kartı hangi gönderilerin
+   kaldığını gösterir.
 
-Bundan sonra yapmanız gereken bir şey yok. Pencerede o anki durumu, bugün kaç istek yapıldığını ve
-bir sonraki denemenin ne zaman olacağını görürsünüz. **Şimdi dene** düğmesi beklemeden bir tur çalıştırır;
-uygulamanın koyduğu bekleme süreleri yine geçerlidir.
+Acele etmeyin. Bir oturumda 5–10 gönderi yeterli; işi birkaç güne yayın.
 
-Eklenti bilerek yavaştır ve yalnızca şu durumda çalışır:
+## Instagram uyarı verirse
 
-- izin anahtarı açıkken,
-- son 5 dakika içinde bilgisayarı kullanmışsanız,
-- Instagram bir sekmede açıkken.
+Instagram'dan "Çok fazla istek", "Daha sonra tekrar dene", doğrulama ya da giriş sayfası gibi bir yanıt gelirse
+eklenti bunu fark eder. Simgede kırmızı **!** çıkar, uygulama her sayfada kırmızı bir uyarı gösterir.
 
-Uygulama kapalıysa 1, 5 ve 15 dakika aralıklarla tekrar bakar; açıldığında kendiliğinden devam eder.
+- En az 24 saat beğenen listelerini açmayın (bir hafta içinde tekrarlarsa 72 saat).
+- Instagram'ı telefondan normal kullanın, doğrulama isterse kendiniz tamamlayın.
+- Sonra daha yavaş devam edin. Uyarıyı aşmaya çalışmayın.
 
-### Uygulama adresi
+## Güncelleme
+
+Yeni sürümü indirin, eski klasörün içeriğini yenisiyle değiştirin, `chrome://extensions` sayfasında
+eklentinin kartındaki **↻** düğmesine basın ve Instagram sekmesini yenileyin.
+
+## Uygulama adresi
 
 Yalnızca bu bilgisayardaki adresler (`localhost` veya `127.0.0.1`) kabul edilir. 3002 dışında bir port
-kullanıyorsanız `manifest.json` içindeki `host_permissions` listesine o adresi de ekleyip eklentiyi
-`chrome://extensions` sayfasından yeniden yükleyin.
-
-## Asla yapmadıkları
-
-- Kendi başına sekme açmaz, sayfada bir şeye tıklamaz, beğenmez, takip etmez, mesaj atmaz.
-- Yalnızca üç tür adresi okur: profil gönderi listesi, bir gönderiyi beğenenler ve yorumlar. Uygulama
-  başka bir şey isterse reddeder.
-- Başarısız bir Instagram isteğini kendi başına tekrar denemez; ne olacağına uygulama karar verir.
-- Instagram'dan gelen veriyi ayarlardaki yerel uygulama adresi dışında hiçbir yere göndermez.
-- Çerezlerinizi kopyalamaz, kaydetmez, günlüğe yazmaz. Yalnızca hangi hesapla giriş yapıldığını
-  anlamak için `ds_user_id` çerezine bakar.
-- Uzaktan kod yüklemez, dış kütüphane kullanmaz.
+kullanıyorsanız `manifest.json` içindeki `host_permissions` listesine o adresi ekleyip eklentiyi yeniden yükleyin.
 
 ## Kaldırma
 
-Durdurmak için eklenti penceresindeki anahtarı kapatmanız yeterli. Tamamen kaldırmak için
-`chrome://extensions` sayfasında **InstaAnalytic Köprüsü**'nü bulup **Kaldır**'a tıklayın; eklentinin
-sakladığı ayarlar da onunla birlikte silinir.
+`chrome://extensions` sayfasında eklentinin kartındaki **Kaldır** düğmesine basın. Eklentinin kendi
+ayarları da silinir; uygulamadaki veriler yerinde kalır.

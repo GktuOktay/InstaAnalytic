@@ -1,5 +1,5 @@
-// Kurulum rehberinin resimleri. chrome:// sayfalarının ekran görüntüsü alınamadığı için Chrome'un
-// sadeleştirilmiş birer çizimi. Renkler temadan (CSS değişkenleri) gelir; açık ve koyu temada çalışır.
+// Rehberin resimleri (kurulum, kullanım, güncelleme). chrome:// sayfalarının ekran görüntüsü alınamadığı
+// ve Instagram'ın gerçek ekranını göstermek istemediğimiz için Chrome'un ve Instagram'ın sadeleştirilmiş birer çizimi. Renkler temadan (CSS değişkenleri) gelir; açık ve koyu temada çalışır.
 // Tıklanacak yer vurgu rengiyle çerçevelenir ve numaralanır. Resimlerin içindeki yazılar content.ts'teki
 // `bridge.ui` alanından gelir; buradaki tek iş çizmek.
 import type { CSSProperties, ReactNode } from 'react'
@@ -441,72 +441,292 @@ function ReloadArt({ ui }: { ui: ArtLabels }) {
   )
 }
 
-/** Eklenti penceresi; frontend/extension/popup.html ile aynı düzen. */
+/** Uzun bir yazıyı kelime sınırından satırlara böler (SVG metni kendiliğinden kaymaz). */
+function wrap(text: string, max: number): string[] {
+  const lines: string[] = []
+  let cur = ''
+  for (const word of text.split(' ')) {
+    if (cur && `${cur} ${word}`.length > max) { lines.push(cur); cur = word } else cur = cur ? `${cur} ${word}` : word
+  }
+  if (cur) lines.push(cur)
+  return lines
+}
+
+function Para({ x, y, text, max, lh, size, color = K.t2 }: {
+  x: number; y: number; text: string; max: number; lh: number; size: number; color?: string
+}) {
+  return (
+    <text x={x} y={y} style={{ fill: color, fontSize: size }}>
+      {wrap(text, max).map((l, i) => <tspan key={i} x={x} dy={i ? lh : 0}>{l}</tspan>)}
+    </text>
+  )
+}
+
+const POPUP_W = 230
+const POPUP_H = 254
+
+/**
+ * Eklenti penceresi; frontend/extension/popup.html ile aynı düzen: başlık, kayıt anahtarı, not, durum,
+ * profil, uygulama adresi ve "Uygulamayı aç". `focus` hangi parçanın kaçıncı numarayla işaretleneceğini söyler.
+ */
+function PopupPanel({ x, y, ui, focus }: {
+  x: number; y: number; ui: ArtLabels; focus: Partial<Record<'toggle' | 'profile' | 'status', number>>
+}) {
+  const L = x + 14
+  const R = x + POPUP_W - 14
+  return (
+    <g>
+      <Box x={x + 3} y={y + 3} w={POPUP_W} h={POPUP_H} r={8} fill="rgba(0,0,0,0.18)" />
+      <Box x={x} y={y} w={POPUP_W} h={POPUP_H} r={8} fill={K.bg} stroke={K.b2} />
+      <Txt x={L} y={y + 22} size={11} weight={600}>{ui.extName}</Txt>
+
+      <Toggle x={L} y={y + 32} />
+      <Txt x={L + 32} y={y + 42.5} size={9.5} weight={500}>{ui.popupToggle}</Txt>
+      {focus.toggle && <Focus x={L - 3} y={y + 29} w={186} h={20} n={focus.toggle} />}
+
+      <Para x={L} y={y + 64} text={ui.popupNote} max={50} lh={9.5} size={7.5} />
+
+      <Box x={L} y={y + 100} w={R - L} h={46} r={6} fill={K.s1} stroke={K.b1} />
+      <circle cx={L + 11} cy={y + 112} r={3.5} style={{ fill: OK }} />
+      <Txt x={L + 20} y={y + 115.5} size={9} weight={600}>{ui.popupStatus}</Txt>
+      {focus.status && <Focus x={L + 4} y={y + 105} w={70} h={14} r={4} n={focus.status} />}
+      <Txt x={L + 10} y={y + 129} size={7.5} color={K.t2}>{ui.popupToday}</Txt>
+      <Txt x={L + 10} y={y + 139.5} size={8.5}>{ui.popupTodayValue}</Txt>
+      <Txt x={L + 124} y={y + 129} size={7.5} color={K.t2}>{ui.popupLast}</Txt>
+      <Txt x={L + 124} y={y + 139.5} size={8.5}>{ui.popupLastValue}</Txt>
+
+      <Txt x={L} y={y + 166} size={8} color={K.t2}>{ui.popupProfile}</Txt>
+      <Txt x={L + 32} y={y + 166} size={9.5}>{ui.popupProfileValue}</Txt>
+      <Txt x={R} y={y + 166} size={9} weight={600} color={K.ac} anchor="end">{ui.popupChange}</Txt>
+      {focus.profile && <Focus x={L - 3} y={y + 155} w={R - L + 6} h={15} r={5} n={focus.profile} bx={R - 2} by={y + 152} />}
+
+      <Txt x={L} y={y + 186} size={7.5} color={K.t2}>{ui.popupAppUrl}</Txt>
+      <Box x={L} y={y + 191} w={R - L} h={18} r={5} fill={K.s1} stroke={K.b1} />
+      <Txt x={L + 7} y={y + 203} size={8} mono>{ui.popupAppUrlValue}</Txt>
+
+      <Box x={L} y={y + 218} w={R - L} h={24} r={6} stroke={K.b2} />
+      <Txt x={(L + R) / 2} y={y + 233.5} size={9} anchor="middle">{ui.popupOpenApp}</Txt>
+    </g>
+  )
+}
+
 function PopupArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={300} url="instagram.com" tab="Instagram" pinned>
+    <Browser h={330} url="instagram.com" tab="Instagram" pinned>
       <IgContent w={124} />
       <Focus x={314} y={38} w={16} h={16} r={4} n={1} bx={298} by={46} />
-
-      <Box x={163} y={67} w={230} h={226} r={8} fill="rgba(0,0,0,0.18)" />
-      <Box x={160} y={64} w={230} h={226} r={8} fill={K.bg} stroke={K.b2} />
-      <Txt x={174} y={86} size={11} weight={600}>{ui.extName}</Txt>
-
-      <Toggle x={174} y={96} />
-      <Txt x={206} y={106.5} size={9.5} weight={500}>{ui.popupToggle}</Txt>
-      <Focus x={171} y={93} w={182} h={20} n={3} />
-
-      <Txt x={174} y={130} size={8} color={K.t2}>{ui.popupNote}</Txt>
-
-      <Box x={174} y={138} w={204} h={48} r={6} fill={K.s1} stroke={K.b1} />
-      <circle cx={185} cy={151} r={3.5} style={{ fill: OK }} />
-      <Txt x={194} y={154.5} size={9}>{ui.popupStatus}</Txt>
-      <Txt x={184} y={170} size={7.5} color={K.t2}>{ui.popupToday}</Txt>
-      <Txt x={184} y={180} size={8.5}>{ui.popupTodayValue}</Txt>
-      <Txt x={244} y={170} size={7.5} color={K.t2}>{ui.popupLast}</Txt>
-      <Txt x={244} y={180} size={8.5}>14:05</Txt>
-      <Txt x={304} y={170} size={7.5} color={K.t2}>{ui.popupNext}</Txt>
-      <Txt x={304} y={180} size={8.5}>14:07</Txt>
-
-      <Txt x={174} y={206} size={8} color={K.t2}>{ui.popupProfile}</Txt>
-      <Txt x={206} y={206} size={9.5}>{ui.popupProfileValue}</Txt>
-      <Txt x={377} y={206} size={9} weight={600} color={K.ac} anchor="end">{ui.popupChange}</Txt>
-      <Box x={174} y={214} w={204} h={20} r={5} fill={K.s1} stroke={K.ac} />
-      <Txt x={182} y={227.5} size={8.5}>{ui.popupProfileOption}</Txt>
-      <Txt x={369} y={227.5} size={8.5} color={K.t2}>▾</Txt>
-      <Focus x={171} y={195} w={210} h={42} n={2} />
-
-      <Box x={174} y={250} w={99} h={24} r={6} fill={K.ac} />
-      <Txt x={223.5} y={265.5} size={9} weight={600} color="#fff" anchor="middle">{ui.popupTryNow}</Txt>
-      <Box x={279} y={250} w={99} h={24} r={6} stroke={K.b2} />
-      <Txt x={328.5} y={265.5} size={9} anchor="middle">{ui.popupOpenApp}</Txt>
+      <PopupPanel x={160} y={64} ui={ui} focus={{ profile: 2, toggle: 3 }} />
     </Browser>
+  )
+}
+
+/** Uygulamanın "Tarayıcı köprüsü" kartının başlık satırı: simge, başlık, yeşil nokta ve durum. */
+function BridgeCardHead({ x, y, ui, focusN }: { x: number; y: number; ui: ArtLabels; focusN?: number }) {
+  const dotX = x + 18 + ui.bridgeTitle.length * 5.5 + 8
+  const statusW = 14 + ui.bridgeConnected.length * 4.8
+  return (
+    <g>
+      <g style={{ fill: 'none', stroke: K.ac, strokeWidth: 1.3, strokeLinecap: 'round' }}>
+        <rect x={x} y={y - 7} width={10} height={8} rx={2} />
+        <path d={`M${x + 3} ${y - 10.5}v3.5M${x + 7} ${y - 10.5}v3.5M${x + 5} ${y + 1}v4`} />
+      </g>
+      <Txt x={x + 18} y={y} size={10} weight={600}>{ui.bridgeTitle}</Txt>
+      <circle cx={dotX} cy={y - 3.5} r={3.5} style={{ fill: OK }} />
+      <Txt x={dotX + 7} y={y} size={8.5} color={K.t2}>{ui.bridgeConnected}</Txt>
+      {focusN && <Focus x={dotX - 7} y={y - 11} w={statusW} h={15} r={5} n={focusN} />}
+    </g>
   )
 }
 
 function ConnectedArt({ ui }: { ui: ArtLabels }) {
   const h = 200
-  const dotX = 118 + ui.bridgeTitle.length * 5.5 + 8
-  const statusW = 14 + ui.bridgeConnected.length * 4.6
   return (
     <Browser h={h} url="localhost:3002/settings" tab={ui.appTab}>
       <AppSidebar h={h} active={5} />
       <Txt x={88} y={86} size={12} weight={600}>{ui.settingsHeading}</Txt>
       <Box x={88} y={98} w={296} h={90} r={8} fill={K.s2} stroke={K.b1} />
-      <g style={{ fill: 'none', stroke: K.ac, strokeWidth: 1.3, strokeLinecap: 'round' }}>
-        <rect x={100} y={111} width={10} height={8} rx={2} />
-        <path d="M103 107.5v3.5M107 107.5v3.5M105 119v4" />
-      </g>
-      <Txt x={118} y={118} size={10} weight={600}>{ui.bridgeTitle}</Txt>
-      <circle cx={dotX} cy={114.5} r={3.5} style={{ fill: OK }} />
-      <Txt x={dotX + 7} y={118} size={8.5} color={K.t2}>{ui.bridgeConnected}</Txt>
-      <Focus x={dotX - 7} y={107} w={statusW} h={15} r={5} n={1} />
-      <Box x={322} y={106} w={52} h={20} r={5} fill={K.s1} stroke={K.b1} />
-      <Txt x={348} y={119.5} size={8.5} anchor="middle">{ui.bridgeStop}</Txt>
+      <BridgeCardHead x={100} y={118} ui={ui} focusN={1} />
       <Txt x={118} y={136} size={8} color={K.t2}>{ui.bridgeDesc}</Txt>
-      <Box x={118} y={148} w={200} h={5} r={2.5} fill={K.b2} />
-      <Box x={118} y={148} w={67} h={5} r={2.5} fill={K.ac} />
-      <Txt x={118} y={170} size={8} color={K.t2}>{ui.bridgeProgress}</Txt>
+      <Txt x={118} y={154} size={8.5}>{ui.bridgeFound}</Txt>
+      <Box x={118} y={162} w={200} h={5} r={2.5} fill={K.b2} />
+      <Box x={118} y={162} w={58} h={5} r={2.5} fill={K.ac} />
+      <Txt x={118} y={180} size={8} color={K.t2}>{ui.bridgeProgress}</Txt>
+    </Browser>
+  )
+}
+
+/* ── Kullanım resimleri ──────────────────────────────────────────────────── */
+
+function UseToggleArt({ ui }: { ui: ArtLabels }) {
+  return (
+    <g>
+      <PopupPanel x={85} y={6} ui={ui} focus={{ toggle: 1, profile: 2, status: 3 }} />
+    </g>
+  )
+}
+
+/** Instagram profilinin üst kısmı: profil resmi, kullanıcı adı ve sayılar. */
+function IgProfileHead({ ui, right = 386 }: { ui: ArtLabels; right?: number }) {
+  return (
+    <g>
+      <circle cx={40} cy={88} r={16} style={{ fill: K.s2, stroke: K.ac, strokeWidth: 1.5 }} />
+      <Txt x={66} y={85} size={10.5} weight={600}>{ui.igHandle}</Txt>
+      <Txt x={66} y={101} size={8} color={K.t2}>{ui.igStats}</Txt>
+      <Line x1={14} y1={113} x2={right} y2={113} />
+    </g>
+  )
+}
+
+/** Gönderi kutucuğu; içinde basit bir "fotoğraf" işareti. */
+function Tile({ x, y, w, h, tone = 0, framed = false }: { x: number; y: number; w: number; h: number; tone?: number; framed?: boolean }) {
+  const cx = x + w / 2
+  const by = y + h * 0.72
+  return (
+    <g>
+      <Box x={x} y={y} w={w} h={h} r={3} fill={framed ? K.s1 : K.s2} stroke={framed ? K.b2 : undefined} />
+      <path d={`M${cx - w * 0.28} ${by}l${w * 0.17} ${-h * 0.26} ${w * 0.11} ${h * 0.14} ${w * 0.1} ${-h * 0.08} ${w * 0.18} ${h * 0.2}z`}
+        style={{ fill: K.b2, opacity: 0.6 + (tone % 3) * 0.12 }} />
+      <circle cx={cx + w * 0.16} cy={y + h * 0.28} r={Math.min(w, h) * 0.07} style={{ fill: K.b2 }} />
+    </g>
+  )
+}
+
+function UseProfileArt({ ui }: { ui: ArtLabels }) {
+  const h = 250
+  return (
+    <Browser h={h} url={`instagram.com/${ui.igHandle}`} tab="Instagram">
+      <IgProfileHead ui={ui} right={256} />
+      {[0, 1].map(row => [0, 1, 2].map(col => (
+        <Tile key={`${row}-${col}`} x={18 + col * 80} y={122 + row * 58} w={76} h={54} tone={row * 3 + col} />
+      )))}
+      {/* Kaydırma çubuğu, en altta */}
+      <Box x={262} y={66} w={4} h={174} r={2} fill={K.s2} />
+      <Box x={262} y={204} w={4} h={36} r={2} fill={K.t3} />
+
+      <Txt x={330} y={84} size={9} weight={600} color={K.ac} anchor="middle">{ui.scrollToEnd}</Txt>
+      <Line x1={330} y1={94} x2={330} y2={136} color={K.ac} sw={2} />
+      <path d="M323 132l7 9 7-9z" style={{ fill: K.ac }} />
+      <Focus x={284} y={72} w={92} h={74} n={1} />
+
+      <Txt x={276} y={171} size={7.5} color={K.t3}>{ui.appTab}</Txt>
+      <Box x={274} y={177} w={114} h={48} r={6} fill={K.s2} stroke={K.b1} />
+      <Txt x={284} y={194} size={8.5} weight={600}>{ui.bridgeTitle}</Txt>
+      <circle cx={288} cy={208} r={3} style={{ fill: OK }} />
+      <Txt x={295} y={211} size={8}>{ui.bridgeFound}</Txt>
+      <Focus x={274} y={177} w={114} h={48} n={2} bx={384} by={174} />
+    </Browser>
+  )
+}
+
+function UseOpenPostArt({ ui }: { ui: ArtLabels }) {
+  const h = 230
+  return (
+    <Browser h={h} url={`instagram.com/${ui.igHandle}`} tab="Instagram">
+      <IgProfileHead ui={ui} />
+      {[0, 1, 2].map(col => <Tile key={col} x={18 + col * 124} y={124} w={118} h={92} tone={col} />)}
+      <Focus x={142} y={124} w={118} h={92} r={3} n={1} />
+      <Cursor x={206} y={166} />
+      <Box x={180} y={190} w={42} h={16} r={8} fill={K.s1} op={0.9} />
+      <Txt x={201} y={201.5} size={9} weight={700} color={K.ac} anchor="middle">{ui.clickHere}</Txt>
+    </Browser>
+  )
+}
+
+function Heart({ x, y }: { x: number; y: number }) {
+  return (
+    <path transform={`translate(${x} ${y})`} d="M6 10.5S0 7 0 3.3A3 3 0 0 1 6 2a3 3 0 0 1 6 1.3C12 7 6 10.5 6 10.5z"
+      style={{ fill: 'none', stroke: K.t1, strokeWidth: 1.2, strokeLinejoin: 'round' }} />
+  )
+}
+
+function UseLikesArt({ ui }: { ui: ArtLabels }) {
+  const h = 250
+  return (
+    <Browser h={h} url="instagram.com/p/…" tab="Instagram">
+      {/* Açık gönderi: fotoğraf ve sağında bilgiler */}
+      <Box x={12} y={70} w={234} h={168} r={6} fill={K.s1} stroke={K.b1} />
+      <Tile x={12} y={70} w={124} h={168} tone={1} />
+      <circle cx={152} cy={84} r={6} style={{ fill: K.s2, stroke: K.ac, strokeWidth: 1.2 }} />
+      <Txt x={162} y={87} size={8} weight={600}>{ui.igHandle}</Txt>
+      <Line x1={136} y1={98} x2={246} y2={98} />
+      {[108, 120, 132, 144].map((cy, i) => <Box key={cy} x={146} y={cy} w={i % 2 ? 66 : 86} h={5} r={2.5} fill={K.b2} />)}
+      <Line x1={136} y1={168} x2={246} y2={168} />
+      <Heart x={146} y={176} />
+      <circle cx={170} cy={181.5} r={5} style={paint({ stroke: K.t1, sw: 1.2 })} />
+      <Txt x={146} y={204} size={9} weight={700}>{ui.igLikes}</Txt>
+      <Focus x={143} y={194} w={64} h={14} r={4} n={1} />
+      <Cursor x={198} y={203} />
+
+      {/* Ok ve açılan beğenenler listesi */}
+      <Line x1={247} y1={150} x2={251} y2={150} color={K.ac} sw={2} />
+      <path d="M250 145.5l6 4.5-6 4.5z" style={{ fill: K.ac }} />
+      <Box x={261} y={73} w={130} h={166} r={8} fill="rgba(0,0,0,0.15)" />
+      <Box x={258} y={70} w={130} h={166} r={8} fill={K.s1} stroke={K.b2} />
+      <Txt x={323} y={86} size={9.5} weight={600} anchor="middle">{ui.igLikersTitle}</Txt>
+      <Line x1={258} y1={94} x2={388} y2={94} />
+      {[0, 1, 2, 3, 4].map(i => (
+        <g key={i}>
+          <circle cx={274} cy={108 + i * 20} r={6.5} style={{ fill: K.s2, stroke: K.b2 }} />
+          <Box x={286} y={104 + i * 20} w={i % 2 ? 52 : 70} h={5} r={2.5} fill={K.b2} />
+          <Box x={286} y={112 + i * 20} w={36} h={4} r={2} fill={K.b1} />
+        </g>
+      ))}
+      <Box x={381} y={98} w={3} h={110} r={1.5} fill={K.s2} />
+      <Box x={381} y={98} w={3} h={34} r={1.5} fill={K.t3} />
+      <path d="M318 213l5 5 5-5" style={{ fill: 'none', stroke: K.ac, strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }} />
+      <Txt x={323} y={230} size={8} weight={600} color={K.ac} anchor="middle">{ui.scrollList}</Txt>
+      <Focus x={268} y={208} w={110} h={25} r={5} n={2} bx={380} by={205} />
+    </Browser>
+  )
+}
+
+function UseNextArt({ ui }: { ui: ArtLabels }) {
+  const h = 240
+  const linkW = Math.min(64, ui.bridgeOpenIg.length * 4)
+  return (
+    <Browser h={h} url="localhost:3002/cleanup" tab={ui.appTab}>
+      <AppSidebar h={h} active={4} />
+      <Box x={88} y={72} w={300} h={156} r={8} fill={K.s2} stroke={K.b1} />
+      <BridgeCardHead x={100} y={92} ui={ui} />
+      <Box x={100} y={104} w={276} h={5} r={2.5} fill={K.b2} />
+      <Box x={100} y={104} w={80} h={5} r={2.5} fill={K.ac} />
+      <Txt x={100} y={123} size={8} color={K.t2}>{ui.bridgeProgress}</Txt>
+      <Focus x={97} y={100} w={282} h={28} r={5} n={2} bx={378} by={97} />
+
+      <Txt x={100} y={146} size={9} weight={600}>{ui.bridgeQueue}</Txt>
+      {[0, 1, 2, 3].map(i => (
+        <g key={i}>
+          <Tile x={100 + i * 70} y={154} w={48} h={48} tone={i} framed />
+          <Txt x={100 + i * 70} y={215} size={7.5} weight={600} color={K.ac}>{ui.bridgeOpenIg}</Txt>
+        </g>
+      ))}
+      <Focus x={98} y={206} w={linkW} h={12} r={3} n={1} bx={98 + linkW + 3} by={203} />
+    </Browser>
+  )
+}
+
+/* ── Güncelleme resmi ────────────────────────────────────────────────────── */
+
+function RefreshArt({ ui }: { ui: ArtLabels }) {
+  return (
+    <Browser h={220} url="chrome://extensions" tab={ui.extensionsTitle}>
+      <ExtHeader ui={ui} />
+      <ExtButtons ui={ui} />
+      <Box x={14} y={138} w={220} h={70} r={8} fill={K.s2} stroke={K.b1} />
+      <ExtIcon x={26} y={150} size={22} />
+      <Txt x={58} y={160} size={10} weight={600}>{ui.extName}</Txt>
+      <Txt x={58} y={173} size={8.5} color={K.t2}>{ui.extVersion}</Txt>
+      <Txt x={26} y={198} size={8.5} weight={600} color={K.ac}>{ui.details}</Txt>
+      <Txt x={84} y={198} size={8.5} weight={600} color={K.ac}>{ui.remove}</Txt>
+      {/* Yenile simgesi (yuvarlak ok) */}
+      <g style={{ fill: 'none', stroke: K.t1, strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' }}>
+        <path d="M180.5 191.5A5 5 0 1 0 182 195" />
+        <path d="M181 187.5v4h-4" />
+      </g>
+      <Toggle x={200} y={188} />
+      <Focus x={169} y={187} w={16} h={16} r={5} n={1} />
+      <Cursor x={183} y={199} />
+      <Txt x={250} y={198} size={9.5} weight={600} color={K.ac}>↻ = {ui.refreshHint}</Txt>
     </Browser>
   )
 }
@@ -527,7 +747,8 @@ function WarningArt({ ui }: { ui: ArtLabels }) {
   )
 }
 
-const ARTS: Record<ArtId, { h: number; Draw: (p: { ui: ArtLabels }) => JSX.Element }> = {
+/** `crop` resmin yalnızca bir kısmını gösterir (viewBox: x, y, genişlik, yükseklik). */
+const ARTS: Record<ArtId, { h: number; crop?: [number, number, number, number]; Draw: (p: { ui: ArtLabels }) => JSX.Element }> = {
   download: { h: 210, Draw: DownloadArt },
   unzip: { h: 210, Draw: UnzipArt },
   address: { h: 160, Draw: AddressArt },
@@ -537,17 +758,26 @@ const ARTS: Record<ArtId, { h: number; Draw: (p: { ui: ArtLabels }) => JSX.Eleme
   card: { h: 220, Draw: CardArt },
   pin: { h: 210, Draw: PinArt },
   reload: { h: 180, Draw: ReloadArt },
-  popup: { h: 300, Draw: PopupArt },
+  popup: { h: 330, Draw: PopupArt },
   connected: { h: 200, Draw: ConnectedArt },
+  useToggle: { h: POPUP_H + 12, Draw: UseToggleArt },
+  useProfile: { h: 250, Draw: UseProfileArt },
+  useOpenPost: { h: 230, Draw: UseOpenPostArt },
+  useLikes: { h: 250, Draw: UseLikesArt },
+  useNext: { h: 240, Draw: UseNextArt },
+  // Uzantılar sayfasının yalnızca eklenti kartı; ↻ düğmesi küçük olduğu için yakından.
+  refresh: { h: 220, crop: [4, 130, 330, 86], Draw: RefreshArt },
 }
 
 export const ART_IDS = Object.keys(ARTS) as ArtId[]
 
-function Figure({ h, alt, caption, children, className = '' }: { h: number; alt: string; caption: string; children: ReactNode; className?: string }) {
+function Figure({ h, crop, alt, caption, children, className = '' }: {
+  h: number; crop?: [number, number, number, number]; alt: string; caption: string; children: ReactNode; className?: string
+}) {
   return (
     <figure className={`m-0 ${className}`}>
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-2">
-        <svg viewBox={`0 0 ${W} ${h}`} role="img" aria-label={alt} className="block w-full h-auto" style={{ fontFamily: 'inherit' }}>
+        <svg viewBox={crop ? crop.join(' ') : `0 0 ${W} ${h}`} role="img" aria-label={alt} className="block w-full h-auto" style={{ fontFamily: 'inherit' }}>
           {children}
         </svg>
       </div>
@@ -557,8 +787,8 @@ function Figure({ h, alt, caption, children, className = '' }: { h: number; alt:
 }
 
 export function Illustration({ id, ui, alt, caption, className }: { id: ArtId; ui: ArtLabels; alt: string; caption: string; className?: string }) {
-  const { h, Draw } = ARTS[id]
-  return <Figure h={h} alt={alt} caption={caption} className={className}><Draw ui={ui} /></Figure>
+  const { h, crop, Draw } = ARTS[id]
+  return <Figure h={h} crop={crop} alt={alt} caption={caption} className={className}><Draw ui={ui} /></Figure>
 }
 
 export function WarningIllustration({ ui, alt, caption, className }: { ui: ArtLabels; alt: string; caption: string; className?: string }) {

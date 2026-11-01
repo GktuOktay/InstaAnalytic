@@ -7,6 +7,7 @@ import { validateUsername } from '../lib/validation'
 import { compareCount, parseCount, loadWizard, saveWizard } from '../lib/wizard'
 import { useSession } from '../contexts/SessionContext'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useToast } from '../contexts/ToastContext'
 import ImportScanPanel from '../components/ImportScanPanel'
 
@@ -76,7 +77,7 @@ function StepAccount({ onDone, onPick }: { onDone: (id: string) => Promise<void>
       const s = await sessionsApi.createZipOnly(v.value)
       await onDone(s.id)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? T.session.saveError)
+      toast.error(apiErrorMessage(e, T, T.session.saveError))
     } finally {
       setBusy(false)
     }

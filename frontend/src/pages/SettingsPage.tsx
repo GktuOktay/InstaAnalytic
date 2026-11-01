@@ -4,6 +4,8 @@ import ImportScanPanel from '../components/ImportScanPanel'
 import RiskProfilePicker from '../components/RiskProfilePicker'
 import DataStatusCard from '../components/DataStatusCard'
 import BridgeStatusCard from '../components/BridgeStatusCard'
+import ProblemNote from '../components/ProblemNote'
+import { apiErrorMessage } from '../lib/problems'
 import { sessionsApi, Session, BrowserCandidate } from '../api/sessions'
 import { downloadCsv } from '../api/insights'
 import { validateUsername } from '../lib/validation'
@@ -16,7 +18,6 @@ import {
 
 const AGENT_CMD = 'bash start.sh'
 
-const errText = (e: any, fallback: string) => e?.response?.data?.detail ?? fallback
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -142,7 +143,7 @@ function ZipCard({ onCreated }: { onCreated: (s: Session) => Promise<void> }) {
       setDone(true)
       await onCreated(created)
     } catch (e: any) {
-      toast.error(errText(e, T.session.saveError))
+      toast.error(apiErrorMessage(e, T, T.session.saveError))
     } finally {
       setBusy(false)
     }
@@ -255,7 +256,7 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
       setChosen(r.candidates.filter(c => !c.already_saved).map(c => c.candidate_id))
       setNotes(r.errors)
     } catch (e: any) {
-      toast.error(errText(e, T.session.saveError))
+      toast.error(apiErrorMessage(e, T, T.session.saveError))
     } finally {
       setBusy(false)
     }
@@ -268,7 +269,7 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
       setCands(null); setPicked([])
       await onConnected()
     } catch (e: any) {
-      toast.error(errText(e, T.session.saveError))
+      toast.error(apiErrorMessage(e, T, T.session.saveError))
     } finally {
       setBusy(false)
     }
@@ -349,7 +350,7 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
 /* ── Kayıtlı profil kartı + güvenlik paneli ─────────────────────────────── */
 
 function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise<void>; S: any }) {
-  const { lang } = useLang()
+  const { T, lang } = useLang()
   const [busy, setBusy] = useState(false)
   const toast = useToast()
   const locale = lang === 'en' ? 'en-US' : 'tr-TR'
@@ -358,7 +359,7 @@ function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise
 
   const run = async (fn: () => Promise<unknown>, after?: () => Promise<void>) => {
     setBusy(true)
-    try { await fn(); await (after ?? onChanged)() } catch (e: any) { toast.error(errText(e, lang === 'en' ? 'Something went wrong' : 'Bir şey ters gitti')) } finally { setBusy(false) }
+    try { await fn(); await (after ?? onChanged)() } catch (e: any) { toast.error(apiErrorMessage(e, T, T.problems.unknown.title)) } finally { setBusy(false) }
   }
 
   const toggleActions = () => {
@@ -385,12 +386,9 @@ function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise
       </p>
 
       {paused && (
-        <div role="alert" className="flex gap-2 text-sm text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2 mb-3">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium">{S.paused}</p>
-            <p className="text-xs text-amber-400/80">{s.paused_reason} · {S.pausedUntil}: {new Date(s.paused_until!).toLocaleString(locale)}</p>
-          </div>
+        <div className="mb-3">
+          <ProblemNote raw={s.paused_reason}
+            extra={`${S.paused} ${S.pausedUntil}: ${new Date(s.paused_until!).toLocaleString(locale)}`} />
         </div>
       )}
 

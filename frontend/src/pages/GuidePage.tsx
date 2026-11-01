@@ -2,11 +2,11 @@ import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   AlertTriangle, ArrowRight, Ban, BarChart3, BookOpen, Check, ChevronRight, Copy, Download, FileArchive, FileJson,
-  HelpCircle, Info, ListChecks, Loader2, OctagonAlert, Puzzle, Rocket, ShieldCheck, FolderDown,
+  HelpCircle, Info, ListChecks, Loader2, MousePointerClick, OctagonAlert, Puzzle, RefreshCw, Rocket, ShieldCheck, FolderDown,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import {
-  guideContent, SECTION_ANCHOR, SECTION_ORDER, type GuideContent, type GuideLink, type GuideRow, type GuideStep,
+  guideContent, SECTION_ANCHOR, SECTION_ORDER, UPDATE_ANCHOR, type GuideContent, type GuideLink, type GuideRow, type GuideStep,
   type InstallStep, type SectionId,
 } from '../guide/content'
 import {
@@ -15,7 +15,7 @@ import {
 import { Illustration, WarningIllustration } from '../guide/illustrations'
 
 const ICONS: Record<SectionId, typeof BookOpen> = {
-  start: Rocket, zip: FileArchive, bridge: Puzzle, results: BarChart3, safety: ShieldCheck, faq: HelpCircle, files: FolderDown,
+  start: Rocket, zip: FileArchive, bridge: Puzzle, use: MousePointerClick, results: BarChart3, safety: ShieldCheck, faq: HelpCircle, files: FolderDown,
 }
 
 const scrollToAnchor = (anchor: string) => {
@@ -80,6 +80,7 @@ export default function GuidePage() {
           <StartSection C={C} />
           <ZipSection C={C} />
           <BridgeSection C={C} />
+          <UseSection C={C} />
           <ResultsSection C={C} />
           <SafetySection C={C} />
           <FaqSection C={C} />
@@ -240,7 +241,7 @@ function BridgeSection({ C }: { C: GuideContent }) {
       <Sub>{B.installTitle}</Sub>
       <p className="text-sm text-gray-400 mb-3">{B.installIntro}</p>
       <ol className="space-y-3">
-        {B.install.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} />)}
+        {B.install.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix="kurulum" />)}
       </ol>
       <p className="text-xs text-gray-500 mt-3">{B.devAlt}</p>
 
@@ -248,16 +249,52 @@ function BridgeSection({ C }: { C: GuideContent }) {
       <p className="text-sm text-gray-400 mb-2">{B.troubleIntro}</p>
       <RowTable head={[C.faq.qCol, C.faq.aCol]} rows={B.trouble} caption={B.troubleTitle} />
 
-      <Sub>{B.afterTitle}</Sub>
-      <p className="text-sm text-gray-300">{B.after}</p>
-      <div className="mt-3"><Note kind="warn" title={B.limitTitle}>{B.limit}</Note></div>
+      <UpdateBlock C={C} />
     </Section>
   )
 }
 
-function InstallStepCard({ step, n, C }: { step: InstallStep; n: number; C: GuideContent }) {
+/** Kurulu eklentiyi yeni dosyalarla yenileme adımları ve karttaki ↻ düğmesinin resmi. */
+function UpdateBlock({ C }: { C: GuideContent }) {
+  const U = C.bridge.update
+  return (
+    <div id={UPDATE_ANCHOR} className="scroll-mt-6">
+      <h3 className="font-semibold text-sm mt-5 mb-2 flex items-center gap-1.5">
+        <RefreshCw size={14} className="text-gray-400" aria-hidden="true" /> {U.title}
+      </h3>
+      <p className="text-sm text-gray-400 mb-3">{U.intro}</p>
+      <Card>
+        <Steps steps={U.steps} />
+        <Illustration id="refresh" ui={C.bridge.ui} alt={U.alt} caption={U.caption} className="max-w-md mt-4 sm:ml-9" />
+      </Card>
+    </div>
+  )
+}
+
+function UseSection({ C }: { C: GuideContent }) {
+  const U = C.use
+  return (
+    <Section id="use" C={C}>
+      <p className="text-sm text-gray-400">{U.intro}</p>
+      <Sub>{U.stepsTitle}</Sub>
+      <ol className="space-y-3">
+        {U.steps.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix="kullanim" />)}
+      </ol>
+      <div className="mt-3"><Note kind="info" title={U.tipTitle}>{U.tip}</Note></div>
+
+      <Sub>{U.troubleTitle}</Sub>
+      <RowTable head={[C.faq.qCol, C.faq.aCol]} rows={U.trouble} caption={U.troubleTitle} />
+
+      <Sub>{U.afterTitle}</Sub>
+      <p className="text-sm text-gray-300">{U.after}</p>
+      <div className="mt-3"><Note kind="warn" title={U.limitTitle}>{U.limit}</Note></div>
+    </Section>
+  )
+}
+
+function InstallStepCard({ step, n, C, idPrefix }: { step: InstallStep; n: number; C: GuideContent; idPrefix: string }) {
   const B = C.bridge
-  const headingId = `kurulum-${n}`
+  const headingId = `${idPrefix}-${n}`
   return (
     <li aria-labelledby={headingId} className="rounded-xl border border-gray-800 bg-gray-900 p-4">
       <div className="flex items-center gap-2.5">

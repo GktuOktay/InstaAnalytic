@@ -156,7 +156,10 @@ describe('SessionPage — safety panel', () => {
     api.list.mockResolvedValue([makeSession({ source: 'browser', allow_actions: true,
       paused_until: new Date(Date.now() + 3600e3).toISOString(), paused_reason: 'Üst üste 3 işlem başarısız oldu' })])
     renderApp(<SessionPage />)
-    expect(await screen.findByText('İşlemler güvenlik için durduruldu')).toBeInTheDocument()
+    // Önce sade açıklama, ham sebep "Teknik ayrıntı"nın altında
+    expect(await screen.findByText('İşlemler üst üste başarısız oldu, güvenlik için durduruldu')).toBeInTheDocument()
+    expect(screen.getByText(/İşlemler güvenlik için durduruldu/)).toBeInTheDocument()
+    expect(screen.getByText('Teknik ayrıntı')).toBeInTheDocument()
     expect(screen.getByText(/Üst üste 3/)).toBeInTheDocument()
   })
 

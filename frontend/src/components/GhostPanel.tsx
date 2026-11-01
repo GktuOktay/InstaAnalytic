@@ -3,6 +3,7 @@ import { Ghost, Square } from 'lucide-react'
 import { ghostsApi, GhostStatus } from '../api/ghosts'
 import { formatMinutes } from '../lib/duration'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useToast } from '../contexts/ToastContext'
 
 interface Props { sessionId: string; onChanged: () => void }
@@ -45,12 +46,12 @@ export default function GhostPanel({ sessionId, onChanged }: Props) {
   const start = async () => {
     setBusy(true)
     try { await ghostsApi.start(sessionId); await load() }
-    catch (e: any) { toast.error(e?.response?.data?.detail ?? G.startFailed) }
+    catch (e: any) { toast.error(apiErrorMessage(e, T, G.startFailed)) }
     finally { setBusy(false) }
   }
   const stop = async () => {
     try { await ghostsApi.stop(sessionId); await load() }
-    catch (e: any) { toast.error(e?.response?.data?.detail ?? G.startFailed) }
+    catch (e: any) { toast.error(apiErrorMessage(e, T, G.startFailed)) }
   }
 
   if (!st) return <div className="h-28 rounded-lg bg-gray-900 border border-gray-800 animate-pulse mb-4" aria-hidden />

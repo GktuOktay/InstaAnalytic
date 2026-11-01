@@ -5,6 +5,7 @@ import { useSession } from '../contexts/SessionContext'
 import { postsApi, Post, PostLiker, PostComment, PostStats } from '../api/posts'
 import { analysisApi } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
+import { apiErrorMessage } from '../lib/problems'
 import { useTaskPoller } from '../hooks/useTaskPoller'
 import { RefreshCw, Heart, MessageCircle, Play, Image, Layers, X, Users, Download } from 'lucide-react'
 
@@ -83,7 +84,7 @@ export default function PostsPage() {
     try {
       done((await call()).task_id)
     } catch (e: any) {
-      setSyncError(e?.response?.data?.detail ?? e?.message ?? 'Senkronizasyon başlatılamadı')
+      setSyncError(apiErrorMessage(e, T, T.problems.unknown.title))
       fail()
     }
   }
