@@ -6,8 +6,9 @@ import { postsApi, Post, PostLiker, PostComment, PostStats } from '../api/posts'
 import { analysisApi } from '../api/analysis'
 import { useLang } from '../contexts/LangContext'
 import { apiErrorMessage } from '../lib/problems'
+import BridgeStatusCard from '../components/BridgeStatusCard'
 import { useTaskPoller } from '../hooks/useTaskPoller'
-import { RefreshCw, Heart, MessageCircle, Play, Image, Layers, X, Users, Download } from 'lucide-react'
+import { RefreshCw, Heart, MessageCircle, Play, Image, Layers, X, Users, Download, ExternalLink, Info } from 'lucide-react'
 
 const IG_URL = (shortcode: string) => `https://www.instagram.com/p/${shortcode}/`
 
@@ -54,6 +55,15 @@ export default function PostsPage() {
   }, [sessions, activeSession])
 
   useEffect(() => { if (activeSession) loadData() }, [activeSession])
+
+  // ZIP profili: gönderiler sunucu taramasıyla değil, kullanıcı Instagram'da gezerken köprüden gelir
+  const profile = sessions.find(s => s.id === activeSession)
+  const isZip = profile?.source === 'zip'
+  useEffect(() => {
+    if (!isZip || !activeSession) return
+    const t = setInterval(loadData, 20_000)
+    return () => clearInterval(t)
+  }, [isZip, activeSession])   // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     if (!activeSession) return
@@ -115,6 +125,12 @@ export default function PostsPage() {
               {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
             </select>
           )}
+          {isZip ? (
+            <a href={`https://www.instagram.com/${profile!.ig_username}/`} target="_blank" rel="noreferrer noopener"
+              className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm">
+              <ExternalLink size={13} /> {T.posts.openProfile}
+            </a>
+          ) : (<>
           <button onClick={handleSyncAllInteractions} disabled={syncingBulk || syncing || !activeSession || posts.length === 0}
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
             <Users size={13} className={syncingBulk ? 'animate-spin' : ''} /> {T.posts.scanAll}
@@ -123,6 +139,7 @@ export default function PostsPage() {
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-lg text-sm">
             <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {T.posts.fetch}
           </button>
+          </>)}
         </div>
       </div>
 
@@ -180,8 +197,17 @@ export default function PostsPage() {
         </div>
       )}
 
+      {isZip && (
+        <>
+          <p className="flex gap-2 text-xs text-gray-400 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 mb-3">
+            <Info size={14} className="shrink-0 mt-0.5 text-purple-400" /> {T.posts.zipNote}
+          </p>
+          <BridgeStatusCard sessionId={activeSession} />
+        </>
+      )}
+
       {posts.length === 0 ? (
-        <p className="text-gray-600 text-sm text-center py-16">{T.posts.noPost}</p>
+        <p className="text-gray-600 text-sm text-center py-16">{isZip ? T.posts.zipEmpty : T.posts.noPost}</p>
       ) : (
         <div className="grid grid-cols-3 gap-3">
           {posts.map(post => (
@@ -230,6 +256,9 @@ export default function PostsPage() {
                 </a>
               </div>
               <div className="flex items-center gap-2">
+                {isZip ? (
+                  <span className="text-xs text-gray-400 max-w-[14rem]">{T.posts.zipDetailHint}</span>
+                ) : (
                 <button
                   onClick={() => handleSyncInteractions(selected)}
                   disabled={syncingInteraction}
@@ -237,6 +266,7 @@ export default function PostsPage() {
                   <RefreshCw size={12} className={syncingInteraction ? 'animate-spin' : ''} />
                   {lang === 'en' ? 'Fetch Likes/Comments' : 'Like/Yorum Çek'}
                 </button>
+                )}
                 <button onClick={() => setSelected(null)} className="p-1.5 text-gray-500 hover:text-white">
                   <X size={18} />
                 </button>
