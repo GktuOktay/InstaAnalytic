@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "InstaAnalytic Köprüsü",
   "short_name": "IA Köprüsü",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Kendi gönderilerinizin beğenenlerini, siz Instagram'da açtığınızda kaydeder. Instagram'a kendisi hiçbir istek göndermez.",
   "minimum_chrome_version": "120",
   "permissions": [

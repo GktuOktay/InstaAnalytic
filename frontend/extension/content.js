@@ -12,10 +12,19 @@
   const POST_PATH = /^\/([\w.]+\/)?(p|reel|tv)\/[\w-]+(\/(liked_by|comments))?\/?$/;
   let cfg = { on: false, username: null };
 
-  // Instagram hesabının sayısal kimliği: oturum çerezi değil, herkese okunur ds_user_id
+  // Açık Instagram hesabının sayısal kimliği. Önce ds_user_id (oturum çerezi değil); okunamazsa
+  // sayfanın kendi gömülü verisindeki kullanıcı kimliği.
+  let pageViewer = null;
   function viewerId() {
     const m = document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/);
-    return m ? m[1] : null;
+    if (m) return m[1];
+    if (pageViewer) return pageViewer;
+    for (const s of document.querySelectorAll('script[type="application/json"]')) {
+      const t = s.textContent || '';
+      const k = t.match(/"(?:USER_ID|viewerId|viewer_id)":"(\d{3,20})"/);
+      if (k && k[1] !== '0') { pageViewer = k[1]; return pageViewer; }
+    }
+    return null;
   }
 
   // Yalnızca kendi profil sayfam ve gönderi sayfaları
@@ -71,8 +80,11 @@
     if (area === 'local' && (changes.enabled || changes.profiles)) loadConfig();
   });
 
-  loadConfig().then(() => {
-    if (document.readyState === 'complete') scanEmbedded();
-    else window.addEventListener('load', scanEmbedded, { once: true });
-  });
+  // Kimlik çoğu zaman sayfa yüklenince okunabilir; o yüzden yükleme bitince ayarı bir kez daha iste
+  function onReady() {
+    loadConfig().then(scanEmbedded);
+  }
+  loadConfig();
+  if (document.readyState === 'complete') onReady();
+  else window.addEventListener('load', onReady, { once: true });
 })();

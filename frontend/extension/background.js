@@ -85,7 +85,8 @@ async function checkUpdate(force = false) {
   if (!force && prev.checkedAt && Date.now() - prev.checkedAt < UPDATE_EVERY_MS) return prev;
   const current = chrome.runtime.getManifest().version;
   const cfg = await getCfg();
-  const r = await callApp(cfg.appUrl, '/extension/manifest.json', undefined, 10000);
+  // Önbellekten eski sürüm gelmesin: her denetimde farklı adres
+  const r = await callApp(cfg.appUrl, `/extension/manifest.json?t=${Date.now()}`, undefined, 10000);
   const latest = r.status === 200 && r.data && VERSION_RE.test(String(r.data.version || '')) ? String(r.data.version) : null;
   const next = { checkedAt: Date.now(), current, latest, reloadedFor: prev.reloadedFor || null };
 
@@ -130,7 +131,7 @@ async function callApp(appUrl, path, body, timeoutMs = 20000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const init = { signal: ctrl.signal, credentials: 'omit', headers: { Accept: 'application/json' } };
+    const init = { signal: ctrl.signal, credentials: 'omit', cache: 'no-store', headers: { Accept: 'application/json' } };
     if (body !== undefined) {
       init.method = 'POST';
       init.headers['Content-Type'] = 'application/json';
@@ -181,8 +182,10 @@ async function resolveProfile(cfg, viewerId) {
 async function configFor(viewer) {
   checkUpdate().catch(() => {});                // en çok 6 saatte bir; Instagram sayfası açıldıkça
   const cfg = await getCfg();
-  if (!cfg.enabled || !VIEWER_RE.test(String(viewer || ''))) return { on: false };
-  await chrome.storage.local.set({ lastViewer: String(viewer) });
+  if (!VIEWER_RE.test(String(viewer || ''))) return { on: false };
+  // Hangi hesabın açık olduğu, eklenti kapalıyken de hatırlanır: profil seçimi buna dayanır
+  await chrome.storage.local.set({ lastViewer: String(viewer), lastViewerAt: Date.now() });
+  if (!cfg.enabled) return { on: false };
   const profile = await resolveProfile(cfg, String(viewer));
   if (!profile) return { on: false };
   return { on: true, username: profile.username || null };
@@ -305,7 +308,7 @@ async function refreshFromApp() {
 
 async function chooseProfile(id, username) {
   const { lastViewer } = await getCfg();
-  if (!lastViewer) return { ok: false, error: "Önce Instagram'ı bir sekmede açın." };
+  if (!lastViewer) return { ok: false, error: 'Instagram sekmesini bir kez yenileyin; eklenti hesabı o zaman tanır.' };
   if (id && !UUID_RE.test(String(id))) return { ok: false, error: 'Geçersiz profil.' };
   await setProfile(lastViewer, id ? { id, username: username ? String(username) : null } : null);
   await setStatus({ profile: id ? { id, username: username || null } : null, state: 'listening', message: 'Dinliyor.' });

@@ -78,6 +78,23 @@ describe('extension self-update', () => {
   })
 })
 
+describe('account detection', () => {
+  it('remembers which Instagram account is open even while the extension is off', async () => {
+    const b = loadBackground('2.2.0', '2.2.0', { enabled: false })
+    const answer: any = await new Promise(res =>
+      b.listeners.message({ type: 'ia-config', viewer: '525215615' }, { id: 'ext', tab: { url: 'https://www.instagram.com/' } }, res))
+    expect(answer).toEqual({ on: false })
+    expect(b.store.lastViewer).toBe('525215615')
+  })
+
+  it('ignores garbage account ids', async () => {
+    const b = loadBackground('2.2.0', '2.2.0', { enabled: true })
+    await new Promise(res =>
+      b.listeners.message({ type: 'ia-config', viewer: 'abc' }, { id: 'ext', tab: { url: 'https://www.instagram.com/' } }, res))
+    expect(b.store.lastViewer).toBeUndefined()
+  })
+})
+
 describe('app side version check', () => {
   it('knows the bundled extension version and flags older ones', () => {
     expect(LATEST_EXTENSION_VERSION).toMatch(/^\d+\.\d+\.\d+$/)

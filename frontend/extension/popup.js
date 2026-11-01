@@ -132,9 +132,11 @@ function send(msg) {
 
 // ── Durum ────────────────────────────────────────────────────────────────────
 
-function renderStatus(status, enabled) {
+function renderStatus(status, enabled, seenAccount) {
   const s = status || {};
-  const state = enabled ? (s.state || 'listening') : 'off';
+  // Açık ama Instagram hesabı henüz görülmedi: kurulumdan önce açılmış sekme yenilenmemiş
+  const unseen = enabled && !seenAccount;
+  const state = !enabled ? 'off' : unseen ? 'needs_login' : (s.state || 'listening');
   el.status.dataset.state = state;
   // Instagram uyarısı: kapalıyken bile görünür, en üstte
   const warnOn = s.state === 'warning' && (!s.warningUntil || s.warningUntil > Date.now());
@@ -143,7 +145,9 @@ function renderStatus(status, enabled) {
   el.warningUntil.textContent = warnOn && s.warningUntil
     ? `Bu tarihe kadar bekleyin: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
     : '';
-  el.statusText.textContent = enabled ? (s.message || 'Dinliyor.') : 'Kapalı. Açtığınızda dinlemeye başlar.';
+  el.statusText.textContent = !enabled ? 'Kapalı. Açtığınızda dinlemeye başlar.'
+    : unseen ? 'Instagram sekmesini bir kez yenileyin; eklenti hesabı o zaman tanır.'
+    : (s.message || 'Dinliyor.');
 
   const today = s.todayDate === todayKey();
   el.today.textContent = `${today ? Number(s.todayPosts) || 0 : 0} gönderi, ${today ? Number(s.todayPeople) || 0 : 0} kişi`;
@@ -155,12 +159,12 @@ function renderStatus(status, enabled) {
 }
 
 async function refresh() {
-  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update']);
+  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update', 'lastViewer']);
   renderUpdate(s.update);
   appUrl = normalizeAppUrl(s.appUrl) || DEFAULT_APP;
   el.enabled.checked = s.enabled === true;
   if (document.activeElement !== el.appUrl) el.appUrl.value = appUrl;
-  renderStatus(s.status, s.enabled === true);
+  renderStatus(s.status, s.enabled === true, !!s.lastViewer);
 }
 
 // ── Profil seçimi ────────────────────────────────────────────────────────────
@@ -175,7 +179,7 @@ function fillProfiles() {
   }
   if (!hello.loggedIn) {
     sel.disabled = true;
-    setHint(el.profileHint, "Profil seçmek için önce Instagram'ı bir sekmede açın (giriş yapılmış olmalı).", true);
+    setHint(el.profileHint, "Eklenti açık Instagram hesabını henüz görmedi. Instagram sekmesini bir kez yenileyin (eklenti kurulduktan ya da güncellendikten sonra gerekir), sonra bu pencereyi yeniden açın.", true);
     return;
   }
   if (!hello.sessions.length) {
@@ -263,7 +267,10 @@ el.openApp.addEventListener('click', () => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update)) refresh();
+  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update || changes.lastViewer)) {
+    refresh();
+    if (changes.lastViewer && !el.profilePicker.hidden) loadHello();   // hesap az önce görüldü: listeyi tazele
+  }
 let startTab = 'status';
 try { startTab = sessionStorage.getItem('ia-tab') || 'status'; } catch { /* yoksay */ }
 selectTab(TABS.includes(startTab) ? startTab : 'status');
