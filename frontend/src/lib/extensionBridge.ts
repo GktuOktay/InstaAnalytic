@@ -17,6 +17,8 @@ export interface ExtensionJob {
   queue: (string | null)[]
   startedAt: number
   finishedAt?: number
+  outcome?: 'ok' | 'partial' | 'failed' | 'stopped'
+  results?: { shortcode: string | null; saved: number; seen: number; ok: boolean; note: string | null }[]
 }
 
 export interface RunReply { ok: boolean; error?: string; total?: number }

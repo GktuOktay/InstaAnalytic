@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "InstaAnalytic Köprüsü",
   "short_name": "IA Köprüsü",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "InstaAnalytic için gönderi listenizi, beğenenleri ve yorum yapanları siz Instagram'da gezerken kaydeder. Instagram'a kendisi hiçbir istek göndermez.",
   "minimum_chrome_version": "120",
   "permissions": [
-    "storage"
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "http://localhost:3002/*",

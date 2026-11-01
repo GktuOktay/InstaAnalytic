@@ -325,3 +325,23 @@ async def test_comments_todo_is_separate(db, make_session):
     await _obs(db, kv, s, GQL, timeline_text())
     assert [t["shortcode"] for t in await bridge.todo(db, s, kind="comments")] == ["OLD1"]   # yalnızca yorumu olan
     assert {t["shortcode"] for t in await bridge.todo(db, s, kind="likers")} == {"OLD1", "NEW1"}
+
+
+
+@pytest.mark.asyncio
+async def test_extension_job_result_is_recorded(client, db, make_session):
+    from app.models.sync_job import SyncJob
+    s = await make_session(username="me")
+    body = {"session_id": str(s.id), "kind": "likers", "outcome": "partial", "total": 3, "done": 3, "ok": 2, "saved": 57,
+            "message": "Beğenenler: 3 gönderi açıldı, 2 tanesinden toplam 57 beğenen kaydedildi.\n• CCCCC: Beğenme sayısı sayfada bulunamadı.",
+            "results": [{"shortcode": "AAAAA", "saved": 40, "seen": 40, "ok": True},
+                        {"shortcode": "CCCCC", "saved": 0, "seen": 0, "ok": False, "note": "Beğenme sayısı sayfada bulunamadı."}],
+            "started_at": "2026-11-01T10:00:00Z", "finished_at": "2026-11-01T10:05:00Z"}
+    r = await client.post("/api/bridge/jobs", json=body)
+    assert r.status_code == 201
+    job = (await db.execute(select(SyncJob))).scalar()
+    assert job.job_type == "bridge_likers" and job.status == "partial" and job.processed_items == 3
+    assert "57 beğenen" in job.error_msg
+    jobs = (await client.get("/api/tasks/jobs")).json()
+    assert any(j["job_type"] == "bridge_likers" for j in (jobs if isinstance(jobs, list) else jobs.get("jobs", [])))
+    assert (await client.post("/api/bridge/jobs", json={**body, "kind": "takip"})).status_code == 422

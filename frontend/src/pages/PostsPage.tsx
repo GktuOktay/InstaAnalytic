@@ -8,6 +8,8 @@ import { useLang } from '../contexts/LangContext'
 import { Link } from 'react-router-dom'
 import BridgeStatusCard from '../components/BridgeStatusCard'
 import { useExtension, JobKind } from '../lib/extensionBridge'
+import { useToast } from '../contexts/ToastContext'
+import { fill } from '../lib/text'
 import { RefreshCw, Heart, MessageCircle, Play, Image, Images, Layers, X, Users, Download, Info } from 'lucide-react'
 
 const IG_URL = (shortcode: string) => `https://www.instagram.com/p/${shortcode}/`
@@ -32,6 +34,7 @@ export default function PostsPage() {
   const [comments, setComments] = useState<PostComment[]>([])
   const [detailTab, setDetailTab] = useState<'likers' | 'comments'>('likers')
   const ext = useExtension()
+  const toast = useToast()
   const [runError, setRunError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -76,7 +79,11 @@ export default function PostsPage() {
   const start = async (kind: JobKind, shortcodes?: string[]) => {
     setRunError(null)
     const r = await ext.run(kind, shortcodes ? { shortcodes } : {})
-    if (!r.ok) setRunError(r.error === 'timeout' ? T.posts.extNoAnswer : (r.error ?? T.problems.unknown.title))
+    if (!r.ok) {
+      const msg = r.error === 'timeout' ? T.posts.extNoAnswer : (r.error ?? T.problems.unknown.title)
+      setRunError(msg)
+      toast.error(msg)
+    }
   }
 
   return (
@@ -117,8 +124,8 @@ export default function PostsPage() {
       {ext.job && (jobRunning || (ext.job.finishedAt && Date.now() - ext.job.finishedAt < 10 * 60_000)) && (
         <div className="bg-gray-900 border border-purple-800 rounded-xl p-4 mb-4" role="status">
           <div className="flex items-center justify-between gap-3 text-sm mb-2">
-            <span className="flex items-center gap-2 text-purple-300">
-              {jobRunning && <RefreshCw size={13} className="animate-spin" />} {ext.job.message}
+            <span className="flex items-start gap-2 text-purple-300 whitespace-pre-line">
+              {jobRunning && <RefreshCw size={13} className="animate-spin mt-0.5 shrink-0" />} {ext.job.message}
             </span>
             {jobRunning && (
               <button onClick={() => ext.stop()} className="px-3 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs">{T.posts.stop}</button>
@@ -131,6 +138,27 @@ export default function PostsPage() {
             </div>
           )}
           {jobRunning && <p className="text-xs text-gray-500 mt-2">{T.posts.jobNote}</p>}
+          {!!ext.job.results?.length && ext.job.kind !== 'posts' && (
+            <details className="mt-3" open={!jobRunning && ext.job.outcome !== 'ok'}>
+              <summary className="text-xs text-gray-400 cursor-pointer select-none">{T.jobs.results}</summary>
+              <ul className="mt-2 space-y-1 text-xs">
+                {ext.job.results.map((x, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${x.ok ? 'bg-green-400' : 'bg-amber-400'}`} aria-hidden />
+                    <span className="min-w-0">
+                      {x.shortcode && (
+                        <a href={`https://www.instagram.com/p/${x.shortcode}/`} target="_blank" rel="noreferrer noopener"
+                          className="font-mono text-gray-300 hover:underline mr-2">{x.shortcode}</a>
+                      )}
+                      <span className="text-gray-300">{fill(T.jobs.saved, { n: x.saved })}</span>
+                      {x.seen > 0 && <span className="text-gray-500"> · {fill(T.jobs.seen, { n: x.seen })}</span>}
+                      {x.note && <span className="block text-gray-400">{x.note}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 

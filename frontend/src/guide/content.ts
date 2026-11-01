@@ -697,7 +697,7 @@ const tr: GuideContent = {
     ],
     stop: {
       title: 'Durdurmak',
-      text: 'İşi durdurmak için uygulamadaki iş kutusunda ya da eklenti penceresindeki iş çubuğunda "Durdur"a bas. Instagram sekmesini kapatmak da işi durdurur. O ana kadar okunanlar kayıtlı kalır. Devam etmek için işi yeniden başlat; okunmuş gönderiler atlanır.',
+      text: 'İşi durdurmak için uygulamadaki iş kutusunda ya da eklenti penceresindeki iş çubuğunda "Durdur"a bas. Instagram sekmesini kapatmak da işi durdurur. O ana kadar okunanlar kayıtlı kalır. Devam etmek için işi yeniden başlat; okunmuş gönderiler atlanır. İş bitince ya da durunca bilgisayarında bildirim çıkar, uygulama açıksa sağ altta özet görünür: kaç gönderi açıldı, kaç kişi kaydedildi, hangi gönderide ne sorun oldu. Aynı özet Gönderiler sayfasındaki iş kutusunda gönderi gönderi ve Kuyruk Monitörü\'nde kalır.',
     },
     toolsTitle: 'Üç iş, ne yapar',
     toolsIntro: 'Sırayla git: önce gönderiler, sonra beğenenler, sonra yorumlar. Beğenenler ve yorumlar gönderi listesine dayanır.',
@@ -1396,7 +1396,7 @@ const en: GuideContent = {
     ],
     stop: {
       title: 'Stopping',
-      text: 'To stop a job, press "Stop" in the job box in the app or "Durdur" in the job bar of the popup. Closing the Instagram tab also stops the job. Everything read until then stays saved. To continue, start the job again; posts already read are skipped.',
+      text: 'To stop a job, press "Stop" in the job box in the app or "Durdur" in the job bar of the popup. Closing the Instagram tab also stops the job. Everything read until then stays saved. To continue, start the job again; posts already read are skipped. When a job ends or stops you get a desktop notification, and if the app is open a summary appears at the bottom right: how many posts were opened, how many people were saved, and what went wrong on which post. The same summary stays in the job box on the Posts page, post by post, and in the Queue Monitor.',
     },
     toolsTitle: 'The three jobs, what they do',
     toolsIntro: 'Go in order: posts first, then likers, then comments. Likers and comments work from the post list.',

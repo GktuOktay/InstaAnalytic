@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.base import get_db
+from datetime import datetime
+
 from app.models.session import Session
+from app.models.sync_job import SyncJob
 from app.services import bridge
 
 router = APIRouter(tags=["bridge"])
@@ -99,3 +102,42 @@ async def bridge_resume(session_id: uuid.UUID, db: AsyncSession = Depends(get_db
     await _session(db, session_id)
     await bridge.set_stopped(kv, session_id, False)
     return {"stopped": False}
+
+
+class JobResultItem(BaseModel):
+    shortcode: str | None = Field(default=None, max_length=40)
+    saved: int = 0
+    seen: int = 0
+    ok: bool = False
+    note: str | None = Field(default=None, max_length=300)
+
+
+class JobReport(BaseModel):
+    """Eklentinin bitirdiği bir işin sonucu (Kuyruk Monitörü'nde görünür)."""
+    session_id: uuid.UUID
+    kind: Literal["posts", "likers", "comments"]
+    outcome: Literal["ok", "partial", "failed", "stopped"]
+    total: int = Field(ge=0, le=1000)
+    done: int = Field(ge=0, le=1000)
+    ok: int = Field(ge=0, le=1000)
+    saved: int = Field(ge=0)
+    message: str = Field(max_length=4000)
+    results: list[JobResultItem] = Field(default_factory=list, max_length=50)
+    started_at: datetime
+    finished_at: datetime
+
+
+_OUTCOME_STATUS = {"ok": "completed", "partial": "partial", "failed": "failed", "stopped": "stopped"}
+
+
+@router.post("/bridge/jobs", status_code=201)
+async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
+    await _session(db, body.session_id)
+    job = SyncJob(
+        session_id=body.session_id, job_type=f"bridge_{body.kind}", status=_OUTCOME_STATUS[body.outcome],
+        total_items=body.total, processed_items=body.done, error_msg=body.message,
+        started_at=body.started_at, finished_at=body.finished_at,
+    )
+    db.add(job)
+    await db.commit()
+    return {"id": str(job.id)}

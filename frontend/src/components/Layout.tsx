@@ -9,6 +9,7 @@ import ErrorBoundary from './ErrorBoundary'
 import SafetyBadge from './SafetyBadge'
 import logoUrl from '../../extension/icons/icon.svg'
 import BridgeWarningBanner from './BridgeWarningBanner'
+import JobWatcher from './JobWatcher'
 
 export default function Layout() {
   const { T, lang, setLang } = useLang()
@@ -188,6 +189,7 @@ export default function Layout() {
       }}>
         <div style={{ flex: 1, padding: '28px 32px' }}>
           <BridgeWarningBanner />
+          <JobWatcher />
           <ErrorBoundary lang={lang} key={location.pathname}><Outlet /></ErrorBoundary>
         </div>
       </main>

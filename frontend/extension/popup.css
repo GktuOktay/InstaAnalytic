@@ -169,3 +169,7 @@ button.wide { width: 100%; margin-top: 8px; }
 .job:not([data-state="running"]) .spinner { animation: none; border-color: var(--ok); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+#job-text { white-space: pre-line; line-height: 1.45; }
+.job { align-items: flex-start; }
+.job[data-state="done"] { background: rgba(143,194,122,.10); border-color: rgba(143,194,122,.4); }
+.job[data-state="stopped"] { background: var(--panel); border-color: var(--line); }

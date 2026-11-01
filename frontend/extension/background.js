@@ -255,14 +255,19 @@ async function handleObserved(msg, tabId) {
   if (rep.status !== 200 || !rep.data) return; // tek bir yanıt kabul edilmediyse dinlemeye devam
 
   const r = rep.data;
+  // İş sekmesiyse: kaydedilenleri o anki gönderinin sonucuna ekle (uyarı olsa da kayıt sürer)
+  if (jobTab) await addToJob(job.id, r);
+
   const until = r.warning_until ? Date.parse(r.warning_until) : null;
-  if (until && until > Date.now()) {
-    // Metni uygulama belirler (son kullanıcı dili)
+  const warnActive = !!(until && until > Date.now());
+  if (r.warning) {
+    // Yeni bir uyarı: metni uygulama belirler (son kullanıcı dili). Hiçbir şey durdurulmaz.
     await setStatus({ state: 'warning', profile, message: String(r.message || 'Instagram uyarı verdi.'), warningUntil: until });
+    notify('warning', 'Instagram uyarı verdi', `${String(r.message || '')} Hiçbir şey durdurulmadı; önerimiz bir süre ara vermeniz.`);
     return;
   }
   if (r.stopped) {
-    await setStatus({ state: 'paused', profile, message: 'Bu profil için uygulamadan durduruldu.', warningUntil: null });
+    await setStatus({ state: 'paused', profile, message: 'Bu profil için uygulamadan durduruldu.' });
     return;
   }
   if (r.likers || r.comments || r.posts) {
@@ -270,7 +275,8 @@ async function handleObserved(msg, tabId) {
     if (r.posts) parts.push(`${r.posts} gönderi`);
     if (r.likers) parts.push(`${r.likers} beğenen`);
     if (r.comments) parts.push(`${r.comments} yorum`);
-    await setStatus({ state: 'ok', profile, message: `Kaydedildi: ${parts.join(', ')}.`, warningUntil: null });
+    await setStatus({ state: warnActive ? 'warning' : 'ok', profile, message: `Kaydedildi: ${parts.join(', ')}.`,
+      warningUntil: warnActive ? until : null });
     await countSaved(r);
   } else {
     const { status } = await chrome.storage.local.get('status');
@@ -347,7 +353,7 @@ async function startJob(cmd) {
   }
 
   const job = {
-    id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [],
+    id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
     username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
@@ -361,22 +367,106 @@ async function finishJob(job, state, message) {
   job.state = state;
   job.message = message;
   job.finishedAt = Date.now();
+  job.outcome = state !== 'done' ? 'stopped'
+    : (job.results || []).every((x) => x.ok) ? 'ok'
+    : (job.results || []).some((x) => x.ok) ? 'partial' : 'failed';
   await setJob(job);
   if (state === 'done' && job.tabId != null) {
     setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
   }
+  const title = state !== 'done' ? `${KIND_LABEL[job.kind]} durdu`
+    : job.outcome === 'ok' ? `${KIND_LABEL[job.kind]} bitti`
+    : job.outcome === 'partial' ? `${KIND_LABEL[job.kind]} bitti, bazı gönderilerde sorun var` : `${KIND_LABEL[job.kind]} sonuç vermedi`;
+  notify(job.outcome === 'ok' ? 'ok' : 'warning', title, message);
+  reportJob(job).catch(() => {});
 }
 
-async function jobStepDone(tabId, error) {
+// Masaüstü bildirimi: uygulama açık olmasa da işin bittiği görülsün
+function notify(kind, title, message) {
+  try {
+    chrome.notifications.create(`ia-${Date.now()}`, {
+      type: 'basic', iconUrl: 'icons/icon-128.png', title: `InstaAnalytic: ${title}`,
+      message: String(message || '').slice(0, 400), priority: kind === 'warning' ? 2 : 0,
+    });
+  } catch { /* bildirim izni yoksa sessizce geç */ }
+}
+
+// Sonucu uygulamaya yaz: Kuyruk Monitörü'nde ve iş geçmişinde görünür
+async function reportJob(job) {
+  const cfg = await getCfg();
+  const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
+  if (!profile) return;
+  await callApp(cfg.appUrl, '/api/bridge/jobs', {
+    session_id: profile.id, kind: job.kind, outcome: job.outcome, total: job.total,
+    done: (job.results || []).length, ok: (job.results || []).filter((x) => x.ok).length,
+    saved: (job.results || []).reduce((n, x) => n + x.saved, 0),
+    message: String(job.message || '').slice(0, 4000),
+    results: (job.results || []).slice(0, 50).map((x) => ({
+      shortcode: x.shortcode, saved: x.saved, seen: x.seen, ok: x.ok, note: x.note ? String(x.note).slice(0, 300) : null,
+    })),
+    started_at: new Date(job.startedAt).toISOString(), finished_at: new Date(job.finishedAt).toISOString(),
+  });
+}
+
+// Uygulamanın kayıt yanıtından: bu adımda kaç gönderi / beğenen / yorum kaydedildi
+async function addToJob(jobId, r) {
+  const job = await getJob();
+  if (!job || job.id !== jobId || job.state !== 'running') return;
+  job.cur = job.cur || { posts: 0, likers: 0, comments: 0 };
+  job.cur.posts += Number(r.posts) || 0;
+  job.cur.likers += Number(r.likers) || 0;
+  job.cur.comments += Number(r.comments) || 0;
+  if (r.warning) job.warned = String(r.message || 'Instagram uyarı verdi.');
+  await setJob(job);
+}
+
+const UNIT = { posts: 'gönderi', likers: 'beğenen', comments: 'yorum yapan' };
+
+// Bir adımın sonucunu son kullanıcı diliyle açıklar
+function stepResult(job, error, seen) {
+  const code = job.queue[job.index];
+  const saved = (job.cur && job.cur[job.kind]) || 0;
+  let note = null;
+  if (error) note = error;
+  else if (!saved && seen > 0) {
+    note = `Sayfada ${seen} ${job.kind === 'posts' ? 'gönderi' : 'kişi'} göründü ama hiçbiri kaydedilmedi. Instagram'ın gönderdiği veri tanınmadı; ` +
+      'uygulamadaki teşhis kaydı bunun için tutuldu, bize bildirin.';
+  } else if (!saved) {
+    note = job.kind === 'comments' ? 'Yeni yorum bulunamadı.' : job.kind === 'likers' ? 'Kaydedilecek beğenen bulunamadı.' : 'Gönderi bulunamadı.';
+  }
+  return { shortcode: code, saved, seen, ok: !error && saved > 0, note };
+}
+
+function summarize(job) {
+  const label = KIND_LABEL[job.kind];
+  const res = job.results || [];
+  const totalSaved = res.reduce((n, x) => n + x.saved, 0);
+  const okCount = res.filter((x) => x.ok).length;
+  const bad = res.filter((x) => !x.ok);
+  let head;
+  if (job.kind === 'posts') {
+    head = totalSaved ? `${label}: ${totalSaved} gönderi kaydedildi.` : `${label}: hiç gönderi kaydedilmedi.`;
+  } else {
+    head = `${label}: ${res.length} gönderi açıldı, ${okCount} tanesinden toplam ${totalSaved} ${UNIT[job.kind]} kaydedildi.`;
+  }
+  const lines = [head];
+  for (const x of bad.slice(0, 5)) lines.push(`• ${x.shortcode ? x.shortcode + ': ' : ''}${x.note}`);
+  if (bad.length > 5) lines.push(`• …ve ${bad.length - 5} gönderi daha.`);
+  if (job.warned) lines.push(`Uyarı: ${job.warned}`);
+  return lines.join('\n');
+}
+
+async function jobStepDone(tabId, error, seen) {
+  await chain.catch(() => {});                  // bu adımın kayıt yanıtları sayılmış olsun
   const job = await getJob();
   if (!job || job.state !== 'running' || job.tabId !== tabId) return;
-  if (error) job.errors.push({ shortcode: job.queue[job.index], error: String(error).slice(0, 200) });
+  job.results = job.results || [];
+  job.results.push(stepResult(job, error, Number(seen) || 0));
+  if (error) job.errors.push({ shortcode: job.queue[job.index], error: String(error).slice(0, 300) });
+  job.cur = { posts: 0, likers: 0, comments: 0 };
   job.index += 1;
   if (job.index >= job.total) {
-    const ok = job.total - job.errors.length;
-    const msg = job.kind === 'posts' ? 'Gönderi listesi okundu.'
-      : `${KIND_LABEL[job.kind]}: ${ok} / ${job.total} gönderi okundu${job.errors.length ? `, ${job.errors.length} gönderide sorun çıktı` : ''}.`;
-    await finishJob(job, 'done', msg);
+    await finishJob(job, 'done', summarize(job));
     return;
   }
   job.message = `${KIND_LABEL[job.kind]}: ${job.index + 1} / ${job.total}`;
@@ -393,14 +483,16 @@ async function jobStepDone(tabId, error) {
 async function stopJob() {
   const job = await getJob();
   if (!job || job.state !== 'running') return { ok: true };
-  await finishJob(job, 'stopped', 'Durduruldu.');
+  await finishJob(job, 'stopped', `Durduruldu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
   if (job.tabId != null) chrome.tabs.remove(job.tabId).catch(() => {});
   return { ok: true };
 }
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const job = await getJob();
-  if (job && job.state === 'running' && job.tabId === tabId) await finishJob(job, 'stopped', 'Sekme kapatıldı, iş durdu.');
+  if (job && job.state === 'running' && job.tabId === tabId) {
+    await finishJob(job, 'stopped', `Sekme kapatıldı, iş durdu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
+  }
 });
 
 // ── Açılır pencere için yardımcılar ──────────────────────────────────────────
@@ -494,7 +586,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'ia-job-progress' || msg.type === 'ia-job-done') {
     if (!fromInstagram) return false;
-    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null);
+    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null, msg.seen);
     else getJob().then((job) => {
       if (job && job.state === 'running' && job.tabId === sender.tab.id) { job.step = Number(msg.step) || 0; setJob(job); }
     });

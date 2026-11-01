@@ -382,6 +382,9 @@ const tr = {
       followingSync:'Takip Sync',
       postSync:     'Gönderi Sync',
       interactionSync: 'Etkileşim Sync',
+      bridgePosts:     'Eklenti: gönderi listesi',
+      bridgeLikers:    'Eklenti: beğenenler',
+      bridgeComments:  'Eklenti: yorumlar',
     },
   },
 
@@ -640,6 +643,13 @@ const tr = {
       body:  'Ne olduğunu tam anlayamadık. Hesabın için bir risk görünmüyor.',
       todo:  ['Tekrar dene.', 'Sürerse teknik ayrıntıyı bize ilet.'],
     },
+  },
+  jobs: {
+    started:      'Eklenti işe başladı:',
+    results:      'Gönderi gönderi sonuç',
+    saved:        '{n} kaydedildi',
+    seen:         'sayfada {n} görünüyordu',
+    open:         'Instagram\'da aç',
   },
 }
 

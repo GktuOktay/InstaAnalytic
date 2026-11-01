@@ -23,12 +23,15 @@ function loadBackground(installed: string, appVersion: string | null, store: Rec
       onChanged: { addListener: () => {} },
     },
     action: { setBadgeText: vi.fn(async () => {}), setBadgeBackgroundColor: async () => {}, setTitle: async () => {} },
+    notifications: { create: vi.fn() },
     tabs: {
       create: vi.fn(async (o: any) => ({ id: 77, ...o })), update: vi.fn(async () => ({})), remove: vi.fn(async () => {}),
       onRemoved: { addListener: (f: Function) => { listeners.removed = f } },
     },
   }
   const session: Record<string, any> = {}
+  let observeReply: any = {}
+  ;(chrome as any).__setObserve = (r: any) => { observeReply = r }
   ;(chrome.storage as any).session = {
     get: async (k: string) => ({ [k]: session[k] }),
     set: async (o: Record<string, any>) => { Object.assign(session, o) },
@@ -36,6 +39,8 @@ function loadBackground(installed: string, appVersion: string | null, store: Rec
   const fetchStub = vi.fn(async (url: string) => {
     if (appVersion === null) throw new Error('down')
     if (String(url).includes('/bridge/todo')) return new Response(JSON.stringify(todo), { status: 200 })
+    if (String(url).includes('/bridge/observe')) return new Response(JSON.stringify(observeReply), { status: 200 })
+    if (String(url).includes('/bridge/jobs')) return new Response('{"id":"x"}', { status: 201 })
     return new Response(JSON.stringify({ version: appVersion }), { status: 200 })
   })
   // eslint-disable-next-line no-new-func
@@ -131,6 +136,15 @@ describe('tools', () => {
   })
 })
 
+// İş sekmesinden bir yanıt gelmiş gibi yap; uygulama `saved` kadar kayıt bildirir
+async function observeSaved(b: any, saved: Record<string, number>) {
+  b.chrome.__setObserve({ posts: 0, likers: 0, comments: 0, warning: false, ignored: false, ...saved })
+  b.listeners.message({ type: 'ia-observed', viewer: '525', url: 'https://www.instagram.com/graphql/query',
+    page: 'https://www.instagram.com/p/AAAAA/liked_by/', status: 200, text: '{}', friendly: 'Q', variables: '', kinds: ['likers', 'posts'] },
+    { id: 'ext', tab: { id: 77, url: 'https://www.instagram.com/p/AAAAA/' } }, () => {})
+  await vi.advanceTimersByTimeAsync(50)
+}
+
 describe('jobs started from the app', () => {
   const ME = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
   const fromApp = { id: 'ext', tab: { url: 'http://localhost:3002/posts' } }
@@ -152,14 +166,27 @@ describe('jobs started from the app', () => {
     expect(cfg.job).toEqual({ kind: 'likers', shortcode: 'AAAAA' })
     expect(cfg.tools.likers).toBe(true)
 
-    b.listeners.message({ type: 'ia-job-done', error: null }, fromIg(), () => {})
+    // 1. gönderi: uygulama 40 beğenen kaydettiğini söylüyor
+    await observeSaved(b, { likers: 40 })
+    b.listeners.message({ type: 'ia-job-done', error: null, seen: 40 }, fromIg(), () => {})
     await vi.advanceTimersByTimeAsync(20000)
     expect(b.chrome.tabs.update).toHaveBeenCalledWith(77, { url: 'https://www.instagram.com/p/BBBBB/' })
 
-    b.listeners.message({ type: 'ia-job-done', error: null }, fromIg(), () => {})
+    // 2. gönderi: liste açıldı, 12 kişi göründü ama hiçbiri kaydedilmedi → somut teşhis
+    b.listeners.message({ type: 'ia-job-done', error: null, seen: 12 }, fromIg(), () => {})
     await vi.advanceTimersByTimeAsync(3000)
-    expect(b.session.job.state).toBe('done')
+    const job = b.session.job
+    expect(job.state).toBe('done')
+    expect(job.outcome).toBe('partial')
+    expect(job.message).toContain('2 gönderi açıldı, 1 tanesinden toplam 40 beğenen kaydedildi')
+    expect(job.message).toContain('BBBBB: Sayfada 12 kişi göründü ama hiçbiri kaydedilmedi')
     expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    // sonuç uygulamaya yazıldı ve masaüstü bildirimi gösterildi
+    await vi.advanceTimersByTimeAsync(100)
+    const report = b.fetchStub.mock.calls.find((c: any[]) => String(c[0]).endsWith('/api/bridge/jobs')) as any
+    expect(JSON.parse(report[1].body)).toMatchObject({ kind: 'likers', outcome: 'partial', saved: 40, total: 2 })
+    expect(b.chrome.notifications.create).toHaveBeenCalledWith(expect.any(String),
+      expect.objectContaining({ title: 'InstaAnalytic: Beğenenler bitti, bazı gönderilerde sorun var' }))
     vi.useRealTimers()
   })
 

@@ -34,6 +34,8 @@ const STATUS_COLORS: Record<string, string> = {
   pending:    'text-yellow-400 bg-yellow-900/30',
   running:    'text-blue-400 bg-blue-900/30',
   completed:  'text-green-400 bg-green-900/30',
+  partial:    'text-amber-300 bg-amber-900/30',
+  stopped:    'text-gray-300 bg-gray-700',
   failed:     'text-red-400 bg-red-900/30',
   ACTIVE:     'text-blue-400 bg-blue-900/30',
   RESERVED:   'text-yellow-400 bg-yellow-900/30',
@@ -69,6 +71,9 @@ export default function MonitorPage() {
     sync_following:         T.monitor.types.followingSync,
     sync_posts:             T.monitor.types.postSync,
     sync_post_interactions: T.monitor.types.interactionSync,
+    bridge_posts:           T.monitor.types.bridgePosts,
+    bridge_likers:          T.monitor.types.bridgeLikers,
+    bridge_comments:        T.monitor.types.bridgeComments,
   }
   const [activeSession, setActiveSession] = useState<string>('')
   const [jobs, setJobs] = useState<SyncJob[]>([])
@@ -116,7 +121,7 @@ export default function MonitorPage() {
   }
 
   const runningJobs  = jobs.filter(j => j.status === 'running' || j.status === 'pending')
-  const finishedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed')
+  const finishedJobs = jobs.filter(j => ['completed', 'failed', 'partial', 'stopped'].includes(j.status))
 
   return (
     <div className="space-y-6">
@@ -291,12 +296,16 @@ function JobRow({ job, jobLabels, lang }: { job: SyncJob; jobLabels: Record<stri
         {job.created_at && (
           <span>{new Date(job.created_at).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR')}</span>
         )}
-        {job.error_msg && (
+        {job.error_msg && !job.job_type.startsWith('bridge_') && (
           <span className="text-red-400 truncate max-w-xs" title={job.error_msg}>
             <XCircle size={10} className="inline mr-1" />{explainProblem(job.error_msg, T).title}
           </span>
         )}
       </div>
+      {/* Eklenti işleri: sonuç özeti zaten son kullanıcı dilinde, olduğu gibi göster */}
+      {job.error_msg && job.job_type.startsWith('bridge_') && (
+        <p className={`text-xs whitespace-pre-line ${job.status === 'completed' ? 'text-gray-300' : 'text-amber-200'}`}>{job.error_msg}</p>
+      )}
     </div>
   )
 }

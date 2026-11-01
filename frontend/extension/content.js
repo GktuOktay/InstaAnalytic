@@ -99,22 +99,51 @@
     return null;
   }
 
+  // Sayfada görünen kişi / gönderi sayısı: kaydedilenle karşılaştırılır (tanınmayan yanıtı ortaya çıkarır)
+  const PROFILE_HREF = /^\/[\w.]{1,30}\/$/;
+  function countProfiles(root) {
+    const names = new Set();
+    for (const a of root.querySelectorAll('a[href^="/"]')) {
+      const h = a.getAttribute('href') || '';
+      if (PROFILE_HREF.test(h)) names.add(h.toLowerCase());
+    }
+    return names.size;
+  }
+  function countPosts() {
+    const codes = new Set();
+    for (const a of document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]')) {
+      const m = (a.getAttribute('href') || '').match(/\/(?:p|reel)\/([\w-]+)/);
+      if (m) codes.add(m[1]);
+    }
+    return codes.size;
+  }
+
+  function loginWall() {
+    return /\/accounts\/login|\/challenge\//.test(location.pathname);
+  }
+
   async function collectPosts() {
+    if (loginWall()) return { error: "Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor. Instagram'a giriş yapıp tekrar deneyin." };
     await scrollToEnd(() => document.scrollingElement, 80, [1300, 3000]);
+    return { seen: countPosts() };
   }
 
   async function collectLikers(code) {
+    if (loginWall()) return { error: "Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor." };
+    if (/\/accounts\/|page not found|sayfa bulunamadı/i.test(document.title)) return { error: 'Gönderi açılamadı: silinmiş ya da arşivlenmiş olabilir.' };
     const link = await waitFor(() => document.querySelector(`a[href$="/p/${code}/liked_by/"], a[href$="/liked_by/"]`), 12000);
-    if (!link) return 'Beğenme sayısı bulunamadı (beğeni sayısı gizli ya da gönderinin beğenisi yok).';
+    if (!link) {
+      return { error: 'Beğenme sayısı sayfada bulunamadı. Gönderinin beğeni sayısı gizlenmiş, hiç beğenisi yok ya da Instagram sayfa düzenini değiştirmiş olabilir. Gönderiyi açıp sayıya kendiniz tıklayarak deneyebilirsiniz.' };
+    }
     await sleep(rand(600, 1400));
     link.click();
     const dialog = await waitFor(() => document.querySelector('[role="dialog"]'), 12000);
-    if (!dialog) return 'Beğenenler listesi açılmadı.';
+    if (!dialog) return { error: 'Beğenme sayısına tıklandı ama beğenenler listesi 12 saniye içinde açılmadı. Bağlantı yavaş olabilir; tekrar deneyin.' };
     await sleep(rand(1200, 2200));
     // Az beğenili gönderide liste kaydırılabilir olmaz: ilk sayfa zaten kaydedildi
     const box = await waitFor(() => scrollableIn(dialog), 6000);
     if (box) await scrollToEnd(() => box, 120, [900, 2200]);
-    return null;
+    return { seen: countProfiles(dialog) };
   }
 
   const MORE_COMMENTS = /load more comments|view more comments|view all|daha fazla yorum|yorumların tümünü|tüm yorumları/i;
@@ -129,14 +158,19 @@
   }
 
   async function collectComments() {
+    if (loginWall()) return { error: "Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor." };
     await sleep(rand(1500, 2500));
+    let clicks = 0;
     for (let i = 0; i < 60; i++) {
       const btn = moreCommentsButton();
       if (!btn) break;
       btn.click();
+      clicks += 1;
       await sleep(rand(1200, 2600));
       report({ step: i + 1 });
     }
+    const root = document.querySelector('main') || document.body;
+    return { seen: Math.max(0, countProfiles(root) - 1), clicks };   // gönderi sahibi hariç kabaca
   }
 
   function report(extra) {
@@ -144,17 +178,17 @@
   }
 
   async function runJob(job) {
-    let error = null;
+    let out = {};
     try {
       await sleep(rand(1500, 3000));                       // sayfa otursun
-      if (job.kind === 'posts') await collectPosts();
-      else if (job.kind === 'likers') error = await collectLikers(String(job.shortcode || ''));
-      else if (job.kind === 'comments') await collectComments();
+      if (job.kind === 'posts') out = await collectPosts();
+      else if (job.kind === 'likers') out = await collectLikers(String(job.shortcode || ''));
+      else if (job.kind === 'comments') out = await collectComments();
       await sleep(rand(1500, 2500));                       // son yanıtlar iletilsin
-    } catch {
-      error = 'Sayfada beklenmeyen bir durum oldu.';
+    } catch (e) {
+      out = { error: `Sayfada beklenmeyen bir durum oldu (${String((e && e.message) || e).slice(0, 120)}).` };
     }
-    chrome.runtime.sendMessage({ type: 'ia-job-done', error }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'ia-job-done', error: out.error || null, seen: Number(out.seen) || 0 }).catch(() => {});
   }
 
   async function loadConfig() {

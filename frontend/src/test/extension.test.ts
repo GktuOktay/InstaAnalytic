@@ -69,7 +69,7 @@ describe('extension listener (read-only)', () => {
 
   it('asks for the minimum permissions', () => {
     const m = JSON.parse(manifestSrc)
-    expect(m.permissions).toEqual(['storage'])
+    expect(m.permissions).toEqual(['storage', 'notifications'])   // bildirim: iş bitince haber verir
     expect(m.host_permissions.every((h: string) => /^http:\/\/(localhost|127\.0\.0\.1):3002\/\*$/.test(h))).toBe(true)
     expect(JSON.stringify(m)).not.toMatch(/cookies|webRequest|scripting|"tabs"|<all_urls>|debugger/)
     // Uygulamayla aynı logo, Chrome'un beklediği boyutlarda

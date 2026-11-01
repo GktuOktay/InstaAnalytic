@@ -384,6 +384,9 @@ const en: Translations = {
       followingSync:'Following Sync',
       postSync:     'Post Sync',
       interactionSync: 'Interaction Sync',
+      bridgePosts:     'Extension: post list',
+      bridgeLikers:    'Extension: likers',
+      bridgeComments:  'Extension: comments',
     },
   },
 
@@ -642,6 +645,13 @@ const en: Translations = {
       body:  'We couldn\'t tell exactly what. There is no sign of risk to your account.',
       todo:  ['Try again.', 'If it keeps happening, send us the technical detail.'],
     },
+  },
+  jobs: {
+    started:      'The extension started:',
+    results:      'Result per post',
+    saved:        '{n} saved',
+    seen:         '{n} were visible on the page',
+    open:         'Open on Instagram',
   },
 }
 
