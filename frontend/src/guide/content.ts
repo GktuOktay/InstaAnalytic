@@ -12,8 +12,26 @@ export interface GuideRow { term: string; text: string; link?: GuideLink }
 export type ArtId =
   | 'appFolder' | 'address' | 'devmode' | 'loadUnpacked' | 'pickFolder'
   | 'card' | 'pin' | 'reload' | 'popup' | 'connected'
-  | 'useToggle' | 'useProfile' | 'useOpenPost' | 'useLikes' | 'useNext'
+  | 'useToggle' | 'postsOpen' | 'useProfile' | 'likersNext' | 'useLikes' | 'likersProgress' | 'comments' | 'toolOff'
   | 'updateTab' | 'updateManual'
+
+/** Eklenti penceresinin Araçlar sekmesindeki üç ayrı araç. Her birinin kendi anahtarı var. */
+export type ToolId = 'posts' | 'likers' | 'comments'
+export const TOOL_IDS: ToolId[] = ['posts', 'likers', 'comments']
+/** Kullanım bölümündeki araç bloklarının çapaları (/guide#begenenler gibi). */
+export const TOOL_ANCHOR: Record<ToolId, string> = { posts: 'gonderi-listesi', likers: 'begenenler', comments: 'yorumlar' }
+
+/** Eklenti penceresindeki bir araç kartının yazıları (popup.html ile aynı). `action` kartın düğmesi. */
+export interface PopupToolLabels { title: string; desc: string; stat: string; action?: string }
+
+/** Kullanım bölümünde bir araç: ne kaydettiği ve resimli adımları. */
+export interface UseTool {
+  id: ToolId
+  title: string
+  what: string
+  steps: InstallStep[]
+  tip?: { title: string; text: string }
+}
 
 /** Resimli adım (kurulum ve kullanım). `alt` ekran okuyucu için resmin tarifi, `caption` resmin altındaki kısa yazı. */
 export interface InstallStep {
@@ -62,12 +80,17 @@ export interface ArtLabels {
   reloadOr: string
   reloadWin: string
   reloadMac: string
-  popupTabStatus: string
+  /** Eklenti penceresinin üst çubuğu: logonun yanında ad ve "Köprü vX". */
+  popupBrand: string
+  popupBridge: string
+  popupTabTools: string
   popupTabSettings: string
   popupTabUpdate: string
-  popupToggle: string
-  popupNote: string
+  popupLead: string
+  popupTools: Record<ToolId, PopupToolLabels>
   popupStatus: string
+  /** Ana anahtar kapalıyken durum kutusundaki yazı. */
+  popupOff: string
   popupToday: string
   popupTodayValue: string
   popupLast: string
@@ -82,6 +105,8 @@ export interface ArtLabels {
   popupAppVersion: string
   popupVersionValue: string
   popupNewVersionValue: string
+  popupLastCheck: string
+  popupLastCheckValue: string
   popupUpToDate: string
   popupManual: string
   popupManualNote: string
@@ -92,8 +117,6 @@ export interface ArtLabels {
   bridgeDesc: string
   bridgeFound: string
   bridgeProgress: string
-  bridgeQueue: string
-  bridgeOpenIg: string
   igHandle: string
   igStats: string
   igLikes: string
@@ -188,10 +211,16 @@ export interface GuideContent {
   }
   use: {
     intro: string
+    /** Başlarken: pencereyi açıp ana anahtarı açmak. */
     stepsTitle: string
     steps: InstallStep[]
-    tipTitle: string
-    tip: string
+    /** Üç araç, her biri ayrı bir blok. */
+    toolsTitle: string
+    toolsIntro: string
+    toolLabel: string
+    tools: UseTool[]
+    /** Bir aracı ya da köprünün tamamını kapatmak. */
+    off: { title: string; text: string; alt: string; caption: string }
     troubleTitle: string
     trouble: GuideRow[]
     afterTitle: string
@@ -235,6 +264,60 @@ export interface GuideContent {
   }
 }
 
+/**
+ * Eklenti penceresinin yazıları. Pencere yalnızca Türkçe; resimler gerçeğiyle aynı kalsın diye iki dilde de bu
+ * kullanılır. frontend/extension/popup.html ve popup.js değişirse burayı da güncelle.
+ */
+const POPUP = {
+  popupBrand: 'InstaAnalytic',
+  popupBridge: 'Köprü',
+  popupTabTools: 'Araçlar',
+  popupTabSettings: 'Ayarlar',
+  popupTabUpdate: 'Güncelleme',
+  popupLead: "Instagram'a kendisi istek göndermez. Siz gezerken sayfanın zaten indirdiği bilgiyi kaydeder.",
+  popupTools: {
+    posts: {
+      title: 'Gönderi listesi',
+      desc: 'Profilinizi açıp aşağı kaydırdığınızda gönderilerinizi tarih, beğeni ve yorum sayısıyla kaydeder.',
+      stat: '50 gönderi bulundu',
+      action: 'Profilimi aç',
+    },
+    likers: {
+      title: 'Beğenenler',
+      desc: 'Bir gönderinizin altındaki beğenme sayısına tıklayıp listeyi sonuna kadar kaydırdığınızda, beğenenleri kaydeder.',
+      stat: '12 / 50 gönderi okundu',
+      action: 'Sıradaki gönderiyi aç',
+    },
+    comments: {
+      title: 'Yorumlar',
+      desc: 'Bir gönderinizi açtığınızda yorum yapanları kendiliğinden kaydeder.',
+      stat: '9 gönderinin yorumları kaydedildi',
+    },
+  },
+  popupStatus: 'Dinliyor.',
+  popupOff: 'Köprü kapalı. Sağ üstteki anahtarla açın.',
+  popupToday: 'Bugün',
+  popupTodayValue: '3 gönderi, 214 kişi',
+  popupLast: 'Son kayıt',
+  popupLastValue: '14:32',
+  popupProfile: 'Profil',
+  popupProfileValue: '@gktuoktay',
+  popupChange: 'Değiştir',
+  popupAppUrl: 'Uygulama adresi',
+  popupAppUrlValue: 'http://localhost:3002',
+  popupOpenApp: 'Uygulamayı aç',
+  popupInstalled: 'Yüklü sürüm',
+  popupAppVersion: 'Uygulamadaki sürüm',
+  popupVersionValue: '2.3.0',
+  popupNewVersionValue: '2.4.0',
+  popupLastCheck: 'Son denetim',
+  popupLastCheckValue: '14:30',
+  popupUpToDate: 'Güncel',
+  popupManual: 'Yeni sürüm var, elle kurulum gerekiyor',
+  popupManualNote: 'Yeni sürüm var (2.4.0). Bu kopya kendiliğinden güncellenemiyor.',
+  popupCheckNow: 'Şimdi denetle',
+} satisfies Partial<ArtLabels>
+
 const tr: GuideContent = {
   title: 'Kullanım rehberi',
   subtitle: 'İlk kez kuruyorsan buradan başla. Her bölüm birkaç dakikada okunur.',
@@ -243,7 +326,7 @@ const tr: GuideContent = {
     start: 'Başlarken',
     zip: 'Verini ekle (ZIP)',
     bridge: 'Köprü eklentisini kur',
-    use: 'Beğenenleri kaydet',
+    use: 'Eklentiyi kullan',
     results: 'Sonuçları okumak',
     safety: 'Güvenlik ve sınırlar',
     faq: 'Sık sorulanlar',
@@ -264,8 +347,8 @@ const tr: GuideContent = {
         link: { to: '#zip', label: 'ZIP nasıl istenir' },
       },
       {
-        title: 'Beğenenleri kaydet (isteğe bağlı)',
-        text: "ZIP kimin beğendiğini içermez. Bunun için Tarayıcı köprüsü eklentisini Chrome'a kur. Sonra Instagram'da kendi gönderini aç ve beğenenler listesine tıkla. Eklenti, sayfanın zaten indirdiği listeyi kaydeder.",
+        title: 'Beğenenleri ve yorumları kaydet (isteğe bağlı)',
+        text: "ZIP kimin beğendiğini ve yorum yaptığını içermez. Bunun için Tarayıcı köprüsü eklentisini Chrome'a kur. Eklentinin üç ayrı aracı var: Gönderi listesi, Beğenenler ve Yorumlar. Hepsi, Instagram'da gezerken sayfanın zaten indirdiği bilgiyi kaydeder.",
         link: { to: '#kullanim', label: 'Nasıl kaydedilir' },
       },
       {
@@ -313,7 +396,7 @@ const tr: GuideContent = {
   bridge: {
     intro: 'Tarayıcı köprüsü bir Chrome eklentisi. Kendi gönderilerini kimin beğendiğini ve kimin yorum yaptığını kaydeder.',
     howTitle: 'Nasıl çalışır',
-    how: "Eklenti Instagram'a kendisi hiçbir istek göndermez, yalnızca dinler. Kendi Chrome'unda kendi gönderini açıp fotoğrafın altındaki \"X beğenme\" yazısına tıkladığında, beğenenler listesini Instagram'ın sayfası kendisi indirir. Eklenti bu zaten inmiş listeyi okur ve bilgisayarındaki uygulamaya kaydeder. Yorumlar gönderiyi açtığında, gönderi listen de profilini açıp aşağı kaydırdığında aynı şekilde gelir.",
+    how: "Eklenti Instagram'a kendisi hiçbir istek göndermez, yalnızca dinler. Üç ayrı aracı var. Gönderi listesi: profilini açıp aşağı kaydırdığında gönderilerini kaydeder. Beğenenler: bir gönderinin altındaki \"X beğenme\" yazısına tıkladığında listeyi Instagram'ın sayfası kendisi indirir; eklenti bu zaten inmiş listeyi okur. Yorumlar: bir gönderini açtığında yorum yapanları kaydeder. Hepsi bilgisayarındaki uygulamaya gider.",
     rulesTitle: 'Bu ne anlama geliyor',
     rules: [
       'Zamanlayıcı, otomatik okuma ya da günlük sınır yok. Sen tıklamadıkça hiçbir şey olmaz.',
@@ -322,6 +405,7 @@ const tr: GuideContent = {
       'Yalnızca kendi gönderilerinin beğenenleri ve yorumları kaydedilir. Sayfanın yüklediği başka her şeyi uygulama yok sayar.',
       "Veriler yalnızca bilgisayarında durur. InstaAnalytic sunucusu Instagram'a hiç bağlanmaz.",
       'Eklenti sadece okur: takip etmez, beğenmez, mesaj atmaz.',
+      'Her aracı ayrı ayrı kapatabilirsin. Kapalı araç hiçbir şey kaydetmez.',
       'Instagram bir uyarı gösterirse eklenti bunu fark eder ve seni uyarır. Ne yapman gerektiği hemen aşağıda.',
     ],
     warning: {
@@ -396,16 +480,16 @@ const tr: GuideContent = {
       {
         art: 'card',
         title: 'Eklentinin listede olduğunu gör',
-        text: 'Listede "InstaAnalytic Köprüsü" adında bir kart belirir. Altında sürüm numarası yazar (ör. 2.2.0). Kartın sağ altındaki anahtar açık olmalı.',
+        text: 'Listede "InstaAnalytic Köprüsü" adında bir kart belirir. Solunda uygulamanın logosu, altında sürüm numarası yazar (ör. 2.3.0). Kartın sağ altındaki anahtar açık olmalı.',
         tip: 'Kartta kırmızı bir "Hatalar" düğmesi görürsen bir şey ters gitmiş demektir. Aşağıdaki "Kurulum çalışmadıysa" listesine bak.',
-        alt: 'Uzantılar sayfasında InstaAnalytic Köprüsü 2.2.0 kartı işaretli. Yanında, kırmızı "Hatalar" düğmesinin bir sorun anlamına geldiği gösteriliyor.',
+        alt: 'Uzantılar sayfasında InstaAnalytic Köprüsü 2.3.0 kartı işaretli; solunda uygulamanın logosu var. Yanında, kırmızı "Hatalar" düğmesinin bir sorun anlamına geldiği gösteriliyor.',
         caption: 'Kart göründüyse eklenti yüklendi.',
       },
       {
         art: 'pin',
         title: 'Eklentiyi araç çubuğuna sabitle',
-        text: "Adres çubuğunun sağındaki yapboz parçası simgesine (Uzantılar) tıkla. Açılan listede InstaAnalytic Köprüsü'nün yanındaki raptiyeye bas. Eklentinin simgesi artık hep görünür.",
-        alt: 'Chrome araç çubuğundaki yapboz parçası simgesi işaretli. Açılan Uzantılar listesinde InstaAnalytic Köprüsü satırındaki raptiye simgesi işaretli.',
+        text: "Adres çubuğunun sağındaki yapboz parçası simgesine (Uzantılar) tıkla. Açılan listede InstaAnalytic Köprüsü'nün yanındaki raptiyeye bas. Eklentinin simgesi artık hep görünür. Simge uygulamanın logosu: turuncu bir kare içinde yükselen üç beyaz çubuk.",
+        alt: 'Chrome araç çubuğundaki yapboz parçası simgesi işaretli. Açılan Uzantılar listesinde, InstaAnalytic logosunun yanındaki InstaAnalytic Köprüsü satırında raptiye simgesi işaretli.',
         caption: 'Önce yapboz parçası, sonra raptiye.',
       },
       {
@@ -418,11 +502,11 @@ const tr: GuideContent = {
       },
       {
         art: 'popup',
-        title: 'Eklentiyi aç ve kaydı başlat',
-        text: 'Araç çubuğundaki eklenti simgesine tıkla. Küçük bir pencere açılır; üstünde Durum, Ayarlar ve Güncelleme sekmeleri var. Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarını aç. Sonra Ayarlar sekmesine geç: Profil satırında kendi profilin yazmalı. Yazmıyorsa "Değiştir"e bas ve seç.',
-        tip: 'Eklenti kendi başına hiçbir şey okumaz. Yalnızca sen Instagram\'da gezinirken dinler. Nasıl kullanılacağı bir sonraki bölümde.',
-        alt: 'Eklenti penceresi, Durum sekmesi açık. Araç çubuğundaki eklenti simgesi, "Gezinirken beğenenleri kaydet" anahtarı ve Ayarlar sekmesi sırayla işaretli. Durum satırında yeşil nokta ve "Dinliyor" yazıyor.',
-        caption: 'Simge, anahtar, sonra Ayarlar sekmesinde profil.',
+        title: 'Eklentiyi aç ve köprüyü başlat',
+        text: 'Eklenti simgesine tıkla, sağ üstteki anahtarı aç; Ayarlar sekmesinden profilini kontrol et. Pencerenin üstünde Araçlar, Ayarlar ve Güncelleme sekmeleri var. Ayarlar sekmesindeki Profil satırında kendi profilin yazmalı. Yazmıyorsa "Değiştir"e bas ve seç.',
+        tip: 'Eklenti kendi başına hiçbir şey okumaz. Araçlar sekmesindeki üç kart üç ayrı iş yapar: Gönderi listesi, Beğenenler ve Yorumlar. Nasıl kullanılacakları bir sonraki bölümde.',
+        alt: 'Eklenti penceresi, Araçlar sekmesi açık. Araç çubuğundaki eklenti simgesi, pencerenin sağ üstündeki anahtar ve Ayarlar sekmesi sırayla işaretli. Altta Gönderi listesi, Beğenenler ve Yorumlar kartları duruyor; durum kutusunda yeşil nokta ve "Dinliyor." yazıyor.',
+        caption: 'Simge, sağ üstteki anahtar, sonra Ayarlar sekmesinde profil.',
       },
       {
         art: 'connected',
@@ -457,7 +541,7 @@ const tr: GuideContent = {
       cancel: 'İptal',
       folderContents: 'içinde: manifest.json, popup.html…',
       extName: 'InstaAnalytic Köprüsü',
-      extVersion: '2.2.0',
+      extVersion: '2.3.0',
       details: 'Ayrıntılar',
       remove: 'Kaldır',
       errors: 'Hatalar',
@@ -466,40 +550,15 @@ const tr: GuideContent = {
       reloadOr: 'ya da',
       reloadWin: 'Windows',
       reloadMac: 'Mac',
-      popupTabStatus: 'Durum',
-      popupTabSettings: 'Ayarlar',
-      popupTabUpdate: 'Güncelleme',
-      popupToggle: 'Gezinirken beğenenleri kaydet',
-      popupNote: "Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda, sayfanın zaten indirdiği listeyi kaydeder.",
-      popupStatus: 'Dinliyor',
-      popupToday: 'Bugün',
-      popupTodayValue: '3 gönderi, 214 kişi',
-      popupLast: 'Son kayıt',
-      popupLastValue: '14:32',
-      popupProfile: 'Profil',
-      popupProfileValue: '@gktuoktay',
-      popupChange: 'Değiştir',
-      popupAppUrl: 'Uygulama adresi',
-      popupAppUrlValue: 'http://localhost:3002',
-      popupOpenApp: 'Uygulamayı aç',
-      popupInstalled: 'Yüklü sürüm',
-      popupAppVersion: 'Uygulamadaki sürüm',
-      popupVersionValue: '2.2.0',
-      popupNewVersionValue: '2.3.0',
-      popupUpToDate: 'Güncel',
-      popupManual: 'Yeni sürüm var, elle kurulum gerekiyor',
-      popupManualNote: 'Yeni sürüm var (2.3.0). Bu kopya kendiliğinden güncellenemiyor.',
-      popupCheckNow: 'Şimdi denetle',
+      ...POPUP,
       settingsHeading: 'Ayarlar',
       bridgeTitle: 'Tarayıcı köprüsü',
       bridgeConnected: 'Dinliyor',
       bridgeDesc: 'Instagram\'da açtığın beğenen listelerini kaydeder.',
-      bridgeFound: '24 gönderi bulundu',
-      bridgeProgress: '7 / 24 gönderi okundu',
-      bridgeQueue: 'Okunacak gönderiler',
-      bridgeOpenIg: "Instagram'da aç",
+      bridgeFound: '50 gönderi bulundu',
+      bridgeProgress: '12 / 50 gönderi okundu',
       igHandle: 'gktuoktay',
-      igStats: '24 gönderi · 858 takipçi · 412 takip',
+      igStats: '50 gönderi · 858 takipçi · 412 takip',
       igLikes: '214 beğenme',
       igLikersTitle: 'Beğenmeler',
       scrollToEnd: 'Sona kadar kaydır',
@@ -527,7 +586,7 @@ const tr: GuideContent = {
       { term: 'Eklenti simgesi araç çubuğunda yok.', text: "Yapboz parçası simgesine tıkla ve InstaAnalytic Köprüsü'nün yanındaki raptiyeye bas." },
       {
         term: 'Kart hâlâ "Eklenti henüz bağlanmadı" diyor.',
-        text: 'Eklenti penceresinde anahtar açık mı, profil seçili mi? Instagram sekmesini bir kez yenile, sonra uygulama sayfasını da yenile.',
+        text: 'Eklenti penceresinde sağ üstteki anahtar açık mı, profil seçili mi? Instagram sekmesini bir kez yenile, sonra uygulama sayfasını da yenile.',
       },
       {
         term: 'Kartta "Eklentin güncel değil" yazıyor.',
@@ -554,77 +613,125 @@ const tr: GuideContent = {
         { text: 'Açık Instagram sekmesini bir kez yenile. Bu kadar.' },
       ],
       tip: 'Hemen bakmak istersen eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. İki sürüm aynıysa "Güncel" yazar.',
-      alt: 'Eklenti penceresi, Güncelleme sekmesi açık. Yüklü sürüm 2.2.0, Uygulamadaki sürüm 2.2.0; durum satırında yeşil nokta ve "Güncel" yazıyor. Güncelleme sekmesi ve "Şimdi denetle" düğmesi sırayla işaretli.',
+      alt: 'Eklenti penceresi, Güncelleme sekmesi açık. Yüklü sürüm 2.3.0, Uygulamadaki sürüm 2.3.0; durum satırında yeşil nokta ve "Güncel" yazıyor. Güncelleme sekmesi ve "Şimdi denetle" düğmesi sırayla işaretli.',
       caption: 'Güncelleme sekmesi: sürümler aynıysa "Güncel".',
       fixTitle: 'Eklentiyi zip dosyasından kurduysan (bir kez yapılır)',
       fixIntro: 'İndirilmiş bir zip kopyası kendiliğinden güncellenemez. Yeni sürüm çıkınca eklenti bunu fark eder: simgesinde turuncu bir "↑" belirir, Güncelleme sekmesinde "Yeni sürüm var (X). Bu kopya kendiliğinden güncellenemiyor." yazar. Uygulamadaki Tarayıcı köprüsü kartında da "Eklentin güncel değil" yazar. Şunu bir kez yap, sonraki güncellemeler kendiliğinden gelir:',
       fixSteps: [
         { text: 'chrome://extensions sayfasını aç. "InstaAnalytic Köprüsü" kartında "Kaldır"a bas. Kaydettiğin beğenenler uygulamada durur, silinmez. Instagram uyarısı sürüyorsa bunu yapma; önce bekleme süresi dolsun.' },
         { text: '"Paketlenmemiş öğe yükle"ye bas ve InstaAnalytic/frontend/extension klasörünü seç (içinde manifest.json olan).', link: { to: '#kurulum-1', label: 'Kurulum adımları' } },
-        { text: 'Eklenti penceresini aç. Ayarlar sekmesinde profilini kontrol et, Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarını aç.' },
+        { text: 'Eklenti penceresini aç. Sağ üstteki anahtarı aç, Ayarlar sekmesinde profilini kontrol et.' },
         { text: 'Açık Instagram sekmesini bir kez yenile. İndirdiğin eski klasörü artık silebilirsin.' },
       ],
-      fixAlt: 'Eklenti penceresi, Güncelleme sekmesi açık. Araç çubuğundaki eklenti simgesinde turuncu bir "↑" var. Durum satırında turuncu nokta ve "Yeni sürüm var, elle kurulum gerekiyor" yazıyor; altında "Bu kopya kendiliğinden güncellenemiyor." notu var. Simge ve durum satırı sırayla işaretli.',
+      fixAlt: 'Eklenti penceresi, Güncelleme sekmesi açık. Araç çubuğundaki eklenti simgesinde turuncu bir "↑" var. Pencerenin durum satırında turuncu nokta ve "Yeni sürüm var, elle kurulum gerekiyor" yazıyor; altında "Bu kopya kendiliğinden güncellenemiyor." notu var. Simge ve durum satırı sırayla işaretli.',
       fixCaption: 'Turuncu "↑": bu kopya bir kez uygulama klasöründen yeniden yüklenmeli.',
     },
   },
 
   use: {
-    intro: 'Kurulumdan sonra eklenti kendi başına hiçbir şey yapmaz. Sen kendi gönderilerini açtıkça kaydeder. Bir gönderi için yaklaşık yarım dakika yeter.',
-    stepsTitle: 'Adım adım',
+    intro: "Eklenti üç ayrı iş yapar. Her biri eklenti penceresinin Araçlar sekmesinde kendi kartında durur: Gönderi listesi, Beğenenler ve Yorumlar. Hiçbiri kendi başına çalışmaz. Sen Instagram'da gezerken, sayfanın zaten indirdiği bilgiyi kaydeder.",
+    stepsTitle: 'Önce: pencereyi aç',
     steps: [
       {
         art: 'useToggle',
-        title: 'Eklentiyi aç',
-        text: 'Araç çubuğundaki eklenti simgesine tıkla. Durum sekmesinde "Gezinirken beğenenleri kaydet" anahtarı açık olsun. Durum satırında yeşil nokta ve "Dinliyor" görünür. Profilin doğru mu, Ayarlar sekmesinden bakabilirsin.',
-        alt: 'Eklenti penceresi, Durum sekmesi açık. "Gezinirken beğenenleri kaydet" anahtarı, yeşil noktalı "Dinliyor" durum satırı ve Ayarlar sekmesi sırayla işaretli.',
-        caption: 'Anahtar açık, durum "Dinliyor", profil Ayarlar\'da.',
-      },
-      {
-        art: 'useProfile',
-        title: 'Profilini aç ve sonuna kadar kaydır',
-        text: "instagram.com'da kendi profilini aç. Gönderilerinin sonuna gelene kadar bir kez aşağı kaydır. Gönderilerin uygulamaya gelir: Ayarlar ya da Gözden çıkar sayfasındaki \"Tarayıcı köprüsü\" kartında \"N gönderi bulundu\" yazar.",
-        tip: 'Bunu ilk seferde yap. Sonra yeni bir gönderi paylaştığında profilini bir kez daha açman yeter.',
-        alt: 'Instagram profil sayfası, gönderi kutucukları görünüyor. Sağda aşağı doğru bir ok ve "Sona kadar kaydır" yazısı işaretli. Altında uygulamanın Tarayıcı köprüsü kartında "24 gönderi bulundu" yazısı işaretli.',
-        caption: 'Profilini sona kadar kaydır, gönderiler uygulamaya gelsin.',
-      },
-      {
-        art: 'useOpenPost',
-        title: 'Bir gönderiyi aç',
-        text: 'Profilindeki gönderi kutucuklarından birine tıkla. Gönderiye site içinden tıklayarak gitmek en iyi sonucu verir. Gönderi açılınca yorumları da kaydedilir.',
-        alt: 'Instagram profil sayfası. Gönderi kutucuklarından ortadaki işaretli, üzerinde fare imleci ve "tıkla" yazısı var.',
-        caption: 'Profilinden bir gönderiye tıkla.',
-      },
-      {
-        art: 'useLikes',
-        title: 'Beğenenleri aç ve en alta kadar kaydır',
-        text: 'Fotoğrafın altındaki "X beğenme" yazısına (bazı hesaplarda "beğenenler") tıkla. Bir liste açılır. Listeyi en alta kadar kaydır ki tamamı yüklensin.',
-        tip: 'Instagram uzun listeleri parça parça yükler. En alta inmezsen yalnızca ilk kısım kaydedilir.',
-        alt: 'Açık bir Instagram gönderisi. Fotoğrafın altındaki "214 beğenme" yazısı işaretli. Yanında açılan Beğenmeler listesi ve altındaki "En alta kadar kaydır" yazısı işaretli.',
-        caption: '"214 beğenme"ye tıkla, listeyi en alta kadar kaydır.',
-      },
-      {
-        art: 'useNext',
-        title: 'Kapat ve sıradaki gönderiye geç',
-        text: 'Listeyi kapat ve sıradaki gönderiyi aç. Uygulamadaki "Tarayıcı köprüsü" kartında "Okunacak gönderiler" başlığı altında henüz okunmamış gönderilerin küçük resimleri ve "Instagram\'da aç" bağlantıları durur. Her gönderiden sonra ilerleme çubuğu biraz dolar.',
-        link: { to: '/cleanup', label: 'Gözden çıkar' },
-        alt: 'Uygulamanın Tarayıcı köprüsü kartı. "Okunacak gönderiler" altında dört küçük gönderi resmi ve her birinin altında "Instagram\'da aç" bağlantısı var; ilk bağlantı ve "7 / 24 gönderi okundu" ilerleme çubuğu işaretli.',
-        caption: 'Sıradaki gönderiye geç, çubuk dolsun.',
+        title: 'Eklenti penceresini aç',
+        text: 'Araç çubuğundaki eklenti simgesine tıkla. Sağ üstteki anahtar açık olsun. Araçlar sekmesinde üç kart görürsün; her biri ayrı bir iş. Altta durum kutusunda yeşil nokta ve "Dinliyor." yazar.',
+        alt: 'Eklenti penceresi, Araçlar sekmesi açık. Sağ üstteki anahtar, altındaki üç araç kartı (Gönderi listesi, Beğenenler, Yorumlar) ve yeşil noktalı "Dinliyor." durumu sırayla işaretli.',
+        caption: 'Sağ üstteki anahtar açık; altında üç ayrı araç.',
       },
     ],
-    tipTitle: 'Acele etme',
-    tip: 'Bir oturumda 5–10 gönderi yeter. Gerisini birkaç güne yay. Bunu normal bir insan hızında yapmak işin bütün amacı.',
+    toolsTitle: 'Üç araç, üç ayrı iş',
+    toolsIntro: 'Sırayla git: önce gönderi listesi, sonra beğenenler. Yorumlar kendiliğinden gelir.',
+    toolLabel: 'Araç',
+    tools: [
+      {
+        id: 'posts',
+        title: 'Gönderi listesi',
+        what: 'Gönderilerini tarih, beğeni ve yorum sayısıyla kaydeder. Beğenenler aracı bu listeye dayanır, o yüzden önce bunu yap.',
+        steps: [
+          {
+            art: 'postsOpen',
+            title: '"Profilimi aç"a bas',
+            text: 'Eklenti penceresinde "Gönderi listesi" kartındaki "Profilimi aç"a bas. Instagram profilin yeni bir sekmede açılır. İstersen profilini kendin de açabilirsin.',
+            alt: 'Eklenti penceresindeki Gönderi listesi kartı: simge, başlık, açıklama, küçük anahtar ve "50 gönderi bulundu" yazısı. Kartın sağ altındaki "Profilimi aç" düğmesi işaretli.',
+            caption: '"Profilimi aç" profilini yeni sekmede açar.',
+          },
+          {
+            art: 'useProfile',
+            title: 'Sonuna kadar bir kez kaydır',
+            text: 'Profilinde gönderilerinin sonuna gelene kadar aşağı kaydır. Kartta "N gönderi bulundu" yazar. Bunu bir kez yapman yeter. Yeni bir gönderi paylaşınca tekrarla.',
+            alt: 'Instagram profil sayfası, gönderi kutucukları görünüyor. Sağda aşağı doğru bir ok ve "Sona kadar kaydır" yazısı işaretli. Altında eklentinin Gönderi listesi kartında "50 gönderi bulundu" yazısı işaretli.',
+            caption: 'Sona kadar kaydır: "50 gönderi bulundu".',
+          },
+        ],
+      },
+      {
+        id: 'likers',
+        title: 'Beğenenler',
+        what: 'Gönderilerini kimin beğendiğini kaydeder. Her gönderi için bir kez yapılır. Kartta kaç gönderinin okunduğu yazar.',
+        steps: [
+          {
+            art: 'likersNext',
+            title: '"Sıradaki gönderiyi aç"a bas',
+            text: 'Eklenti penceresinde "Beğenenler" kartındaki "Sıradaki gönderiyi aç"a bas. Beğenenleri henüz okunmamış ilk gönderin yeni bir sekmede açılır.',
+            alt: 'Eklenti penceresindeki Beğenenler kartı: ilerleme çubuğu ve "12 / 50 gönderi okundu" yazısı. Kartın sağ altındaki "Sıradaki gönderiyi aç" düğmesi işaretli.',
+            caption: 'Okunmamış sıradaki gönderi yeni sekmede açılır.',
+          },
+          {
+            art: 'useLikes',
+            title: 'Beğenme sayısına tıkla, listeyi sona kadar kaydır',
+            text: 'Gönderide fotoğrafın altındaki "X beğenme" yazısına tıkla (bazı hesaplarda "beğenenler" yazar). Bir liste açılır. Listeyi en alta kadar kaydır ki tamamı yüklensin.',
+            tip: 'Instagram uzun listeleri parça parça yükler. En alta inmezsen yalnızca ilk kısım kaydedilir.',
+            alt: 'Açık bir Instagram gönderisi. Fotoğrafın altındaki "214 beğenme" yazısı işaretli. Yanında açılan Beğenmeler listesi ve altındaki "En alta kadar kaydır" yazısı işaretli.',
+            caption: '"214 beğenme"ye tıkla, listeyi en alta kadar kaydır.',
+          },
+          {
+            art: 'likersProgress',
+            title: 'Kapat ve tekrarla',
+            text: 'Listeyi ve sekmeyi kapat. Kartta çubuk biraz dolar, okunan gönderi sayısı bir artar. Sonra yine "Sıradaki gönderiyi aç"a bas. Hepsi bitince düğmede "Hepsi okundu" yazar.',
+            alt: 'Eklenti penceresindeki Beğenenler kartı. Önce ilerleme çubuğu, sonra "Sıradaki gönderiyi aç" düğmesi işaretli.',
+            caption: 'Çubuk dolar; sıradaki gönderiye geç.',
+          },
+        ],
+        tip: { title: 'Acele etme', text: 'Bir oturumda 5–10 gönderi yeter. Gerisini birkaç güne yay. Bunu normal bir insan hızında yapmak işin bütün amacı.' },
+      },
+      {
+        id: 'comments',
+        title: 'Yorumlar',
+        what: 'Gönderilerine kimin yorum yaptığını kaydeder. Ayrıca bir şey yapman gerekmez.',
+        steps: [
+          {
+            art: 'comments',
+            title: 'Bir gönderini aç, yeter',
+            text: 'Kendi gönderilerinden birini aç. Yorumlar sayfayla birlikte zaten yüklenir; eklenti yorum yapanları kendiliğinden kaydeder. Beğenenler için gönderi açtığında yorumlar da kaydedilir.',
+            alt: 'Açık bir Instagram gönderisi. Sağdaki yorumlar işaretli. Yanında eklentinin Yorumlar kartında "9 gönderinin yorumları kaydedildi" yazısı işaretli.',
+            caption: 'Gönderiyi açınca yorum yapanlar kaydedilir.',
+          },
+        ],
+      },
+    ],
+    off: {
+      title: 'Bir aracı kapatmak',
+      text: 'Her kartın kendi küçük anahtarı var. Kapattığın araç soluk görünür ve hiçbir şey kaydetmez; uygulama yalnızca açık araçların verisini saklar. Örneğin yorumları istemiyorsan Yorumlar\'ı kapat. Sağ üstteki büyük anahtar hepsini birden kapatır. O zaman durum kutusunda "Köprü kapalı. Sağ üstteki anahtarla açın." yazar.',
+      alt: 'Eklenti penceresi, Araçlar sekmesi. Yorumlar kartı kapalı ve soluk; kartın küçük anahtarı işaretli. Sağ üstteki büyük anahtar ikinci olarak işaretli.',
+      caption: 'Kapalı araç soluk görünür ve hiçbir şey kaydetmez.',
+    },
     troubleTitle: 'Kayıt olmuyorsa',
     trouble: [
       {
-        term: 'Kartta gönderi görünmüyor.',
-        text: "instagram.com'da kendi profilini aç ve gönderilerinin sonuna kadar aşağı kaydır. Eklenti penceresinde anahtar açık mı, bak. Kurulumdan ya da güncellemeden sonra Instagram sekmesini bir kez yenile.",
+        term: 'Gönderi listesi kartında "Henüz gönderi yok" yazıyor.',
+        text: '"Profilimi aç"a bas ve gönderilerinin sonuna kadar aşağı kaydır. Sağ üstteki anahtar ve kartın kendi anahtarı açık olmalı. Kurulumdan ya da güncellemeden sonra Instagram sekmesini bir kez yenile.',
+      },
+      {
+        term: 'Beğenenler kartında "Önce gönderi listesi gerekli" yazıyor.',
+        text: 'Beğenenler aracı gönderi listene dayanır. Önce Gönderi listesi adımlarını yap.',
       },
       {
         term: 'Beğenenler kaydedilmiyor.',
-        text: 'Gönderiyi profilindeki kutucuğa tıklayarak aç, sonra fotoğrafın altındaki "X beğenme" yazısına tıkla. Eklenti penceresinde anahtar açık olmalı. Kurulumdan ya da güncellemeden sonra Instagram sekmesini bir kez yenile.',
+        text: '"Sıradaki gönderiyi aç"a bas, sonra fotoğrafın altındaki "X beğenme" yazısına tıkla. Beğenenler kartının anahtarı açık olmalı. Kurulumdan ya da güncellemeden sonra Instagram sekmesini bir kez yenile.',
       },
       { term: 'Bazı beğenenler eksik.', text: 'Liste en alta kadar kaydırılmamış. Gönderiyi yeniden aç, beğenenler listesini aç ve en alta kadar kaydır.' },
+      { term: 'Yorumlar kaydedilmiyor.', text: 'Yorumlar kartının anahtarı açık mı, bak. Kapalı bir araç hiçbir şey kaydetmez.' },
       {
         term: "Kartta \"Instagram'da @… açık\" yazıyor.",
         text: "Chrome'da başka bir Instagram hesabı açık. O hesapta gezinirken hiçbir şey kaydedilmez. Instagram'da bu profilin hesabına geç ya da eklenti penceresinden doğru profili seç.",
@@ -632,7 +739,7 @@ const tr: GuideContent = {
       { term: 'Başkasının gönderisini açtım, kaydedilmedi.', text: 'Bilerek böyle. Yalnızca kendi gönderilerinin beğenenleri ve yorumları kaydedilir.' },
     ],
     afterTitle: 'Sonrası',
-    after: 'Kaç gönderinin okunduğunu köprü kartındaki ilerleme çubuğunda ve Gönderiler sayfasında görürsün. Yeni bir gönderi paylaştığında profilini bir kez aç, sonra o gönderinin beğenenlerini aç. Bir gönderiye sonradan beğeni geldiyse listesini birkaç gün sonra yeniden açabilirsin.',
+    after: 'Kaç gönderinin okunduğunu eklenti penceresindeki Beğenenler kartında görürsün. Uygulamada da köprü kartında ve Gönderiler sayfasında yazar. Yeni bir gönderi paylaştığında "Profilimi aç" ile profilini bir kez aç, sonra "Sıradaki gönderiyi aç". Bir gönderiye sonradan beğeni geldiyse listesini birkaç gün sonra yeniden açabilirsin.',
     limitTitle: 'Açık konuşalım',
     limit: "Bu yöntem riski çok azaltır ama sıfırlamaz. Hiçbir araç sıfır risk garanti edemez. Eklenti Instagram'a istek göndermez, ama beğenen listelerini art arda ve çok hızlı açmak normal kullanım gibi görünmez. Kendi hızında, sakin ilerle.",
   },
@@ -704,8 +811,8 @@ const tr: GuideContent = {
       { term: 'Şifre', text: 'Hiçbir yerde istenmez, saklanmaz.' },
       { term: 'ZIP ile veri', text: "Instagram'a hiç istek gitmez." },
       { term: 'Beğeni kaydetme', text: "Eklenti Instagram'a hiç istek göndermez. Senin açtığın sayfanın zaten indirdiği listeyi okur. Sunucu Instagram'a bağlanmaz." },
-      { term: 'Ne zaman kaydeder', text: 'Yalnızca sen kendi gönderinin beğenenlerini ya da yorumlarını açtığında. Zamanlayıcı, otomatik okuma ve günlük sınır yok; hız senin hızın.' },
-      { term: 'Ne kaydedilmez', text: 'Başkalarının gönderileri ve sayfanın yüklediği başka her şey. Uygulama bunları yok sayar.' },
+      { term: 'Ne zaman kaydeder', text: 'Yalnızca sen kendi profilini, gönderini ya da beğenenler listesini açtığında. Zamanlayıcı, otomatik okuma ve günlük sınır yok; hız senin hızın.' },
+      { term: 'Ne kaydedilmez', text: 'Başkalarının gönderileri, kapattığın araçların verisi ve sayfanın yüklediği başka her şey. Uygulama bunları yok sayar.' },
       { term: 'Hayalet kontrolü', text: 'Oturumsuz, çerezsiz bir tarayıcıyla yapılır. Hesabınla bağlantısı yok.' },
       {
         term: 'Uyarı gelirse',
@@ -742,7 +849,7 @@ const tr: GuideContent = {
       },
       {
         term: 'Eklenti hiçbir şey kaydetmiyor.',
-        text: 'Eklenti kendi kendine okumaz. Sen kendi gönderini açıp "X beğenme" yazısına tıklayınca kaydeder. Anahtar açık mı, profil doğru mu? Kurulumdan ya da güncellemeden sonra Instagram sekmesini yeniledin mi? Durum, eklenti penceresinde yazar.',
+        text: 'Eklenti kendi kendine okumaz. Sen Instagram\'da gezerken kaydeder. Sağ üstteki anahtar ve o aracın kendi anahtarı açık mı, profil doğru mu? Kurulumdan ya da güncellemeden sonra Instagram sekmesini yeniledin mi? Eklenti penceresindeki durum kutusu ne olduğunu yazar.',
         link: { to: '#kullanim', label: 'Kullanım' },
       },
       {
@@ -827,19 +934,20 @@ const tr: GuideContent = {
           'Listede "InstaAnalytic Köprüsü" kartı var, "Hatalar" düğmesi yok',
           'Yapboz parçası → InstaAnalytic Köprüsü yanındaki raptiye',
           'Açık Instagram sekmesini bir kez yenile',
-          'Eklenti penceresinde Durum sekmesinde "Gezinirken beğenenleri kaydet"i aç, Ayarlar sekmesinde profilini kontrol et',
+          'Eklenti simgesine tıkla, sağ üstteki anahtarı aç; Ayarlar sekmesinde profilini kontrol et',
           'Ayarlar sayfasında yeşil nokta ve "Dinliyor" görünüyor',
         ],
       },
       {
-        title: '4. Beğenenleri kaydet',
+        title: '4. Eklentinin üç aracı',
         items: [
-          "Instagram'da kendi profilini aç, gönderilerin sonuna kadar kaydır",
-          'Köprü kartında "N gönderi bulundu" yazıyor',
-          'Profilinden bir gönderiye tıkla',
-          '"X beğenme" yazısına tıkla, listeyi en alta kadar kaydır',
-          'Listeyi kapat, sıradaki gönderiye geç',
-          'Bir oturumda 5–10 gönderi; gerisini birkaç güne yay',
+          'Gönderi listesi: "Profilimi aç"a bas, profilini sonuna kadar bir kez kaydır',
+          'Gönderi listesi kartında "N gönderi bulundu" yazıyor',
+          'Beğenenler: "Sıradaki gönderiyi aç"a bas',
+          'Gönderide "X beğenme" yazısına tıkla, listeyi en alta kadar kaydır, sonra kapat',
+          'Çubuk doldu; tekrarla. Bir oturumda 5–10 gönderi, gerisini birkaç güne yay',
+          'Yorumlar: ayrıca bir şey yapma; gönderiyi açınca yorum yapanlar kaydedilir',
+          'İstemediğin aracı kendi anahtarıyla kapat; kapalı araç hiçbir şey kaydetmez',
         ],
       },
       {
@@ -884,7 +992,7 @@ const en: GuideContent = {
     start: 'Getting started',
     zip: 'Add your data (ZIP)',
     bridge: 'Install the bridge',
-    use: 'Save likers',
+    use: 'Use the extension',
     results: 'Reading the results',
     safety: 'Safety and limits',
     faq: 'FAQ and troubleshooting',
@@ -905,8 +1013,8 @@ const en: GuideContent = {
         link: { to: '#zip', label: 'How to get the ZIP' },
       },
       {
-        title: 'Save likers (optional)',
-        text: 'The ZIP does not say who liked your posts. For that, install the Browser bridge extension in Chrome. Then open your own post on Instagram and click its likes list. The extension saves the list the page has already downloaded.',
+        title: 'Save likers and comments (optional)',
+        text: 'The ZIP does not say who liked or commented on your posts. For that, install the Browser bridge extension in Chrome. It has three separate tools: Gönderi listesi (post list), Beğenenler (likers) and Yorumlar (comments). Each one saves what the page has already downloaded while you browse Instagram.',
         link: { to: '#kullanim', label: 'How to save them' },
       },
       {
@@ -954,7 +1062,7 @@ const en: GuideContent = {
   bridge: {
     intro: 'The Browser bridge is a Chrome extension. It saves who liked and who commented on your own posts.',
     howTitle: 'How it works',
-    how: 'The extension never sends a request to Instagram itself. It only listens. When you open your own post in your own Chrome and click the "X likes" count under the photo, Instagram\'s page downloads the likers list by itself. The extension reads that list, already downloaded, and saves it to the app on your computer. Comments arrive the same way when you open a post, and your post list when you open your profile and scroll down.',
+    how: 'The extension never sends a request to Instagram itself. It only listens. It has three separate tools. Gönderi listesi (post list): saves your posts when you open your profile and scroll down. Beğenenler (likers): when you click the "X likes" count under a post, Instagram\'s page downloads the list by itself; the extension reads that list, already downloaded. Yorumlar (comments): saves the commenters when you open one of your posts. Everything goes to the app on your computer.',
     rulesTitle: 'What this means',
     rules: [
       'No timers, no automatic reading, no daily cap. Nothing happens unless you click.',
@@ -963,6 +1071,7 @@ const en: GuideContent = {
       'Only the likers and comments of your own posts are saved. The app ignores anything else the page loads.',
       'The data stays on your computer. The InstaAnalytic server never connects to Instagram.',
       'It only reads: it never follows, likes or sends messages.',
+      'You can turn each tool off on its own. A tool that is off saves nothing.',
       'If Instagram shows a warning, the extension notices and tells you. What to do is right below.',
     ],
     warning: {
@@ -1037,16 +1146,16 @@ const en: GuideContent = {
       {
         art: 'card',
         title: 'Check that it is in the list',
-        text: 'A card named "InstaAnalytic Köprüsü" appears in the list, with a version number under it (for example 2.2.0). The switch at the bottom right of the card should be on.',
+        text: 'A card named "InstaAnalytic Köprüsü" appears in the list, with the app logo on its left and a version number under it (for example 2.3.0). The switch at the bottom right of the card should be on.',
         tip: 'If the card shows a red "Errors" button, something went wrong. See "If the install did not work" below.',
-        alt: 'The InstaAnalytic Köprüsü 2.2.0 card on the Extensions page is marked. Next to it, a red "Errors" button is shown as a sign of trouble.',
+        alt: 'The InstaAnalytic Köprüsü 2.3.0 card on the Extensions page is marked, with the app logo on its left. Next to it, a red "Errors" button is shown as a sign of trouble.',
         caption: 'If the card is there, it is installed.',
       },
       {
         art: 'pin',
         title: 'Pin it to the toolbar',
-        text: 'Click the puzzle-piece icon (Extensions) to the right of the address bar. In the list, press the pin next to InstaAnalytic Köprüsü. Its icon now stays visible.',
-        alt: 'The puzzle-piece icon in the Chrome toolbar is marked. In the Extensions list that opens, the pin icon on the InstaAnalytic Köprüsü row is marked.',
+        text: 'Click the puzzle-piece icon (Extensions) to the right of the address bar. In the list, press the pin next to InstaAnalytic Köprüsü. Its icon now stays visible. The icon is the app logo: three rising white bars on an orange square.',
+        alt: 'The puzzle-piece icon in the Chrome toolbar is marked. In the Extensions list that opens, the pin icon on the InstaAnalytic Köprüsü row, next to the InstaAnalytic logo, is marked.',
         caption: 'Puzzle piece first, then the pin.',
       },
       {
@@ -1059,11 +1168,11 @@ const en: GuideContent = {
       },
       {
         art: 'popup',
-        title: 'Open the extension and start saving',
-        text: 'Click the extension icon in the toolbar. A small window opens with three tabs at the top: Durum (status), Ayarlar (settings) and Güncelleme (update). On the Durum tab, turn on the "Gezinirken beğenenleri kaydet" (save likers while browsing) switch. Then go to the Ayarlar tab: the Profil row should show your profile. If not, press "Değiştir" (change) and pick it.',
-        tip: 'The extension reads nothing on its own. It only listens while you browse Instagram. The next section shows how to use it.',
-        alt: 'The extension popup with the Durum tab open. The extension icon in the toolbar, the "Gezinirken beğenenleri kaydet" switch and the Ayarlar tab are marked in order. The status line shows a green dot and "Dinliyor".',
-        caption: 'Icon, switch, then your profile on the Ayarlar tab.',
+        title: 'Open the extension and turn on the bridge',
+        text: 'Click the extension icon, turn on the switch at the top right; check your profile on the Ayarlar (settings) tab. The popup has three tabs at the top: Araçlar (tools), Ayarlar and Güncelleme (update). On the Ayarlar tab, the Profil row should show your profile. If not, press "Değiştir" (change) and pick it.',
+        tip: 'The extension reads nothing on its own. The three cards on the Araçlar tab do three separate jobs: Gönderi listesi (post list), Beğenenler (likers) and Yorumlar (comments). The next section shows how to use them.',
+        alt: 'The extension popup with the Araçlar tab open. The extension icon in the toolbar, the switch at the top right of the popup and the Ayarlar tab are marked in order. Below are the Gönderi listesi, Beğenenler and Yorumlar cards; the status box shows a green dot and "Dinliyor.".',
+        caption: 'Icon, the switch at the top right, then your profile on the Ayarlar tab.',
       },
       {
         art: 'connected',
@@ -1098,7 +1207,7 @@ const en: GuideContent = {
       cancel: 'Cancel',
       folderContents: 'inside: manifest.json, popup.html…',
       extName: 'InstaAnalytic Köprüsü',
-      extVersion: '2.2.0',
+      extVersion: '2.3.0',
       details: 'Details',
       remove: 'Remove',
       errors: 'Errors',
@@ -1108,40 +1217,15 @@ const en: GuideContent = {
       reloadWin: 'Windows',
       reloadMac: 'Mac',
       // Eklenti penceresi yalnızca Türkçe; resim gerçeğiyle aynı kalsın.
-      popupTabStatus: 'Durum',
-      popupTabSettings: 'Ayarlar',
-      popupTabUpdate: 'Güncelleme',
-      popupToggle: 'Gezinirken beğenenleri kaydet',
-      popupNote: "Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda, sayfanın zaten indirdiği listeyi kaydeder.",
-      popupStatus: 'Dinliyor',
-      popupToday: 'Bugün',
-      popupTodayValue: '3 gönderi, 214 kişi',
-      popupLast: 'Son kayıt',
-      popupLastValue: '14:32',
-      popupProfile: 'Profil',
-      popupProfileValue: '@gktuoktay',
-      popupChange: 'Değiştir',
-      popupAppUrl: 'Uygulama adresi',
-      popupAppUrlValue: 'http://localhost:3002',
-      popupOpenApp: 'Uygulamayı aç',
-      popupInstalled: 'Yüklü sürüm',
-      popupAppVersion: 'Uygulamadaki sürüm',
-      popupVersionValue: '2.2.0',
-      popupNewVersionValue: '2.3.0',
-      popupUpToDate: 'Güncel',
-      popupManual: 'Yeni sürüm var, elle kurulum gerekiyor',
-      popupManualNote: 'Yeni sürüm var (2.3.0). Bu kopya kendiliğinden güncellenemiyor.',
-      popupCheckNow: 'Şimdi denetle',
+      ...POPUP,
       settingsHeading: 'Settings',
       bridgeTitle: 'Browser bridge',
       bridgeConnected: 'Listening',
       bridgeDesc: 'Saves the likers lists you open on Instagram.',
-      bridgeFound: '24 posts found',
-      bridgeProgress: '7 / 24 posts read',
-      bridgeQueue: 'Posts to read',
-      bridgeOpenIg: 'Open in Instagram',
+      bridgeFound: '50 posts found',
+      bridgeProgress: '12 / 50 posts read',
       igHandle: 'gktuoktay',
-      igStats: '24 posts · 858 followers · 412 following',
+      igStats: '50 posts · 858 followers · 412 following',
       igLikes: '214 likes',
       igLikersTitle: 'Likes',
       scrollToEnd: 'Scroll to the end',
@@ -1167,7 +1251,7 @@ const en: GuideContent = {
       { term: 'The popup says "Uygulama kapalı" (app is closed).', text: 'InstaAnalytic is not running. Start the app. The extension reconnects on its own within a few minutes.' },
       { term: 'The extension card has a red "Errors" button.', text: 'Press it and read the message. Usually the wrong folder was picked. Remove the extension and load the right folder again.' },
       { term: 'The extension icon is not in the toolbar.', text: 'Click the puzzle-piece icon and press the pin next to InstaAnalytic Köprüsü.' },
-      { term: 'The card still says the extension has not connected.', text: 'Is the switch in the popup on and a profile picked? Reload the Instagram tab once, then reload the app page too.' },
+      { term: 'The card still says the extension has not connected.', text: 'Is the switch at the top right of the popup on and a profile picked? Reload the Instagram tab once, then reload the app page too.' },
       {
         term: 'The card says "Eklentin güncel değil" (your extension is out of date).',
         text: 'The extension updates itself within a few hours. If you do not want to wait, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, see the next row.',
@@ -1193,14 +1277,14 @@ const en: GuideContent = {
         { text: 'Reload the open Instagram tab once. That is all.' },
       ],
       tip: 'To check right away, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If both versions match, it says "Güncel" (up to date).',
-      alt: 'The extension popup with the Güncelleme tab open. Yüklü sürüm (installed) 2.2.0, Uygulamadaki sürüm (in the app) 2.2.0; the status line shows a green dot and "Güncel". The Güncelleme tab and the "Şimdi denetle" button are marked in order.',
+      alt: 'The extension popup with the Güncelleme tab open. Yüklü sürüm (installed) 2.3.0, Uygulamadaki sürüm (in the app) 2.3.0; the status line shows a green dot and "Güncel". The Güncelleme tab and the "Şimdi denetle" button are marked in order.',
       caption: 'The Güncelleme tab: matching versions mean "Güncel".',
       fixTitle: 'If you installed it from a zip file (done once)',
       fixIntro: 'A downloaded zip copy cannot update itself. When a new version comes out, the extension notices: an orange "↑" appears on its icon, and the Güncelleme tab says "Yeni sürüm var (X). Bu kopya kendiliğinden güncellenemiyor." (a new version exists; this copy cannot update itself). The Browser bridge card in the app also says your extension is out of date. Do this once, and later updates arrive on their own:',
       fixSteps: [
         { text: 'Open chrome://extensions. On the "InstaAnalytic Köprüsü" card, press "Remove". The likers you saved stay in the app; nothing is deleted. Do not do this while an Instagram warning is active; wait until it is over.' },
         { text: 'Press "Load unpacked" and pick the InstaAnalytic/frontend/extension folder (the one with manifest.json).', link: { to: '#kurulum-1', label: 'Install steps' } },
-        { text: 'Open the popup. Check your profile on the Ayarlar tab and turn on "Gezinirken beğenenleri kaydet" on the Durum tab.' },
+        { text: 'Open the popup. Turn on the switch at the top right and check your profile on the Ayarlar (settings) tab.' },
         { text: 'Reload the open Instagram tab once. You can delete the old downloaded folder now.' },
       ],
       fixAlt: 'The extension popup with the Güncelleme tab open. The extension icon in the toolbar has an orange "↑". The status line shows an orange dot and "Yeni sürüm var, elle kurulum gerekiyor", with the note "Bu kopya kendiliğinden güncellenemiyor." under it. The icon and the status line are marked in order.',
@@ -1209,61 +1293,109 @@ const en: GuideContent = {
   },
 
   use: {
-    intro: 'After the install the extension does nothing on its own. It saves as you open your own posts. About half a minute per post is enough.',
-    stepsTitle: 'Step by step',
+    intro: 'The extension does three separate jobs. Each one has its own card on the Araçlar (tools) tab of the extension popup: Gönderi listesi (post list), Beğenenler (likers) and Yorumlar (comments). None of them runs on its own. While you browse Instagram, they save what the page has already downloaded.',
+    stepsTitle: 'First: open the popup',
     steps: [
       {
         art: 'useToggle',
-        title: 'Turn the extension on',
-        text: 'Click the extension icon in the toolbar. On the Durum tab, the "Gezinirken beğenenleri kaydet" (save likers while browsing) switch should be on. The status line shows a green dot and "Dinliyor" (listening). You can check your profile on the Ayarlar tab.',
-        alt: 'The extension popup with the Durum tab open. The "Gezinirken beğenenleri kaydet" switch, the status line with a green dot and "Dinliyor", and the Ayarlar tab are marked in order.',
-        caption: 'Switch on, status "Dinliyor", profile on Ayarlar.',
-      },
-      {
-        art: 'useProfile',
-        title: 'Open your profile and scroll to the end',
-        text: 'Open your own profile on instagram.com. Scroll down once until you reach the end of your posts. Your posts then appear in the app: the "Browser bridge" card on Settings or Cleanup shows "N posts found".',
-        tip: 'Do this the first time. After that, open your profile once more whenever you share a new post.',
-        alt: 'An Instagram profile page with a grid of posts. On the right, a downward arrow and "Scroll to the end" are marked. Below it, the app\'s Browser bridge card showing "24 posts found" is marked.',
-        caption: 'Scroll your profile to the end so the posts reach the app.',
-      },
-      {
-        art: 'useOpenPost',
-        title: 'Open a post',
-        text: 'Click one of the post tiles on your profile. Getting to the post by clicking within the site works best. Its comments are saved as soon as the post opens.',
-        alt: 'An Instagram profile page. The middle post tile is marked, with the mouse cursor and the word "click" on it.',
-        caption: 'Click a post on your profile.',
-      },
-      {
-        art: 'useLikes',
-        title: 'Open the likes and scroll to the bottom',
-        text: 'Click the "X likes" text under the photo (on some accounts it says "liked by"). A list opens. Scroll it to the bottom so the whole list loads.',
-        tip: 'Instagram loads long lists piece by piece. If you do not reach the bottom, only the first part is saved.',
-        alt: 'An open Instagram post. The "214 likes" text under the photo is marked. Next to it, the Likes list that opened and "Scroll to the bottom" under it are marked.',
-        caption: 'Click "214 likes", scroll the list to the bottom.',
-      },
-      {
-        art: 'useNext',
-        title: 'Close it and go to the next post',
-        text: 'Close the list and open the next post. In the app, the "Browser bridge" card lists the posts not read yet under "Posts to read", with small pictures and "Open in Instagram" links. The progress bar fills a little after each post.',
-        link: { to: '/cleanup', label: 'Cleanup' },
-        alt: 'The Browser bridge card in the app. Under "Posts to read" there are four small post pictures, each with an "Open in Instagram" link; the first link and the "7 / 24 posts read" progress bar are marked.',
-        caption: 'Go to the next post and watch the bar fill.',
+        title: 'Open the extension popup',
+        text: 'Click the extension icon in the toolbar. The switch at the top right should be on. The Araçlar tab shows three cards; each one is a separate job. At the bottom, the status box shows a green dot and "Dinliyor." (listening).',
+        alt: 'The extension popup with the Araçlar tab open. The switch at the top right, the three tool cards below it (Gönderi listesi, Beğenenler, Yorumlar) and the status "Dinliyor." with a green dot are marked in order.',
+        caption: 'Switch at the top right on; three separate tools below.',
       },
     ],
-    tipTitle: 'No rush',
-    tip: '5–10 posts a sitting is plenty. Spread the rest over a few days. Doing it at a normal human pace is the whole point.',
+    toolsTitle: 'Three tools, three separate jobs',
+    toolsIntro: 'Go in order: the post list first, then the likers. Comments arrive on their own.',
+    toolLabel: 'Tool',
+    tools: [
+      {
+        id: 'posts',
+        title: 'Gönderi listesi (post list)',
+        what: 'Saves your posts with their date, likes and comments count. The likers tool works from this list, so do this first.',
+        steps: [
+          {
+            art: 'postsOpen',
+            title: 'Press "Profilimi aç" (open my profile)',
+            text: 'In the popup, press "Profilimi aç" on the "Gönderi listesi" card. Your Instagram profile opens in a new tab. You can also open your profile yourself.',
+            alt: 'The Gönderi listesi card in the extension popup: icon, title, description, small switch and "50 gönderi bulundu" (50 posts found). The "Profilimi aç" button at the bottom right of the card is marked.',
+            caption: '"Profilimi aç" opens your profile in a new tab.',
+          },
+          {
+            art: 'useProfile',
+            title: 'Scroll to the end once',
+            text: 'On your profile, scroll down until you reach the end of your posts. The card then shows "N gönderi bulundu" (N posts found). Doing this once is enough. Repeat it when you share a new post.',
+            alt: 'An Instagram profile page with a grid of posts. On the right, a downward arrow and "Scroll to the end" are marked. Below it, the extension\'s Gönderi listesi card showing "50 gönderi bulundu" is marked.',
+            caption: 'Scroll to the end: "50 gönderi bulundu".',
+          },
+        ],
+      },
+      {
+        id: 'likers',
+        title: 'Beğenenler (likers)',
+        what: 'Saves who liked your posts. You do it once per post. The card shows how many posts are read.',
+        steps: [
+          {
+            art: 'likersNext',
+            title: 'Press "Sıradaki gönderiyi aç" (open the next post)',
+            text: 'In the popup, press "Sıradaki gönderiyi aç" on the "Beğenenler" card. Your first post whose likers are not read yet opens in a new tab.',
+            alt: 'The Beğenenler card in the extension popup: a progress bar and "12 / 50 gönderi okundu" (12 of 50 posts read). The "Sıradaki gönderiyi aç" button at the bottom right of the card is marked.',
+            caption: 'The next unread post opens in a new tab.',
+          },
+          {
+            art: 'useLikes',
+            title: 'Click the likes count, scroll the list to the end',
+            text: 'On the post, click the "X likes" text under the photo (on some accounts it says "liked by"). A list opens. Scroll it to the bottom so the whole list loads.',
+            tip: 'Instagram loads long lists piece by piece. If you do not reach the bottom, only the first part is saved.',
+            alt: 'An open Instagram post. The "214 likes" text under the photo is marked. Next to it, the Likes list that opened and "Scroll to the bottom" under it are marked.',
+            caption: 'Click "214 likes", scroll the list to the bottom.',
+          },
+          {
+            art: 'likersProgress',
+            title: 'Close it and repeat',
+            text: 'Close the list and the tab. On the card the bar fills a little and the count of read posts goes up by one. Then press "Sıradaki gönderiyi aç" again. When all are done, the button says "Hepsi okundu" (all read).',
+            alt: 'The Beğenenler card in the extension popup. The progress bar is marked first, then the "Sıradaki gönderiyi aç" button.',
+            caption: 'The bar fills; go to the next post.',
+          },
+        ],
+        tip: { title: 'No rush', text: '5–10 posts a sitting is plenty. Spread the rest over a few days. Doing it at a normal human pace is the whole point.' },
+      },
+      {
+        id: 'comments',
+        title: 'Yorumlar (comments)',
+        what: 'Saves who commented on your posts. There is nothing extra to do.',
+        steps: [
+          {
+            art: 'comments',
+            title: 'Open one of your posts, that is all',
+            text: 'Open one of your own posts. The comments load with the page anyway; the extension saves the commenters on its own. When you open a post for its likers, its comments are saved too.',
+            alt: 'An open Instagram post. The comments on the right are marked. Next to it, the extension\'s Yorumlar card showing "9 gönderinin yorumları kaydedildi" (comments saved for 9 posts) is marked.',
+            caption: 'Opening a post saves its commenters.',
+          },
+        ],
+      },
+    ],
+    off: {
+      title: 'Turning a tool off',
+      text: 'Each card has its own small switch. A tool you turn off is dimmed and saves nothing; the app only stores data from the tools that are on. For example, if you do not want comments, turn off Yorumlar. The big switch at the top right turns everything off at once. The status box then says "Köprü kapalı. Sağ üstteki anahtarla açın." (the bridge is off; turn it on with the switch at the top right).',
+      alt: 'The extension popup, Araçlar tab. The Yorumlar card is off and dimmed; its small switch is marked. The big switch at the top right is marked second.',
+      caption: 'A tool that is off is dimmed and saves nothing.',
+    },
     troubleTitle: 'If nothing is saved',
     trouble: [
       {
-        term: 'No posts show up on the card.',
-        text: 'Open your own profile on instagram.com and scroll down to the end of your posts. Check that the switch in the popup is on. After installing or updating, reload the Instagram tab once.',
+        term: 'The Gönderi listesi card says "Henüz gönderi yok" (no posts yet).',
+        text: 'Press "Profilimi aç" and scroll down to the end of your posts. The switch at the top right and the card\'s own switch must be on. After installing or updating, reload the Instagram tab once.',
+      },
+      {
+        term: 'The Beğenenler card says "Önce gönderi listesi gerekli" (post list needed first).',
+        text: 'The likers tool works from your post list. Do the Gönderi listesi steps first.',
       },
       {
         term: 'Likers are not saved.',
-        text: 'Open the post by clicking its tile on your profile, then click the "X likes" text under the photo. The switch in the popup must be on. After installing or updating, reload the Instagram tab once.',
+        text: 'Press "Sıradaki gönderiyi aç", then click the "X likes" text under the photo. The Beğenenler card\'s switch must be on. After installing or updating, reload the Instagram tab once.',
       },
       { term: 'Some likers are missing.', text: 'The list was not scrolled to the bottom. Open the post again, open the likes list and scroll all the way down.' },
+      { term: 'Comments are not saved.', text: 'Check that the Yorumlar card\'s switch is on. A tool that is off saves nothing.' },
       {
         term: 'The card says another @account is open on Instagram.',
         text: 'A different Instagram account is logged in in Chrome. Nothing is saved while you browse with it. Switch to this profile\'s account on Instagram, or pick the right profile in the popup.',
@@ -1271,7 +1403,7 @@ const en: GuideContent = {
       { term: 'I opened someone else\'s post and nothing was saved.', text: 'That is on purpose. Only the likers and comments of your own posts are saved.' },
     ],
     afterTitle: 'After that',
-    after: 'The progress bar on the bridge card and the Posts page show how many posts are read. When you share a new post, open your profile once, then open that post\'s likes. If a post gets more likes later, you can open its list again a few days later.',
+    after: 'The Beğenenler card in the popup shows how many posts are read. The bridge card and the Posts page in the app show it too. When you share a new post, open your profile once with "Profilimi aç", then press "Sıradaki gönderiyi aç". If a post gets more likes later, you can open its list again a few days later.',
     limitTitle: 'To be clear',
     limit: 'This lowers the risk a lot but not to zero. No tool can promise zero risk. The extension sends no requests to Instagram, but opening likers lists one after another very quickly does not look like normal use. Go at your own calm pace.',
   },
@@ -1323,8 +1455,8 @@ const en: GuideContent = {
       { term: 'Password', text: 'Never asked for, never stored.' },
       { term: 'ZIP data', text: 'No requests go to Instagram.' },
       { term: 'Saving likes', text: 'The extension sends no requests to Instagram at all. It reads the list the page you opened has already downloaded. The server does not connect to Instagram.' },
-      { term: 'When it saves', text: 'Only when you open the likers or comments of your own post. No timers, no automatic reading, no daily cap; the pace is your pace.' },
-      { term: 'What is not saved', text: 'Other people\'s posts and anything else the page loads. The app ignores them.' },
+      { term: 'When it saves', text: 'Only when you open your own profile, post or likes list. No timers, no automatic reading, no daily cap; the pace is your pace.' },
+      { term: 'What is not saved', text: 'Other people\'s posts, data from tools you turned off, and anything else the page loads. The app ignores them.' },
       { term: 'Ghost check', text: 'Done in a browser with no login and no cookies. Not linked to your account.' },
       {
         term: 'If a warning appears',
@@ -1361,7 +1493,7 @@ const en: GuideContent = {
       },
       {
         term: 'The extension saves nothing.',
-        text: 'The extension does not read on its own. It saves when you open your own post and click the "X likes" text. Is the switch on and the profile right? Did you reload the Instagram tab after installing or updating? The extension popup shows the status.',
+        text: 'The extension does not read on its own. It saves while you browse Instagram. Are the switch at the top right and that tool\'s own switch on, and is the profile right? Did you reload the Instagram tab after installing or updating? The status box in the extension popup says what is going on.',
         link: { to: '#kullanim', label: 'Using it' },
       },
       {
@@ -1446,19 +1578,20 @@ const en: GuideContent = {
           'The "InstaAnalytic Köprüsü" card is in the list, with no "Errors" button',
           'Puzzle piece → pin next to InstaAnalytic Köprüsü',
           'Reload the open Instagram tab once',
-          'In the popup, turn on "Gezinirken beğenenleri kaydet" on the Durum tab and check your profile on the Ayarlar tab',
+          'Click the extension icon, turn on the switch at the top right; check your profile on the Ayarlar (settings) tab',
           'Settings shows a green dot and "Listening"',
         ],
       },
       {
-        title: '4. Save likers',
+        title: '4. The three tools of the extension',
         items: [
-          'Open your own profile on Instagram and scroll to the end of your posts',
-          'The bridge card shows "N posts found"',
-          'Click a post on your profile',
-          'Click the "X likes" text and scroll the list to the bottom',
-          'Close the list and go to the next post',
-          '5–10 posts a sitting; spread the rest over a few days',
+          'Gönderi listesi (post list): press "Profilimi aç", scroll your profile to the end once',
+          'The Gönderi listesi card shows "N gönderi bulundu" (N posts found)',
+          'Beğenenler (likers): press "Sıradaki gönderiyi aç" (open the next post)',
+          'On the post, click the "X likes" text, scroll the list to the bottom, then close it',
+          'The bar fills; repeat. 5–10 posts a sitting, spread the rest over a few days',
+          'Yorumlar (comments): nothing extra; opening a post saves its commenters',
+          'Turn off a tool you do not want with its own switch; a tool that is off saves nothing',
         ],
       },
       {

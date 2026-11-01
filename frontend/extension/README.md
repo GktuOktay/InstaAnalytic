@@ -27,7 +27,7 @@ gösterileceği) bu bilgisayardaki uygulama verir.
 
 | İzin | Neden |
 |---|---|
-| `storage` | Açık/kapalı ayarı, uygulama adresi ve hangi Instagram hesabının hangi profile ait olduğu. |
+| `storage` | Açık/kapalı ayarı, hangi araçların açık olduğu, uygulama adresi ve hangi Instagram hesabının hangi profile ait olduğu. |
 | `http://localhost:3002`, `http://127.0.0.1:3002` | Okunan yanıtları yalnızca bu bilgisayardaki uygulamaya iletmek. |
 | instagram.com'da içerik betiği | Sayfanın indirdiği yanıtların kopyasını okumak. |
 
@@ -57,18 +57,24 @@ eklentilerin de kullandığı bir yöntemdir.
 3. **Paketlenmemiş öğe yükle** düğmesine basın ve InstaAnalytic klasöründeki `frontend/extension`
    klasörünü seçin (içinde `manifest.json` olan klasör).
 4. Açık Instagram sekmelerini yenileyin.
-5. Eklenti simgesine tıklayın, **Durum** sekmesinde **Gezinirken beğenenleri kaydet**'i açın. Profil otomatik
-   eşleşmezse **Ayarlar** sekmesinden seçin.
+5. Eklenti simgesine tıklayın ve sağ üstteki anahtarı açın. Profil otomatik eşleşmezse **Ayarlar** sekmesinden seçin.
 
 Klasöre ulaşamıyorsanız eklentiyi uygulamadaki **Kılavuz → Referans dosyalar**'dan zip olarak da
 indirebilirsiniz; ama o kopya kendiliğinden güncellenmez.
 
-## Kullanım
+## Araçlar
 
-1. Instagram'da kendi profilinizi açın ve bir kez en aşağı kaydırın. Gönderileriniz uygulamada görünür.
-2. Bir gönderiyi açın, altındaki "beğenme" sayısına tıklayın ve açılan listeyi sonuna kadar kaydırın.
-3. Listeyi kapatıp sonraki gönderiye geçin. Uygulamadaki "Tarayıcı köprüsü" kartı hangi gönderilerin
-   kaldığını gösterir.
+Eklentide üç ayrı araç var. Her birini **Araçlar** sekmesinden ayrı ayrı açıp kapatabilirsiniz;
+kapalı bir aracın verisi uygulamaya hiç gönderilmez. Sağ üstteki anahtar köprünün tamamını açar/kapatır.
+
+| Araç | Ne kaydeder | Siz ne yaparsınız |
+|---|---|---|
+| **Gönderi listesi** | Gönderileriniz: tarih, beğeni ve yorum sayısı | **Profilimi aç**'a basın (ya da profilinizi açın) ve bir kez en aşağı kaydırın. |
+| **Beğenenler** | Gönderinizi kimin beğendiği | **Sıradaki gönderiyi aç**'a basın, gönderinin altındaki beğenme sayısına tıklayın, listeyi sonuna kadar kaydırın. |
+| **Yorumlar** | Gönderinize kimin yorum yaptığı | Bir şey yapmanız gerekmez; gönderiyi açtığınızda kaydedilir. |
+
+Kartlarda ilerleme görünür ("50 gönderi bulundu", "12 / 50 gönderi okundu"). Düğmeler yalnızca yeni bir
+sekme açar; sayfadaki her şeyi siz yaparsınız.
 
 Acele etmeyin. Bir oturumda 5–10 gönderi yeterli; işi birkaç güne yayın.
 

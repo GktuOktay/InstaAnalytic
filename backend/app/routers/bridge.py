@@ -3,6 +3,8 @@ import uuid
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +42,7 @@ class ObserveRequest(BaseModel):
     status: int
     body: str = Field(default="", max_length=bridge.MAX_BODY_CHARS)
     ext_version: str | None = Field(default=None, max_length=20, pattern=r"^\d+(\.\d+){0,3}$")
+    kinds: list[Literal["posts", "likers", "comments"]] | None = None   # eklentide açık araçlar
 
 
 @router.get("/bridge/hello")
@@ -63,7 +66,8 @@ async def observe(body: ObserveRequest, db: AsyncSession = Depends(get_db), kv=D
     if await bridge.is_stopped(kv, s.id):
         return {"posts": 0, "likers": 0, "comments": 0, "warning": False, "ignored": True, "stopped": True}
     return await bridge.observe(db, kv, s, url=body.url, page_url=body.page_url, req_body=body.req_body,
-                                status=body.status, text=body.body)
+                                status=body.status, text=body.body,
+                                kinds=set(body.kinds) if body.kinds is not None else None)
 
 
 @router.get("/sessions/{session_id}/bridge/status")

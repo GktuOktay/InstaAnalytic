@@ -401,10 +401,15 @@ async def _diag(kv: KV, sid, friendly: str | None, url: str, page_url: str, stat
     await kv.expire(key, STATE_TTL_S)
 
 
+ALL_KINDS = frozenset({"posts", "likers", "comments"})
+
+
 async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_url: str, req_body: str,
-                  status: int, text: str, now: datetime | None = None) -> dict:
-    """Instagram sayfasının indirdiği bir yanıtı işler. Instagram'a hiçbir istek gönderilmez."""
+                  status: int, text: str, now: datetime | None = None, kinds: set[str] | None = None) -> dict:
+    """Instagram sayfasının indirdiği bir yanıtı işler. Instagram'a hiçbir istek gönderilmez.
+    kinds: kullanıcının eklentide açtığı araçlar (gönderi listesi / beğenenler / yorumlar); yalnızca onlar kaydedilir."""
     now = now or _now()
+    kinds = ALL_KINDS if kinds is None else (set(kinds) & ALL_KINDS)
     sid = session.id
     await kv.set(_k(sid, "seen"), str(time.time()), ex=STATE_TTL_S)
     result = {"posts": 0, "likers": 0, "comments": 0, "warning": False, "ignored": False}
@@ -427,7 +432,8 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
     me = session.ig_username.lower()
 
     # 1) Kendi gönderilerim (profil ızgarası, gönderi sayfası)
-    mine = [m for m in find_media(body) if m["owner"].lower() == me]
+    # Gönderi kaydı yalnızca "gönderi listesi" açıkken; beğenen/yorum bağlamak için bilinen gönderi yeterli
+    mine = [m for m in find_media(body) if m["owner"].lower() == me] if "posts" in kinds else []
     for m in mine:
         row = {k: v for k, v in m.items() if k != "owner" and v is not None}
         stmt = pg_insert(Post).values(session_id=sid, last_synced_at=now, **row)
@@ -444,8 +450,8 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
                 break
 
     # 2) Beğenenler ve yorumlar: yalnızca bu profilin bilinen bir gönderisine bağlanabiliyorsa
-    likers = find_likers(body, url)
-    comments = find_comments(body, url)
+    likers = find_likers(body, url) if "likers" in kinds else None
+    comments = find_comments(body, url) if "comments" in kinds else None
     if likers is not None or comments is not None:
         ids, codes = _shortcode_candidates(page_url, url, variables)
         conds = []

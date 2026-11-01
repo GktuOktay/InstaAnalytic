@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { act, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import { BlobReader, ZipReader } from '@zip.js/zip.js'
 import userEvent from '@testing-library/user-event'
 import { renderApp } from './utils'
@@ -7,8 +7,9 @@ import { renderApp } from './utils'
 vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn().mockResolvedValue([]) } }))
 
 import GuidePage from '../pages/GuidePage'
-import { guideContent, SECTION_ANCHOR, SECTION_ORDER } from '../guide/content'
+import { guideContent, SECTION_ANCHOR, SECTION_ORDER, TOOL_ANCHOR, TOOL_IDS } from '../guide/content'
 import { buildExtensionZip, checklistMarkdown, extensionInfo, SAMPLE_FILES } from '../guide/files'
+import { ART_IDS, Illustration } from '../guide/illustrations'
 
 // SessionProvider oturum listesini asenkron çeker; act uyarısı çıkmasın diye o güncellemeyi bekle.
 async function renderGuide(opts?: { lang?: string }) {
@@ -65,6 +66,11 @@ describe('GuidePage', () => {
     const C = guideContent('en')
     for (const s of C.bridge.install) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
     for (const s of C.use.steps) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
+    for (const t of C.use.tools) {
+      expect(screen.getByRole('region', { name: t.title })).toBeInTheDocument()
+      for (const s of t.steps) expect(screen.getByRole('img', { name: s.alt })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('img', { name: C.use.off.alt })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: C.bridge.update.alt })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: C.bridge.update.fixAlt })).toBeInTheDocument()
     expect(screen.getByRole('note', { name: C.bridge.warning.title })).toBeInTheDocument()
@@ -148,44 +154,107 @@ describe('GuidePage', () => {
     expect(note).toHaveTextContent(/aşmaya çalışma/)
   })
 
-  it('draws the new popup: save toggle, "Dinliyor" status, no "Şimdi dene" button', async () => {
+  it('draws the popup as it is now: logo, master switch, Araçlar tab and the three tool cards', async () => {
     await renderGuide()
     const B = guideContent('tr').bridge
     const popup = B.install.find(s => s.art === 'popup')!
     const svg = screen.getByRole('img', { name: popup.alt })
-    expect(svg).toHaveTextContent('InstaAnalytic Köprüsü')
-    expect(svg).toHaveTextContent('Gezinirken beğenenleri kaydet')
-    expect(svg).toHaveTextContent('Dinliyor')
+    // Uygulama çubuğu: logo, ad, sürüm
+    expect(svg.querySelector('rect[width="128"][rx="30"]')).not.toBeNull()
+    expect(svg).toHaveTextContent('InstaAnalytic')
+    expect(svg).toHaveTextContent('Köprü v2.3.0')
+    // Sekmeler
+    expect(svg).toHaveTextContent('Araçlar')
+    expect(svg).toHaveTextContent('Ayarlar')
+    expect(svg).toHaveTextContent('Güncelleme')
+    // Üç araç kartı, düğmeleri ve sayıları
+    for (const t of ['Gönderi listesi', 'Beğenenler', 'Yorumlar', 'Profilimi aç', 'Sıradaki gönderiyi aç']) {
+      expect(svg).toHaveTextContent(t)
+    }
+    expect(svg).toHaveTextContent('50 gönderi bulundu')
+    expect(svg).toHaveTextContent('12 / 50 gönderi okundu')
+    expect(svg).toHaveTextContent('9 gönderinin yorumları kaydedildi')
+    // Durum kutusu ve alt düğme
+    expect(svg).toHaveTextContent('Dinliyor.')
     expect(svg).toHaveTextContent('Bugün')
     expect(svg).toHaveTextContent('Son kayıt')
     expect(svg).toHaveTextContent('Uygulamayı aç')
-    // Sekmeler
-    expect(svg).toHaveTextContent('Durum')
-    expect(svg).toHaveTextContent('Ayarlar')
-    expect(svg).toHaveTextContent('Güncelleme')
+    // Eski pencere yok
+    expect(svg).not.toHaveTextContent('Gezinirken beğenenleri kaydet')
+    expect(svg).not.toHaveTextContent('Durum')
     expect(svg).not.toHaveTextContent('Şimdi dene')
+    expect(popup.text).toMatch(/Eklenti simgesine tıkla, sağ üstteki anahtarı aç; Ayarlar sekmesinden profilini kontrol et\./)
     const connected = B.install.find(s => s.art === 'connected')!
     expect(screen.getByRole('img', { name: connected.alt })).toHaveTextContent('Dinliyor')
   })
 
-  it('has an illustrated usage section with at least 5 named steps', async () => {
+  it('draws the app logo as the toolbar icon, with the red "!" and amber "↑" badges', async () => {
+    const { container } = await renderGuide()
+    const B = guideContent('tr').bridge
+    const logo = 'rect[width="128"][rx="30"]'
+    for (const art of ['card', 'pin', 'popup', 'connected'] as const) {
+      const s = B.install.find(x => x.art === art)!
+      expect(screen.getByRole('img', { name: s.alt }).querySelector(logo)).not.toBeNull()
+    }
+    const warning = screen.getByRole('img', { name: B.warning.alt })
+    expect(warning.querySelector(logo)).not.toBeNull()
+    expect(warning).toHaveTextContent('!')
+    const manual = within(container.querySelector('#guncelle') as HTMLElement).getByRole('img', { name: B.update.fixAlt })
+    expect(manual.querySelector(logo)).not.toBeNull()
+    expect(manual).toHaveTextContent('↑')
+  })
+
+  it('explains the three tools as separate, illustrated blocks in the usage section', async () => {
     const { container } = await renderGuide()
     const C = guideContent('tr')
     const section = container.querySelector(`section#${SECTION_ANCHOR.use}`) as HTMLElement
     expect(section).not.toBeNull()
     expect(SECTION_ANCHOR.use).toBe('kullanim')
-    expect(C.use.steps.length).toBeGreaterThanOrEqual(5)
     const within_ = within(section)
-    C.use.steps.forEach((s, i) => {
-      const img = within_.getByRole('img', { name: s.alt })
-      expect(img.tagName.toLowerCase()).toBe('svg')
-      expect(s.alt.length).toBeGreaterThan(20)
-      expect(img.closest('figure')?.querySelector('figcaption')?.textContent).toBe(s.caption)
-      expect(within_.getByRole('heading', { level: 4, name: `${C.bridge.stepLabel} ${i + 1}: ${s.title}` })).toBeInTheDocument()
-    })
-    expect(section).toHaveTextContent('5–10')
+
+    // Önce: pencereyi aç
+    const start = within_.getByRole('img', { name: C.use.steps[0].alt })
+    for (const t of ['Araçlar', 'Gönderi listesi', 'Beğenenler', 'Yorumlar']) expect(start).toHaveTextContent(t)
+
+    // Her araç için ayrı, başlıklı bir blok
+    expect(C.use.tools.map(t => t.id)).toEqual(TOOL_IDS)
+    for (const tool of C.use.tools) {
+      const block = within_.getByRole('region', { name: tool.title })
+      expect(block).toHaveAttribute('id', TOOL_ANCHOR[tool.id])
+      expect(block).toHaveAttribute('data-tool', tool.id)
+      expect(block).toHaveTextContent(tool.what)
+      tool.steps.forEach((s, i) => {
+        const img = within(block).getByRole('img', { name: s.alt })
+        expect(img.tagName.toLowerCase()).toBe('svg')
+        expect(s.alt.length).toBeGreaterThan(20)
+        expect(img.closest('figure')?.querySelector('figcaption')?.textContent).toBe(s.caption)
+        expect(within(block).getByRole('heading', { level: 4, name: `${C.bridge.stepLabel} ${i + 1}: ${s.title}` })).toBeInTheDocument()
+      })
+    }
+    const block = (id: 'posts' | 'likers' | 'comments') => within_.getByRole('region', { name: C.use.tools.find(t => t.id === id)!.title })
+    // Gönderi listesi: "Profilimi aç", sona kadar kaydır, "N gönderi bulundu"
+    expect(block('posts')).toHaveTextContent('Profilimi aç')
+    expect(block('posts')).toHaveTextContent(/sonuna gelene kadar aşağı kaydır/)
+    expect(block('posts')).toHaveTextContent('N gönderi bulundu')
+    // Beğenenler: "Sıradaki gönderiyi aç", beğenme sayısına tıkla, sona kadar kaydır, çubuk dolar, 5–10
+    expect(block('likers')).toHaveTextContent('Sıradaki gönderiyi aç')
+    expect(block('likers')).toHaveTextContent(/"X beğenme" yazısına tıkla/)
+    expect(block('likers')).toHaveTextContent(/en alta kadar kaydır/)
+    expect(block('likers')).toHaveTextContent(/çubuk biraz dolar/)
+    expect(block('likers')).toHaveTextContent('Hepsi okundu')
+    expect(block('likers')).toHaveTextContent('5–10')
+    // Yorumlar: ayrıca bir şey yapmaya gerek yok
+    expect(block('comments')).toHaveTextContent(/Ayrıca bir şey yapman gerekmez/)
+    expect(block('comments')).toHaveTextContent(/yorum yapanları kendiliğinden kaydeder/)
+
+    // Kapatılan araç hiçbir şey kaydetmez
+    expect(within_.getByRole('heading', { level: 3, name: C.use.off.title })).toBeInTheDocument()
+    expect(C.use.off.text).toMatch(/hiçbir şey kaydetmez/)
+    expect(C.use.off.text).toMatch(/Köprü kapalı\. Sağ üstteki anahtarla açın\./)
+    const off = within_.getByRole('img', { name: C.use.off.alt })
+    expect(off).toHaveTextContent('Yorumlar')
+
     expect(within_.getByRole('heading', { level: 3, name: C.use.troubleTitle })).toBeInTheDocument()
-    expect(section).toHaveTextContent(/profilini aç/)
     // Başlık kimlikleri kurulum adımlarıyla çakışmasın
     const ids = Array.from(container.querySelectorAll('[id]')).map(e => e.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -263,6 +332,34 @@ describe('guide content', () => {
     }
   })
 
+  it('no longer mentions the old popup ("Gezinirken beğenenleri kaydet" toggle, "Durum" tab)', () => {
+    for (const lang of ['tr', 'en']) {
+      const C = guideContent(lang)
+      const all = JSON.stringify(C) + checklistMarkdown(C)
+      expect(all).not.toMatch(/Gezinirken beğenenleri kaydet|save likers while browsing/i)
+      expect(all).not.toMatch(/Durum sekme|Durum tab|Durum \(status\)/)
+      expect(Object.values(C.bridge.ui)).not.toContain('Durum')
+      // Kurulumdaki pencere adımı ve kontrol listesi yeni ana anahtarı anlatır
+      const popup = C.bridge.install.find(s => s.art === 'popup')!
+      expect(popup.text).toMatch(/sağ üstteki anahtar|switch at the top right/)
+      expect(popup.text).toMatch(/Araçlar/)
+      expect(checklistMarkdown(C)).toMatch(/sağ üstteki anahtar|switch at the top right/)
+      for (const t of ['Profilimi aç', 'Sıradaki gönderiyi aç']) expect(checklistMarkdown(C)).toContain(t)
+    }
+  })
+
+  it('no illustration draws the old popup', () => {
+    for (const lang of ['tr', 'en']) {
+      const ui = guideContent(lang).bridge.ui
+      for (const id of ART_IDS) {
+        const { container, unmount } = render(<Illustration id={id} ui={ui} alt={id} caption={id} />)
+        expect(container).not.toHaveTextContent('Gezinirken beğenenleri kaydet')
+        expect(container).not.toHaveTextContent('Durum')
+        unmount()
+      }
+    }
+  })
+
   it('never tells the user to re-download or copy files on every update', () => {
     for (const lang of ['tr', 'en']) {
       const C = guideContent(lang)
@@ -286,6 +383,12 @@ describe('guide content', () => {
     expect(en.bridge.install.map(s => s.art)).toEqual(tr.bridge.install.map(s => s.art))
     expect(new Set(tr.bridge.install.map(s => s.art)).size).toBe(tr.bridge.install.length)
     expect(en.use.steps.map(s => s.art)).toEqual(tr.use.steps.map(s => s.art))
+    expect(en.use.tools.map(t => t.id)).toEqual(tr.use.tools.map(t => t.id))
+    expect(en.use.tools.map(t => t.steps.map(s => s.art))).toEqual(tr.use.tools.map(t => t.steps.map(s => s.art)))
+    expect(en.use.tools.map(t => !!t.tip)).toEqual(tr.use.tools.map(t => !!t.tip))
+    expect(en.use.trouble).toHaveLength(tr.use.trouble.length)
+    // Eklenti penceresi yalnızca Türkçe; iki dilde de aynı çizilir
+    expect(en.bridge.ui.popupTools).toEqual(tr.bridge.ui.popupTools)
     expect(en.bridge.update.steps).toHaveLength(tr.bridge.update.steps.length)
     expect(en.bridge.update.fixSteps).toHaveLength(tr.bridge.update.fixSteps.length)
     expect(en.bridge.trouble).toHaveLength(tr.bridge.trouble.length)
@@ -305,12 +408,21 @@ describe('guide files', () => {
   })
 
   it.skipIf(!extensionInfo().available)('packs the extension under one folder', async () => {
+    // Görseller (simgeler) uygulamanın adresinden URL ile çekilir; jsdom göreli adresi çözemediği için taklit et.
+    // Yanıt jsdom'un Blob'uyla değil baytlarla kurulur: jsdom'un Blob'unda zip.js'in istediği stream() yok.
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new Uint8Array([137, 80, 78, 71])))
     const blob = await buildExtensionZip()
     const reader = new ZipReader(new BlobReader(blob))
     const names = (await reader.getEntries()).map(e => e.filename)
     await reader.close()
     expect(names).toContain('instaanalytic-kopru/manifest.json')
     expect(names.every(n => n.startsWith('instaanalytic-kopru/'))).toBe(true)
+    // Simgeler varsa onlar da pakette
+    for (const call of fetchMock.mock.calls) {
+      const path = String(call[0]).split('/extension/')[1]
+      if (path) expect(names).toContain(`instaanalytic-kopru/${path}`)
+    }
+    fetchMock.mockRestore()
   })
 
   it('checklist markdown has a checkbox for every item', () => {

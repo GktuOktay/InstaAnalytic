@@ -71,6 +71,8 @@ describe('extension listener (read-only)', () => {
     const m = JSON.parse(manifestSrc)
     expect(m.permissions).toEqual(['storage'])
     expect(m.host_permissions.every((h: string) => /^http:\/\/(localhost|127\.0\.0\.1):3002\/\*$/.test(h))).toBe(true)
-    expect(JSON.stringify(m)).not.toMatch(/cookies|webRequest|scripting|tabs|<all_urls>|debugger/)
+    expect(JSON.stringify(m)).not.toMatch(/cookies|webRequest|scripting|"tabs"|<all_urls>|debugger/)
+    // Uygulamayla aynı logo, Chrome'un beklediği boyutlarda
+    for (const size of ['16', '32', '48', '128']) expect(m.icons[size]).toBe(`icons/icon-${size}.png`)
   })
 })

@@ -12,6 +12,8 @@ const MAX_BODY_CHARS = 8 * 1024 * 1024;
 const MAX_QUEUE = 20;            // uygulama yavaşsa bekleyen yanıt birikmesin; fazlası atılır
 const UPDATE_EVERY_MS = 6 * 3600 * 1000;
 const VERSION_RE = /^\d+(\.\d+){0,3}$/;
+const DEFAULT_TOOLS = { posts: true, likers: true, comments: true };
+const TOOL_KEYS = Object.keys(DEFAULT_TOOLS);
 
 // ── Depolama ─────────────────────────────────────────────────────────────────
 
@@ -28,9 +30,12 @@ function normalizeAppUrl(value) {
 }
 
 async function getCfg() {
-  const s = await chrome.storage.local.get(['enabled', 'appUrl', 'profiles', 'lastViewer']);
+  const s = await chrome.storage.local.get(['enabled', 'appUrl', 'profiles', 'lastViewer', 'tools']);
+  const tools = { ...DEFAULT_TOOLS };
+  if (s.tools && typeof s.tools === 'object') for (const k of TOOL_KEYS) if (typeof s.tools[k] === 'boolean') tools[k] = s.tools[k];
   return {
     enabled: s.enabled === true,
+    tools,
     appUrl: normalizeAppUrl(s.appUrl) || DEFAULT_APP,
     profiles: s.profiles && typeof s.profiles === 'object' ? s.profiles : {},
     lastViewer: VIEWER_RE.test(String(s.lastViewer || '')) ? String(s.lastViewer) : null,
@@ -185,10 +190,10 @@ async function configFor(viewer) {
   if (!VIEWER_RE.test(String(viewer || ''))) return { on: false };
   // Hangi hesabın açık olduğu, eklenti kapalıyken de hatırlanır: profil seçimi buna dayanır
   await chrome.storage.local.set({ lastViewer: String(viewer), lastViewerAt: Date.now() });
-  if (!cfg.enabled) return { on: false };
+  if (!cfg.enabled || !TOOL_KEYS.some((k) => cfg.tools[k])) return { on: false };
   const profile = await resolveProfile(cfg, String(viewer));
   if (!profile) return { on: false };
-  return { on: true, username: profile.username || null };
+  return { on: true, username: profile.username || null, tools: cfg.tools };
 }
 
 // ── Gözlem ───────────────────────────────────────────────────────────────────
@@ -217,6 +222,8 @@ async function handleObserved(msg) {
     status: msg.status,
     body: msg.text,
     ext_version: chrome.runtime.getManifest().version,
+    // Hangi araçların açık olduğu: uygulama yalnızca bunları kaydeder
+    kinds: TOOL_KEYS.filter((k) => cfg.tools[k] && Array.isArray(msg.kinds) && msg.kinds.includes(k)),
   }, 60000);
 
   if (rep.status === 0) {
@@ -290,6 +297,27 @@ async function helloForPopup() {
   };
 }
 
+// Açılır pencere için araç özetleri: uygulamadaki ilerleme ve sıradaki gönderi
+async function summaryForPopup() {
+  const cfg = await getCfg();
+  const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
+  if (!profile) return { ok: false };
+  const [st, todo] = await Promise.all([
+    callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`),
+    callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?limit=1`),
+  ]);
+  if (st.status !== 200 || !st.data) return { ok: false, appDown: st.status === 0 };
+  const next = todo.status === 200 && Array.isArray(todo.data) && todo.data[0] ? todo.data[0] : null;
+  return {
+    ok: true,
+    username: profile.username || null,
+    posts: Number(st.data.posts) || 0,
+    likersDone: Number(st.data.likers_done) || 0,
+    commentsDone: Number(st.data.comments_done) || 0,
+    next: next && /^[\w-]{5,40}$/.test(String(next.shortcode)) ? { shortcode: String(next.shortcode), likes: Number(next.like_count) || 0 } : null,
+  };
+}
+
 // Uygulamadaki durum (ör. bekleyen uyarı) açılır pencereye ve simgeye yansısın
 async function refreshFromApp() {
   const cfg = await getCfg();
@@ -338,6 +366,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.tab) return false;
   if (msg.type === 'ia-hello') {
     helloForPopup().then(sendResponse);
+    return true;
+  }
+  if (msg.type === 'ia-summary') {
+    summaryForPopup().then(sendResponse, () => sendResponse({ ok: false }));
     return true;
   }
   if (msg.type === 'ia-refresh') {

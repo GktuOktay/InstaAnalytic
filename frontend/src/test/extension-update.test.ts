@@ -95,6 +95,30 @@ describe('account detection', () => {
   })
 })
 
+describe('tools', () => {
+  it('tells the app only the tools that are switched on', async () => {
+    const store = { enabled: true, tools: { posts: true, likers: false, comments: true },
+      profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'me' } } }
+    const b = loadBackground('2.3.0', '2.3.0', store)
+    b.listeners.message({ type: 'ia-observed', viewer: '525', url: 'https://www.instagram.com/graphql/query',
+      page: 'https://www.instagram.com/me/', status: 200, text: '{}', friendly: 'X', variables: '', kinds: ['likers', 'posts'] },
+      { id: 'ext', tab: { url: 'https://www.instagram.com/me/' } }, () => {})
+    await new Promise(r => setTimeout(r, 30))
+    const call = b.fetchStub.mock.calls.find((c: any[]) => String(c[0]).includes('/api/bridge/observe')) as any
+    expect(call).toBeTruthy()
+    const body = JSON.parse(call[1].body)
+    expect(body.kinds).toEqual(['posts'])                 // beğenenler kapalı: istenmiş olsa da gönderilmez
+    expect(body.req_body).not.toContain('fb_dtsg')
+  })
+
+  it('with every tool off, Instagram pages get "off"', async () => {
+    const b = loadBackground('2.3.0', '2.3.0', { enabled: true, tools: { posts: false, likers: false, comments: false } })
+    const answer: any = await new Promise(res =>
+      b.listeners.message({ type: 'ia-config', viewer: '525' }, { id: 'ext', tab: { url: 'https://www.instagram.com/' } }, res))
+    expect(answer).toEqual({ on: false })
+  })
+})
+
 describe('app side version check', () => {
   it('knows the bundled extension version and flags older ones', () => {
     expect(LATEST_EXTENSION_VERSION).toMatch(/^\d+\.\d+\.\d+$/)

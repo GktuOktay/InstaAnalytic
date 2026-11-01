@@ -7,6 +7,13 @@ const $ = (id) => document.getElementById(id);
 
 const el = {
   enabled: $('enabled'),
+  lead: $('lead'),
+  statPosts: $('stat-posts'),
+  statLikers: $('stat-likers'),
+  statComments: $('stat-comments'),
+  barLikers: $('bar-likers'),
+  actPosts: $('act-posts'),
+  actLikers: $('act-likers'),
   status: $('status'),
   warning: $('warning'),
   warningUntil: $('warning-until'),
@@ -37,7 +44,7 @@ const el = {
 
 // ── Sekmeler (ok tuşlarıyla da gezilir) ──────────────────────────────────────
 
-const TABS = ['status', 'settings', 'update'];
+const TABS = ['tools', 'settings', 'update'];
 
 function selectTab(name, focus = false) {
   for (const t of TABS) {
@@ -145,7 +152,7 @@ function renderStatus(status, enabled, seenAccount) {
   el.warningUntil.textContent = warnOn && s.warningUntil
     ? `Bu tarihe kadar bekleyin: ${new Date(s.warningUntil).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })}`
     : '';
-  el.statusText.textContent = !enabled ? 'Kapalı. Açtığınızda dinlemeye başlar.'
+  el.statusText.textContent = !enabled ? 'Köprü kapalı. Sağ üstteki anahtarla açın.'
     : unseen ? 'Instagram sekmesini bir kez yenileyin; eklenti hesabı o zaman tanır.'
     : (s.message || 'Dinliyor.');
 
@@ -159,7 +166,8 @@ function renderStatus(status, enabled, seenAccount) {
 }
 
 async function refresh() {
-  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update', 'lastViewer']);
+  const s = await chrome.storage.local.get(['enabled', 'status', 'appUrl', 'update', 'lastViewer', 'tools']);
+  renderTools(toolsFrom(s.tools), s.enabled === true);
   renderUpdate(s.update);
   appUrl = normalizeAppUrl(s.appUrl) || DEFAULT_APP;
   el.enabled.checked = s.enabled === true;
@@ -267,20 +275,80 @@ el.openApp.addEventListener('click', () => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update || changes.lastViewer)) {
+  if (changes.status && area === 'local' && changes.status.newValue && changes.status.newValue.lastSavedAt
+      !== (changes.status.oldValue || {}).lastSavedAt) loadSummary();   // yeni kayıt geldi: ilerlemeyi tazele
+  if (area === 'local' && (changes.status || changes.enabled || changes.appUrl || changes.update || changes.lastViewer || changes.tools)) {
     refresh();
     if (changes.lastViewer && !el.profilePicker.hidden) loadHello();   // hesap az önce görüldü: listeyi tazele
   }
-let startTab = 'status';
-try { startTab = sessionStorage.getItem('ia-tab') || 'status'; } catch { /* yoksay */ }
-selectTab(TABS.includes(startTab) ? startTab : 'status');
+let startTab = 'tools';
+try { startTab = sessionStorage.getItem('ia-tab') || 'tools'; } catch { /* yoksay */ }
+selectTab(TABS.includes(startTab) ? startTab : 'tools');
 loadUpdate(false);
 });
 
+// ── Araçlar ──────────────────────────────────────────────────────────────────
+
+const DEFAULT_TOOLS = { posts: true, likers: true, comments: true };
+let summary = null;
+
+function toolsFrom(stored) {
+  const t = { ...DEFAULT_TOOLS };
+  if (stored && typeof stored === 'object') for (const k of Object.keys(t)) if (typeof stored[k] === 'boolean') t[k] = stored[k];
+  return t;
+}
+
+function renderTools(tools, enabled) {
+  for (const input of document.querySelectorAll('[data-tool-switch]')) {
+    const k = input.dataset.toolSwitch;
+    input.checked = !!tools[k];
+    input.disabled = !enabled;
+    input.closest('.tool').classList.toggle('off', !enabled || !tools[k]);
+  }
+  const s = summary;
+  if (!s || !s.ok) {
+    const text = s && s.appDown ? 'Uygulama kapalı' : 'Profil seçilince görünür';
+    el.statPosts.textContent = el.statLikers.textContent = el.statComments.textContent = text;
+    el.barLikers.style.width = '0%';
+    el.actPosts.disabled = el.actLikers.disabled = true;
+    return;
+  }
+  el.statPosts.textContent = s.posts ? `${s.posts} gönderi bulundu` : 'Henüz gönderi yok';
+  el.statLikers.textContent = s.posts ? `${s.likersDone} / ${s.posts} gönderi okundu` : 'Önce gönderi listesi gerekli';
+  el.statComments.textContent = s.commentsDone ? `${s.commentsDone} gönderinin yorumları kaydedildi` : 'Henüz kayıt yok';
+  el.barLikers.style.width = s.posts ? `${Math.round((100 * s.likersDone) / s.posts)}%` : '0%';
+  el.actPosts.disabled = !enabled || !tools.posts || !s.username;
+  el.actLikers.disabled = !enabled || !tools.likers || !s.next;
+  el.actLikers.textContent = s.posts && !s.next ? 'Hepsi okundu' : 'Sıradaki gönderiyi aç';
+}
+
+async function loadSummary() {
+  summary = await send({ type: 'ia-summary' });
+  refresh();
+}
+
+for (const input of document.querySelectorAll('[data-tool-switch]')) {
+  input.addEventListener('change', async () => {
+    const { tools } = await chrome.storage.local.get('tools');
+    const next = toolsFrom(tools);
+    next[input.dataset.toolSwitch] = input.checked;
+    await chrome.storage.local.set({ tools: next });
+  });
+}
+
+// Eylemler yalnızca sekme açar; geri kalan her şey sizin tıklamanız
+el.actPosts.addEventListener('click', () => {
+  if (summary && summary.username) chrome.tabs.create({ url: `https://www.instagram.com/${encodeURIComponent(summary.username)}/` });
+});
+el.actLikers.addEventListener('click', () => {
+  if (summary && summary.next) chrome.tabs.create({ url: `https://www.instagram.com/p/${encodeURIComponent(summary.next.shortcode)}/` });
+});
+
 refresh();
-let startTab = 'status';
-try { startTab = sessionStorage.getItem('ia-tab') || 'status'; } catch { /* yoksay */ }
-selectTab(TABS.includes(startTab) ? startTab : 'status');
+loadSummary();
+let startTab = 'tools';
+try { startTab = sessionStorage.getItem('ia-tab') || 'tools'; } catch { /* yoksay */ }
+selectTab(TABS.includes(startTab) ? startTab : 'tools');
 loadUpdate(false);
 // Uygulamada bekleyen bir Instagram uyarısı varsa pencere açılınca hemen yansısın
 send({ type: 'ia-refresh' }).then(refresh);

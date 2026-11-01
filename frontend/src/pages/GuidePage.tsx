@@ -1,13 +1,14 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, Ban, BarChart3, BookOpen, Check, ChevronRight, Copy, Download, FileArchive, FileJson,
-  HelpCircle, Info, ListChecks, Loader2, MousePointerClick, OctagonAlert, Puzzle, RefreshCw, Rocket, ShieldCheck, FolderDown,
+  AlertTriangle, ArrowRight, Ban, BarChart3, BookOpen, Check, ChevronRight, Copy, Download, FileArchive, FileJson, Heart,
+  HelpCircle, Info, LayoutGrid, ListChecks, Loader2, MessageCircle, MousePointerClick, OctagonAlert, Puzzle, RefreshCw, Rocket,
+  ShieldCheck, FolderDown, ToggleRight,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import {
-  guideContent, SECTION_ANCHOR, SECTION_ORDER, UPDATE_ANCHOR, type GuideContent, type GuideLink, type GuideRow, type GuideStep,
-  type InstallStep, type SectionId,
+  guideContent, SECTION_ANCHOR, SECTION_ORDER, TOOL_ANCHOR, UPDATE_ANCHOR, type GuideContent, type GuideLink, type GuideRow,
+  type GuideStep, type InstallStep, type SectionId, type ToolId, type UseTool,
 } from '../guide/content'
 import {
   buildExtensionZip, checklistMarkdown, copyToClipboard, extensionInfo, EXTENSION_ZIP_NAME, SAMPLE_FILES, saveBlob, saveText,
@@ -286,6 +287,11 @@ function UpdateBlock({ C }: { C: GuideContent }) {
   )
 }
 
+/**
+ * Kullanım: önce pencereyi açıp ana anahtarı açmak, sonra eklentinin üç aracı ayrı ayrı bloklar hâlinde
+ * (Gönderi listesi, Beğenenler, Yorumlar), en sonda bir aracı kapatmak. Her aracın ne kaydettiği ve ayrı bir iş
+ * olduğu ilk bakışta görünsün diye her blok kendi başlığı, simgesi ve çerçevesiyle duruyor.
+ */
 function UseSection({ C }: { C: GuideContent }) {
   const U = C.use
   return (
@@ -295,7 +301,21 @@ function UseSection({ C }: { C: GuideContent }) {
       <ol className="space-y-3">
         {U.steps.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix="kullanim" />)}
       </ol>
-      <div className="mt-3"><Note kind="info" title={U.tipTitle}>{U.tip}</Note></div>
+
+      <Sub>{U.toolsTitle}</Sub>
+      <p className="text-sm text-gray-400 mb-3">{U.toolsIntro}</p>
+      <div className="space-y-4">
+        {U.tools.map((t, i) => <ToolBlock key={t.id} tool={t} n={i + 1} C={C} />)}
+      </div>
+
+      <Sub>{U.off.title}</Sub>
+      <Card>
+        <div className="flex gap-3">
+          <ToggleRight size={18} className="shrink-0 mt-0.5 text-gray-400" aria-hidden="true" />
+          <p className="text-sm text-gray-300">{U.off.text}</p>
+        </div>
+        <Illustration id="toolOff" ui={C.bridge.ui} alt={U.off.alt} caption={U.off.caption} className="max-w-sm mt-4 sm:ml-[1.875rem]" />
+      </Card>
 
       <Sub>{U.troubleTitle}</Sub>
       <RowTable head={[C.faq.qCol, C.faq.aCol]} rows={U.trouble} caption={U.troubleTitle} />
@@ -304,6 +324,34 @@ function UseSection({ C }: { C: GuideContent }) {
       <p className="text-sm text-gray-300">{U.after}</p>
       <div className="mt-3"><Note kind="warn" title={U.limitTitle}>{U.limit}</Note></div>
     </Section>
+  )
+}
+
+const TOOL_ICONS: Record<ToolId, typeof BookOpen> = { posts: LayoutGrid, likers: Heart, comments: MessageCircle }
+
+/** Eklentinin bir aracı: kendi çapası, başlığı ve ne kaydettiği; altında resimli adımları. */
+function ToolBlock({ tool, n, C }: { tool: UseTool; n: number; C: GuideContent }) {
+  const anchor = TOOL_ANCHOR[tool.id]
+  const Icon = TOOL_ICONS[tool.id]
+  return (
+    <section id={anchor} aria-labelledby={`${anchor}-h`} data-tool={tool.id}
+      className="scroll-mt-6 rounded-2xl border border-purple-500/40 bg-purple-950/10 p-3 sm:p-4">
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true"
+          className="shrink-0 w-9 h-9 rounded-lg bg-purple-900/40 border border-purple-500/50 flex items-center justify-center">
+          <Icon size={18} className="text-purple-300" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-purple-300/80">{`${C.use.toolLabel} ${n}`}</p>
+          <h3 id={`${anchor}-h`} className="font-semibold text-base">{tool.title}</h3>
+          <p className="text-sm text-gray-300">{tool.what}</p>
+        </div>
+      </div>
+      <ol className="space-y-3 mt-3">
+        {tool.steps.map((s, i) => <InstallStepCard key={s.art} step={s} n={i + 1} C={C} idPrefix={anchor} />)}
+      </ol>
+      {tool.tip && <div className="mt-3"><Note kind="info" title={tool.tip.title}>{tool.tip.text}</Note></div>}
+    </section>
   )
 }
 

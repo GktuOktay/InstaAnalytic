@@ -7,6 +7,7 @@ import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
 import ErrorBoundary from './ErrorBoundary'
 import SafetyBadge from './SafetyBadge'
+import logoUrl from '../../extension/icons/icon.svg'
 import BridgeWarningBanner from './BridgeWarningBanner'
 
 export default function Layout() {
@@ -45,8 +46,11 @@ export default function Layout() {
 
         {/* Brand */}
         <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
+          {/* Üstte logo ve ad, altında tema / dil düğmeleri: dar kenar çubuğunda metin taşmasın */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <img src={logoUrl} alt="" width={30} height={30} style={{ borderRadius: 8, flexShrink: 0 }} />
+              <div>
               <div style={{
                 fontSize: 15,
                 fontWeight: 700,
@@ -57,6 +61,7 @@ export default function Layout() {
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
                 {lang === 'tr' ? 'Analitik Platformu' : 'Analytics Platform'}
+              </div>
               </div>
             </div>
 

@@ -1,9 +1,9 @@
 // Rehberin resimleri (kurulum, kullanım, güncelleme sekmesi). chrome:// sayfalarının ekran görüntüsü alınamadığı
 // ve Instagram'ın gerçek ekranını göstermek istemediğimiz için Chrome'un ve Instagram'ın sadeleştirilmiş birer çizimi. Renkler temadan (CSS değişkenleri) gelir; açık ve koyu temada çalışır.
 // Tıklanacak yer vurgu rengiyle çerçevelenir ve numaralanır. Resimlerin içindeki yazılar content.ts'teki
-// `bridge.ui` alanından gelir; buradaki tek iş çizmek.
+// `bridge.ui` alanından gelir; buradaki tek iş çizmek. Eklenti penceresi frontend/extension/popup.html'in aynısı.
 import type { CSSProperties, ReactNode } from 'react'
-import type { ArtId, ArtLabels } from './content'
+import type { ArtId, ArtLabels, ToolId } from './content'
 
 const v = (n: string) => `var(--${n})`
 const K = {
@@ -72,11 +72,34 @@ function Cursor({ x, y }: { x: number; y: number }) {
   )
 }
 
-function Toggle({ x, y, on = true }: { x: number; y: number; on?: boolean }) {
+/** Aç/kapa anahtarı. `small`: eklenti penceresindeki araç kartlarının küçük anahtarı. */
+function Toggle({ x, y, on = true, small = false }: { x: number; y: number; on?: boolean; small?: boolean }) {
+  const w = small ? 22 : 26
+  const h = small ? 12 : 14
+  const r = small ? 4.2 : 5
   return (
     <g>
-      <rect x={x} y={y} width={26} height={14} rx={7} style={{ fill: on ? K.ac : K.b2 }} />
-      <circle cx={on ? x + 19 : x + 7} cy={y + 7} r={5} style={{ fill: on ? '#fff' : K.t2 }} />
+      <rect x={x} y={y} width={w} height={h} rx={h / 2} style={{ fill: on ? K.ac : K.b2 }} />
+      <circle cx={on ? x + w - h / 2 : x + h / 2} cy={y + h / 2} r={r} style={{ fill: on ? '#fff' : K.t2 }} />
+    </g>
+  )
+}
+
+/**
+ * Uygulamanın logosu (frontend/extension/icons/icon.svg): kırmızımsı turuncu yuvarlak kare, yükselen üç beyaz
+ * çubuk ve en yüksek çubuğun üstünde bir nokta. Aynı sayfada birçok resim olduğu için gradyan (id ister) yerine
+ * düz renk.
+ */
+const LOGO = '#DD5F36'
+const LOGO_INK = '#FFF7F2'
+function Logo({ x, y, size = 16 }: { x: number; y: number; size?: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${size / 128})`}>
+      <rect width={128} height={128} rx={30} style={{ fill: LOGO }} />
+      <rect x={27} y={70} width={18} height={32} rx={7} style={{ fill: LOGO_INK }} />
+      <rect x={55} y={52} width={18} height={50} rx={7} style={{ fill: LOGO_INK }} />
+      <rect x={83} y={34} width={18} height={68} rx={7} style={{ fill: LOGO_INK }} />
+      <circle cx={92} cy={20} r={7} style={{ fill: LOGO_INK, opacity: 0.9 }} />
     </g>
   )
 }
@@ -101,12 +124,11 @@ function PinIcon({ x, y, color = K.t2 }: { x: number; y: number; color?: string 
 /** Simgenin üstündeki rozet: Instagram uyarısında kırmızı "!", elle kurulum gereken yeni sürümde turuncu "↑". */
 type IconBadge = 'alert' | 'update'
 
-/** Eklentinin simgesi. manifest'te simge olmadığı için Chrome ilk harfi gri bir kare içinde gösterir. */
+/** Eklentinin simgesi: uygulamanın logosu. Araç çubuğunda, uzantılar listesinde ve eklenti kartında aynı. */
 function ExtIcon({ x, y, size = 16, badge }: { x: number; y: number; size?: number; badge?: IconBadge }) {
   return (
     <g>
-      <rect x={x} y={y} width={size} height={size} rx={size / 4} style={{ fill: K.t3 }} />
-      <text x={x + size / 2} y={y + size * 0.72} textAnchor="middle" style={{ fill: K.s1, fontSize: size * 0.62, fontWeight: 700 }}>I</text>
+      <Logo x={x} y={y} size={size} />
       {badge && (
         <g>
           <circle cx={x + size} cy={y + 1} r={6} style={{ fill: badge === 'alert' ? BAD : AMBER, stroke: K.s1, strokeWidth: 1.5 }} />
@@ -171,10 +193,10 @@ function IgContent({ y = 72, w = 150 }: { y?: number; w?: number }) {
 
 /**
  * Chrome penceresi: sekme şeridi, adres çubuğu, sağda (isteğe bağlı) sabitlenmiş eklenti, yapboz parçası,
- * profil ve menü. İçerik alanı y=61'den başlar.
+ * profil ve menü. İçerik alanı y=61'den başlar. `logoTab`: sekmede uygulamanın logosu (uygulamanın kendi sekmesi).
  */
-function Browser({ h, url, tab, pinned = false, badge, children }: {
-  h: number; url?: string; tab: string; pinned?: boolean; badge?: IconBadge; children?: ReactNode
+function Browser({ h, url, tab, pinned = false, badge, logoTab = false, children }: {
+  h: number; url?: string; tab: string; pinned?: boolean; badge?: IconBadge; logoTab?: boolean; children?: ReactNode
 }) {
   return (
     <g>
@@ -182,7 +204,7 @@ function Browser({ h, url, tab, pinned = false, badge, children }: {
       <path d="M2 12a10 10 0 0 1 10-10h376a10 10 0 0 1 10 10v20H2z" style={{ fill: K.s2 }} />
       {[16, 28, 40].map(cx => <circle key={cx} cx={cx} cy={17} r={3.5} style={{ fill: K.t3 }} />)}
       <path d="M54 32V14a6 6 0 0 1 6-6h128a6 6 0 0 1 6 6v18z" style={{ fill: K.s1 }} />
-      <circle cx={66} cy={20} r={5} style={{ fill: K.t3 }} />
+      {logoTab ? <Logo x={61} y={15} size={10} /> : <circle cx={66} cy={20} r={5} style={{ fill: K.t3 }} />}
       <Txt x={76} y={23.5} size={9.5} color={K.t2}>{tab}</Txt>
       <Txt x={180} y={23.5} size={10} color={K.t3}>×</Txt>
       <Txt x={11} y={51} size={13} color={K.t3}>←</Txt>
@@ -202,13 +224,16 @@ function Browser({ h, url, tab, pinned = false, badge, children }: {
   )
 }
 
-/** InstaAnalytic'in sol menüsü (sadeleştirilmiş). */
+/** InstaAnalytic'in sol menüsü (sadeleştirilmiş): üstte logo ve ad, altında menü satırları. */
 function AppSidebar({ h, active }: { h: number; active: number }) {
   return (
     <g>
       <path d={`M3 62H71V${h - 3}H12a9 9 0 0 1-9-9z`} style={{ fill: K.bg }} />
+      <Logo x={12} y={69} size={13} />
+      <Box x={29} y={71} w={34} h={5} r={2.5} fill={K.t3} />
+      <Box x={29} y={79} w={22} h={3} r={1.5} fill={K.b2} />
       {[0, 1, 2, 3, 4, 5].map(i => (
-        <Box key={i} x={12} y={76 + i * 18} w={i === active ? 50 : 42} h={7} r={3.5}
+        <Box key={i} x={12} y={94 + i * 16} w={i === active ? 50 : 42} h={7} r={3.5}
           fill={i === active ? K.ac : K.b2} op={i === active ? 0.7 : 1} />
       ))}
     </g>
@@ -454,41 +479,173 @@ function wrap(text: string, max: number): string[] {
   return lines
 }
 
-function Para({ x, y, text, max, lh, size, color = K.t2 }: {
-  x: number; y: number; text: string; max: number; lh: number; size: number; color?: string
+/** Verilen genişliğe, verilen yazı boyunda kabaca kaç harf sığar. */
+const fit = (width: number, size: number) => Math.max(8, Math.floor(width / (size * 0.53)))
+
+function Lines({ x, y, lines, lh, size, color = K.t2, weight }: {
+  x: number; y: number; lines: string[]; lh: number; size: number; color?: string; weight?: number
 }) {
   return (
-    <text x={x} y={y} style={{ fill: color, fontSize: size }}>
-      {wrap(text, max).map((l, i) => <tspan key={i} x={x} dy={i ? lh : 0}>{l}</tspan>)}
+    <text x={x} y={y} style={{ fill: color, fontSize: size, fontWeight: weight }}>
+      {lines.map((l, i) => <tspan key={i} x={x} dy={i ? lh : 0}>{l}</tspan>)}
     </text>
   )
 }
 
-const POPUP_W = 230
-const POPUP_H = 208
-
-type PopupFocus = Partial<Record<'toggle' | 'status' | 'settingsTab' | 'updateTab' | 'check', number>>
-
-/** Eklenti penceresinin sekme şeridi: Durum, Ayarlar, Güncelleme. Etkin sekmenin altı çizili. */
-function PopupTabs({ L, R, y, ui, active, focus }: {
-  L: number; R: number; y: number; ui: ArtLabels; active: 'status' | 'update'; focus: PopupFocus
+function Para({ x, y, text, max, lh, size, color = K.t2 }: {
+  x: number; y: number; text: string; max: number; lh: number; size: number; color?: string
 }) {
+  return <Lines x={x} y={y} lines={wrap(text, max)} lh={lh} size={size} color={color} />
+}
+
+/* ── Eklenti penceresi ───────────────────────────────────────────────────── */
+
+const TOOLS: ToolId[] = ['posts', 'likers', 'comments']
+/** Resimdeki Beğenenler çubuğunun doluluğu ("12 / 50 gönderi okundu"). */
+const LIKERS_DONE = 12 / 50
+const DESC_SIZE = 6.6
+const DESC_LH = 8.5
+
+/** Araç kartının simgesi; popup.html'deki çizimlerin aynısı (24'lük kutuda). */
+function ToolIcon({ k, x, y, size }: { k: ToolId; x: number; y: number; size: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${size / 24})`}
+      style={{ fill: 'none', stroke: K.ac, strokeWidth: 2.2, strokeLinejoin: 'round' }}>
+      {k === 'posts' && [[3, 3], [13.5, 3], [3, 13.5], [13.5, 13.5]].map(([rx, ry]) => (
+        <rect key={`${rx}-${ry}`} x={rx} y={ry} width={7.5} height={7.5} rx={1.5} />
+      ))}
+      {k === 'likers' && <path d="M12 20.5s-7.5-4.6-7.5-10.1A4.4 4.4 0 0 1 12 7.6a4.4 4.4 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z" />}
+      {k === 'comments' && <path d="M4 5.5h16v10H9.5L5 19.5v-4H4z" />}
+    </g>
+  )
+}
+
+/**
+ * Bir araç kartının ölçüleri (kartın üstüne göre). Çizim ve pencere düzeni aynı hesabı kullanır.
+ * `compact`: açıklamasız, düğmesiz küçük kart (Instagram resimlerinin yanındaki sonuç kutusu).
+ */
+function toolGeom(ui: ArtLabels, k: ToolId, w: number, compact: boolean) {
+  const t = ui.popupTools[k]
+  const desc = compact ? [] : wrap(t.desc, fit(w - 66, DESC_SIZE))
+  const stat = compact ? wrap(t.stat, fit(w - 16, 7)) : [t.stat]
+  const button = !compact ? t.action : undefined
+  let c = compact ? 30 : 26 + (desc.length - 1) * DESC_LH + 4
+  let barY: number | undefined
+  if (k === 'likers') { barY = c + 2; c = barY + 3 }
+  const footY = c + 5
+  const footH = button ? 15 : compact ? stat.length * 9 : 11
+  return { desc, stat, button, barY, footY, h: footY + footH + 7 }
+}
+
+type ToolFocus = Partial<Record<'card' | 'button' | 'bar' | 'switch', number>>
+
+/**
+ * popup.html'deki araç kartı: simge, başlık, tek satırlık açıklama, kendi küçük anahtarı, sayı satırı ve
+ * (Gönderi listesi ile Beğenenler'de) bir düğme. Kapalı araç soluk görünür.
+ */
+function ToolCard({ x, y, w, k, ui, on = true, dim = false, compact = false, focus = {}, fb }: {
+  x: number; y: number; w: number; k: ToolId; ui: ArtLabels; on?: boolean; dim?: boolean; compact?: boolean
+  focus?: ToolFocus; fb?: { bx: number; by: number }
+}) {
+  const g = toolGeom(ui, k, w, compact)
+  const t = ui.popupTools[k]
+  const R = x + w
+  const btnW = g.button ? g.button.length * 3.9 + 14 : 0
+  const statY = y + g.footY + (g.button ? 10.3 : 7.5)
+  return (
+    <g>
+      <g style={{ opacity: dim ? 0.55 : 1 }}>
+        <Box x={x} y={y} w={w} h={g.h} r={7} fill={K.s1} stroke={K.b1} />
+        <Box x={x + 8} y={y + 8} w={18} h={18} r={5} fill={K.glow} />
+        <ToolIcon k={k} x={x + 11} y={y + 11} size={12} />
+        <Txt x={x + 32} y={y + 16.5} size={compact ? 8.5 : 9} weight={600}>{t.title}</Txt>
+        {!compact && <Toggle x={R - 30} y={y + 8} on={on} small />}
+        {g.desc.length > 0 && <Lines x={x + 32} y={y + 26} lines={g.desc} lh={DESC_LH} size={DESC_SIZE} />}
+        {g.barY !== undefined && (
+          <g>
+            <Box x={x + 8} y={y + g.barY} w={w - 16} h={3} r={1.5} fill={K.b2} />
+            <Box x={x + 8} y={y + g.barY} w={(w - 16) * LIKERS_DONE} h={3} r={1.5} fill={K.ac} />
+          </g>
+        )}
+        <Lines x={x + 8} y={statY} lines={g.stat} lh={9} size={compact ? 7 : 7.5} color={K.t1} />
+        {g.button && (
+          <g>
+            <Box x={R - 8 - btnW} y={y + g.footY} w={btnW} h={15} r={4} stroke={K.b2} />
+            <Txt x={R - 8 - btnW / 2} y={y + g.footY + 10.2} size={7.2} weight={500} anchor="middle">{g.button}</Txt>
+          </g>
+        )}
+      </g>
+      {focus.card && <Focus x={x} y={y} w={w} h={g.h} r={7} n={focus.card} bx={fb?.bx} by={fb?.by} />}
+      {focus.button && g.button && <Focus x={R - 8 - btnW} y={y + g.footY} w={btnW} h={15} r={4} n={focus.button} />}
+      {focus.bar && g.barY !== undefined && <Focus x={x + 8} y={y + g.barY} w={w - 16} h={3} r={1.5} n={focus.bar} bx={x + 1} by={y + g.barY + 1.5} />}
+      {focus.switch && !compact && <Focus x={R - 30} y={y + 8} w={22} h={12} r={6} n={focus.switch} />}
+    </g>
+  )
+}
+
+const PW = 250
+const PAD = 12
+const IW = PW - 2 * PAD
+/** Tek başına çizilen pencerenin yeri. */
+const PX = (W - PW) / 2
+const PY = 6
+
+/** Araçlar sekmesinin düzeni (pencerenin üstüne göre): giriş satırı, üç kart, durum kutusu, alt düğme. */
+function toolsLayout(ui: ArtLabels) {
+  const lead = wrap(ui.popupLead, fit(IW, 7))
+  let y = 72 + (lead.length - 1) * 9 + 9
+  const cards = {} as Record<ToolId, { top: number; h: number }>
+  for (const k of TOOLS) {
+    const { h } = toolGeom(ui, k, IW, false)
+    cards[k] = { top: y, h }
+    y += h + 6
+  }
+  const statusY = y + 2
+  return { lead, cards, statusY, footerY: statusY + 42 + 10 }
+}
+
+/** Güncelleme sekmesinin düzeni. `manual`: zip kopyasının elle kurulum isteyen hâli. */
+function updateLayout(manual: boolean) {
+  const statusH = manual ? 44 : 26
+  const checkY = 96 + statusH + 8
+  return { statusH, checkY, footerY: checkY + 18 + 12 }
+}
+
+function popupH(ui: ArtLabels, tab: 'tools' | 'update', manual = false) {
+  return (tab === 'tools' ? toolsLayout(ui).footerY : updateLayout(manual).footerY) + 22 + 10
+}
+
+/** Tek başına çizilen pencerede bir araç kartının çevresi (resmi o karta kırpmak için). */
+function cardCrop(ui: ArtLabels, k: ToolId): Crop {
+  const c = toolsLayout(ui).cards[k]
+  return [PX + PAD - 10, PY + c.top - 5, IW + 20, c.h + 10]
+}
+
+type PopupFocus = Partial<Record<
+  'master' | 'settingsTab' | 'updateTab' | 'status' | 'check' | 'tools' | 'postsBtn' | 'likersBtn' | 'likersBar' | 'commentsSwitch',
+  number
+>>
+
+/** Sekme şeridi: Araçlar, Ayarlar, Güncelleme; eşit genişlikte, etkin sekmenin altı çizili. */
+function PopupTabs({ L, y, ui, active, focus }: { L: number; y: number; ui: ArtLabels; active: 'tools' | 'update'; focus: PopupFocus }) {
+  const tw = IW / 3
   const tabs = [
-    { key: 'status', label: ui.popupTabStatus, x: L, n: undefined },
-    { key: 'settings', label: ui.popupTabSettings, x: L + 60, n: focus.settingsTab },
-    { key: 'update', label: ui.popupTabUpdate, x: L + 124, n: focus.updateTab },
+    { key: 'tools', label: ui.popupTabTools, n: undefined },
+    { key: 'settings', label: ui.popupTabSettings, n: focus.settingsTab },
+    { key: 'update', label: ui.popupTabUpdate, n: focus.updateTab },
   ]
   return (
     <g>
-      <Line x1={L} y1={y + 19} x2={R} y2={y + 19} />
-      {tabs.map(t => {
+      <Line x1={L} y1={y + 19} x2={L + IW} y2={y + 19} />
+      {tabs.map((t, i) => {
+        const cx = L + tw * (i + 0.5)
         const on = t.key === active
-        const w = t.label.length * 5
+        const lw = t.label.length * 5
         return (
           <g key={t.key}>
-            <Txt x={t.x} y={y + 12} size={9} weight={on ? 600 : 500} color={on ? K.t1 : K.t2}>{t.label}</Txt>
-            {on && <Box x={t.x} y={y + 17.5} w={w} h={2.5} r={1.2} fill={K.ac} />}
-            {t.n && <Focus x={t.x - 2} y={y + 2} w={w + 4} h={14} r={4} n={t.n} bx={t.x + w + 12} by={y + 9} />}
+            <Txt x={cx} y={y + 12} size={9} weight={on ? 600 : 500} color={on ? K.t1 : K.t2} anchor="middle">{t.label}</Txt>
+            {on && <Box x={cx - tw * 0.4} y={y + 17.5} w={tw * 0.8} h={2.5} r={1.2} fill={K.ac} />}
+            {t.n && <Focus x={cx - lw / 2 - 3} y={y + 2} w={lw + 6} h={14} r={4} n={t.n} />}
           </g>
         )
       })}
@@ -497,73 +654,96 @@ function PopupTabs({ L, R, y, ui, active, focus }: {
 }
 
 /**
- * Eklenti penceresi; frontend/extension/popup.html ile aynı düzen: başlık ve sürüm, sekmeler, sekmenin içi
- * ve her sekmede altta "Uygulamayı aç". Durum sekmesi: kayıt anahtarı, not, durum. Güncelleme sekmesi: iki sürüm,
- * durum satırı ve "Şimdi denetle". `manual` zip kopyasının elle kurulum isteyen hâlini çizer.
+ * Eklenti penceresi; frontend/extension/popup.html ile aynı düzen. Üstte logo, "InstaAnalytic", "Köprü vX" ve sağda
+ * köprünün ana anahtarı; altında sekmeler ve sekmenin içi; en altta "Uygulamayı aç".
+ * Araçlar sekmesi: giriş satırı, üç araç kartı (Gönderi listesi, Beğenenler, Yorumlar), durum kutusu.
+ * Güncelleme sekmesi: sürümler, durum satırı ve "Şimdi denetle". `off`: kapatılmış araçlar (soluk).
  */
-function PopupPanel({ x, y, ui, tab = 'status', manual = false, focus = {} }: {
-  x: number; y: number; ui: ArtLabels; tab?: 'status' | 'update'; manual?: boolean; focus?: PopupFocus
+function PopupPanel({ x, y, ui, tab = 'tools', manual = false, master = true, off = [], focus = {} }: {
+  x: number; y: number; ui: ArtLabels; tab?: 'tools' | 'update'; manual?: boolean; master?: boolean; off?: ToolId[]; focus?: PopupFocus
 }) {
-  const L = x + 14
-  const R = x + POPUP_W - 14
+  const L = x + PAD
+  const R = x + PW - PAD
+  const H = popupH(ui, tab, manual)
+  const toolFocus: Record<ToolId, ToolFocus> = {
+    posts: { button: focus.postsBtn },
+    likers: { button: focus.likersBtn, bar: focus.likersBar },
+    comments: { switch: focus.commentsSwitch },
+  }
+  const T = tab === 'tools' ? toolsLayout(ui) : undefined
+  const U = updateLayout(manual)
+  const footerY = y + (T ? T.footerY : U.footerY)
   return (
     <g>
-      <Box x={x + 3} y={y + 3} w={POPUP_W} h={POPUP_H} r={8} fill="rgba(0,0,0,0.18)" />
-      <Box x={x} y={y} w={POPUP_W} h={POPUP_H} r={8} fill={K.bg} stroke={K.b2} />
-      <Txt x={L} y={y + 20} size={11} weight={600}>{ui.extName}</Txt>
-      <Txt x={R} y={y + 20} size={8} color={K.t3} anchor="end">{ui.popupVersionValue}</Txt>
-      <PopupTabs L={L} R={R} y={y + 28} ui={ui} active={tab} focus={focus} />
+      <Box x={x + 3} y={y + 3} w={PW} h={H} r={8} fill="rgba(0,0,0,0.18)" />
+      <Box x={x} y={y} w={PW} h={H} r={8} fill={K.bg} stroke={K.b2} />
 
-      {tab === 'status' ? (
+      {/* Uygulama çubuğu */}
+      <Logo x={L} y={y + 10} size={22} />
+      <Txt x={L + 30} y={y + 20} size={10.5} weight={650}>{ui.popupBrand}</Txt>
+      <Txt x={L + 30} y={y + 30.5} size={7.5} color={K.t3}>{`${ui.popupBridge} v${ui.popupVersionValue}`}</Txt>
+      <Toggle x={R - 26} y={y + 14} on={master} />
+      {focus.master && <Focus x={R - 26} y={y + 14} w={26} h={14} r={7} n={focus.master} bx={R - 34} by={y + 11} />}
+
+      <PopupTabs L={L} y={y + 38} ui={ui} active={tab} focus={focus} />
+
+      {T ? (
         <g>
-          <Toggle x={L} y={y + 56} />
-          <Txt x={L + 32} y={y + 66.5} size={9.5} weight={500}>{ui.popupToggle}</Txt>
-          {focus.toggle && <Focus x={L - 3} y={y + 53} w={186} h={20} n={focus.toggle} />}
+          <Lines x={L} y={y + 72} lines={T.lead} lh={9} size={7} />
+          {TOOLS.map(k => (
+            <ToolCard key={k} x={L} y={y + T.cards[k].top} w={IW} k={k} ui={ui}
+              on={!off.includes(k)} dim={!master || off.includes(k)} focus={toolFocus[k]} />
+          ))}
+          {focus.tools && (
+            <Focus x={L} y={y + T.cards.posts.top} w={IW} r={7} n={focus.tools}
+              h={T.cards.comments.top + T.cards.comments.h - T.cards.posts.top} bx={L - 3} by={y + T.cards.posts.top + 34} />
+          )}
 
-          <Para x={L} y={y + 86} text={ui.popupNote} max={50} lh={9.5} size={7.5} />
-
-          <Box x={L} y={y + 114} w={R - L} h={46} r={6} fill={K.s1} stroke={K.b1} />
-          <circle cx={L + 11} cy={y + 126} r={3.5} style={{ fill: OK }} />
-          <Txt x={L + 20} y={y + 129.5} size={9} weight={600}>{ui.popupStatus}</Txt>
-          {focus.status && <Focus x={L + 4} y={y + 119} w={70} h={14} r={4} n={focus.status} />}
-          <Txt x={L + 10} y={y + 143} size={7.5} color={K.t2}>{ui.popupToday}</Txt>
-          <Txt x={L + 10} y={y + 153.5} size={8.5}>{ui.popupTodayValue}</Txt>
-          <Txt x={L + 124} y={y + 143} size={7.5} color={K.t2}>{ui.popupLast}</Txt>
-          <Txt x={L + 124} y={y + 153.5} size={8.5}>{ui.popupLastValue}</Txt>
+          <Box x={L} y={y + T.statusY} w={IW} h={42} r={6} fill={K.s1} stroke={K.b1} />
+          <circle cx={L + 11} cy={y + T.statusY + 12} r={3.5} style={{ fill: master ? OK : K.t3 }} />
+          <Txt x={L + 20} y={y + T.statusY + 15.5} size={master ? 9 : 8} weight={600}>{master ? ui.popupStatus : ui.popupOff}</Txt>
+          {focus.status && <Focus x={L + 4} y={y + T.statusY + 5} w={66} h={13} r={4} n={focus.status} />}
+          <Txt x={L + 10} y={y + T.statusY + 29} size={7} color={K.t2}>{ui.popupToday}</Txt>
+          <Txt x={L + 10} y={y + T.statusY + 38.5} size={8}>{ui.popupTodayValue}</Txt>
+          <Txt x={L + 110} y={y + T.statusY + 29} size={7} color={K.t2}>{ui.popupLast}</Txt>
+          <Txt x={L + 110} y={y + T.statusY + 38.5} size={8}>{ui.popupLastValue}</Txt>
         </g>
       ) : (
         <g>
-          <Txt x={L} y={y + 66} size={8} color={K.t2}>{ui.popupInstalled}</Txt>
-          <Txt x={R} y={y + 66} size={9} weight={600} anchor="end">{ui.popupVersionValue}</Txt>
-          <Txt x={L} y={y + 82} size={8} color={K.t2}>{ui.popupAppVersion}</Txt>
-          <Txt x={R} y={y + 82} size={9} weight={600} anchor="end">{manual ? ui.popupNewVersionValue : ui.popupVersionValue}</Txt>
+          <Txt x={L} y={y + 74} size={7} color={K.t2}>{ui.popupInstalled}</Txt>
+          <Txt x={L} y={y + 86} size={9} weight={600}>{ui.popupVersionValue}</Txt>
+          <Txt x={L + 58} y={y + 74} size={7} color={K.t2}>{ui.popupAppVersion}</Txt>
+          <Txt x={L + 58} y={y + 86} size={9} weight={600}>{manual ? ui.popupNewVersionValue : ui.popupVersionValue}</Txt>
+          <Txt x={L + 144} y={y + 74} size={7} color={K.t2}>{ui.popupLastCheck}</Txt>
+          <Txt x={L + 144} y={y + 86} size={9} weight={600}>{ui.popupLastCheckValue}</Txt>
 
-          <Box x={L} y={y + 92} w={R - L} h={manual ? 44 : 26} r={6} fill={K.s1} stroke={manual ? AMBER : K.b1} />
-          <circle cx={L + 11} cy={y + 105} r={3.5} style={{ fill: manual ? AMBER : OK }} />
-          <Txt x={L + 20} y={y + 108} size={manual ? 8 : 9} weight={600}>{manual ? ui.popupManual : ui.popupUpToDate}</Txt>
-          {manual && <Para x={L + 20} y={y + 120} text={ui.popupManualNote} max={44} lh={9} size={7.5} />}
+          <Box x={L} y={y + 96} w={IW} h={U.statusH} r={6} fill={K.s1} stroke={manual ? AMBER : K.b1} />
+          <circle cx={L + 11} cy={y + 109} r={3.5} style={{ fill: manual ? AMBER : OK }} />
+          <Txt x={L + 20} y={y + 112} size={manual ? 8 : 9} weight={600}>{manual ? ui.popupManual : ui.popupUpToDate}</Txt>
+          {manual && <Para x={L + 20} y={y + 124} text={ui.popupManualNote} max={fit(IW - 28, 7.5)} lh={9} size={7.5} />}
           {focus.status && (
-            <Focus x={L} y={y + 92} w={R - L} h={manual ? 44 : 26} r={6} n={focus.status} bx={R + 3} by={y + 92 + (manual ? 44 : 26) + 3} />
+            <Focus x={L} y={y + 96} w={IW} h={U.statusH} r={6} n={focus.status} bx={R + 3} by={y + 96 + U.statusH + 3} />
           )}
 
-          <Box x={L} y={y + 144} w={92} h={20} r={5} fill={K.s2} stroke={K.b2} />
-          <Txt x={L + 46} y={y + 157} size={8.5} weight={600} anchor="middle">{ui.popupCheckNow}</Txt>
-          {focus.check && <Focus x={L} y={y + 144} w={92} h={20} r={5} n={focus.check} />}
+          <Box x={L} y={y + U.checkY} w={IW} h={18} r={5} stroke={K.b2} />
+          <Txt x={(L + R) / 2} y={y + U.checkY + 12.3} size={8.5} weight={500} anchor="middle">{ui.popupCheckNow}</Txt>
+          {focus.check && <Focus x={L} y={y + U.checkY} w={IW} h={18} r={5} n={focus.check} />}
         </g>
       )}
 
-      <Box x={L} y={y + 172} w={R - L} h={24} r={6} stroke={K.b2} />
-      <Txt x={(L + R) / 2} y={y + 187.5} size={9} anchor="middle">{ui.popupOpenApp}</Txt>
+      <Box x={L} y={footerY} w={IW} h={22} r={5} fill={K.ac} />
+      <Txt x={(L + R) / 2} y={footerY + 14.5} size={9} weight={600} color="#fff" anchor="middle">{ui.popupOpenApp}</Txt>
     </g>
   )
 }
 
+/** Kurulum: Instagram sekmesi açıkken araç çubuğundaki simgeye tıklanınca açılan pencere. */
 function PopupArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={64 + POPUP_H + 12} url="instagram.com" tab="Instagram" pinned>
-      <IgContent w={124} />
+    <Browser h={64 + popupH(ui, 'tools') + 12} url="instagram.com" tab="Instagram" pinned>
+      <IgContent w={104} />
       <Focus x={314} y={38} w={16} h={16} r={4} n={1} bx={298} by={46} />
-      <PopupPanel x={160} y={64} ui={ui} focus={{ toggle: 2, settingsTab: 3 }} />
+      <PopupPanel x={140} y={64} ui={ui} focus={{ master: 2, settingsTab: 3 }} />
     </Browser>
   )
 }
@@ -589,7 +769,7 @@ function BridgeCardHead({ x, y, ui, focusN }: { x: number; y: number; ui: ArtLab
 function ConnectedArt({ ui }: { ui: ArtLabels }) {
   const h = 200
   return (
-    <Browser h={h} url="localhost:3002/settings" tab={ui.appTab}>
+    <Browser h={h} url="localhost:3002/settings" tab={ui.appTab} logoTab>
       <AppSidebar h={h} active={5} />
       <Txt x={88} y={86} size={12} weight={600}>{ui.settingsHeading}</Txt>
       <Box x={88} y={98} w={296} h={90} r={8} fill={K.s2} stroke={K.b1} />
@@ -597,7 +777,7 @@ function ConnectedArt({ ui }: { ui: ArtLabels }) {
       <Txt x={118} y={136} size={8} color={K.t2}>{ui.bridgeDesc}</Txt>
       <Txt x={118} y={154} size={8.5}>{ui.bridgeFound}</Txt>
       <Box x={118} y={162} w={200} h={5} r={2.5} fill={K.b2} />
-      <Box x={118} y={162} w={58} h={5} r={2.5} fill={K.ac} />
+      <Box x={118} y={162} w={200 * LIKERS_DONE} h={5} r={2.5} fill={K.ac} />
       <Txt x={118} y={180} size={8} color={K.t2}>{ui.bridgeProgress}</Txt>
     </Browser>
   )
@@ -605,12 +785,29 @@ function ConnectedArt({ ui }: { ui: ArtLabels }) {
 
 /* ── Kullanım resimleri ──────────────────────────────────────────────────── */
 
+/** Kullanıma başlarken: ana anahtar açık, altında üç ayrı araç, durum "Dinliyor.". */
 function UseToggleArt({ ui }: { ui: ArtLabels }) {
-  return (
-    <g>
-      <PopupPanel x={85} y={6} ui={ui} focus={{ toggle: 1, status: 2, settingsTab: 3 }} />
-    </g>
-  )
+  return <PopupPanel x={PX} y={PY} ui={ui} focus={{ master: 1, tools: 2, status: 3 }} />
+}
+
+/** Gönderi listesi kartı: "Profilimi aç". Resim bu karta kırpılır. */
+function PostsOpenArt({ ui }: { ui: ArtLabels }) {
+  return <PopupPanel x={PX} y={PY} ui={ui} focus={{ postsBtn: 1 }} />
+}
+
+/** Beğenenler kartı: "Sıradaki gönderiyi aç". Resim bu karta kırpılır. */
+function LikersNextArt({ ui }: { ui: ArtLabels }) {
+  return <PopupPanel x={PX} y={PY} ui={ui} focus={{ likersBtn: 1 }} />
+}
+
+/** Beğenenler kartı: çubuk dolar, sonra yine "Sıradaki gönderiyi aç". Resim bu karta kırpılır. */
+function LikersProgressArt({ ui }: { ui: ArtLabels }) {
+  return <PopupPanel x={PX} y={PY} ui={ui} focus={{ likersBar: 1, likersBtn: 2 }} />
+}
+
+/** Bir aracı kapatmak: Yorumlar kapalı ve soluk; ana anahtar hepsini birden kapatır. */
+function ToolOffArt({ ui }: { ui: ArtLabels }) {
+  return <PopupPanel x={PX} y={PY} ui={ui} off={['comments']} focus={{ commentsSwitch: 1, master: 2 }} />
 }
 
 /** Instagram profilinin üst kısmı: profil resmi, kullanıcı adı ve sayılar. */
@@ -639,10 +836,11 @@ function Tile({ x, y, w, h, tone = 0, framed = false }: { x: number; y: number; 
   )
 }
 
+/** Profil sona kadar kaydırılır; eklentinin Gönderi listesi kartında "N gönderi bulundu". */
 function UseProfileArt({ ui }: { ui: ArtLabels }) {
   const h = 250
   return (
-    <Browser h={h} url={`instagram.com/${ui.igHandle}`} tab="Instagram">
+    <Browser h={h} url={`instagram.com/${ui.igHandle}`} tab="Instagram" pinned>
       <IgProfileHead ui={ui} right={256} />
       {[0, 1].map(row => [0, 1, 2].map(col => (
         <Tile key={`${row}-${col}`} x={18 + col * 80} y={122 + row * 58} w={76} h={54} tone={row * 3 + col} />
@@ -656,26 +854,8 @@ function UseProfileArt({ ui }: { ui: ArtLabels }) {
       <path d="M323 132l7 9 7-9z" style={{ fill: K.ac }} />
       <Focus x={284} y={72} w={92} h={74} n={1} />
 
-      <Txt x={276} y={171} size={7.5} color={K.t3}>{ui.appTab}</Txt>
-      <Box x={274} y={177} w={114} h={48} r={6} fill={K.s2} stroke={K.b1} />
-      <Txt x={284} y={194} size={8.5} weight={600}>{ui.bridgeTitle}</Txt>
-      <circle cx={288} cy={208} r={3} style={{ fill: OK }} />
-      <Txt x={295} y={211} size={8}>{ui.bridgeFound}</Txt>
-      <Focus x={274} y={177} w={114} h={48} n={2} bx={384} by={174} />
-    </Browser>
-  )
-}
-
-function UseOpenPostArt({ ui }: { ui: ArtLabels }) {
-  const h = 230
-  return (
-    <Browser h={h} url={`instagram.com/${ui.igHandle}`} tab="Instagram">
-      <IgProfileHead ui={ui} />
-      {[0, 1, 2].map(col => <Tile key={col} x={18 + col * 124} y={124} w={118} h={92} tone={col} />)}
-      <Focus x={142} y={124} w={118} h={92} r={3} n={1} />
-      <Cursor x={206} y={166} />
-      <Box x={180} y={190} w={42} h={16} r={8} fill={K.s1} op={0.9} />
-      <Txt x={201} y={201.5} size={9} weight={700} color={K.ac} anchor="middle">{ui.clickHere}</Txt>
+      <Txt x={274} y={172} size={7.5} color={K.t3}>{ui.extName}</Txt>
+      <ToolCard x={272} y={178} w={116} k="posts" ui={ui} compact focus={{ card: 2 }} fb={{ bx: 384, by: 175 }} />
     </Browser>
   )
 }
@@ -728,27 +908,33 @@ function UseLikesArt({ ui }: { ui: ArtLabels }) {
   )
 }
 
-function UseNextArt({ ui }: { ui: ArtLabels }) {
-  const h = 240
-  const linkW = Math.min(64, ui.bridgeOpenIg.length * 4)
+/** Yorumlar: gönderi açılınca yorumlar zaten yüklenir; eklentinin Yorumlar kartında sayı artar. */
+function CommentsArt({ ui }: { ui: ArtLabels }) {
+  const h = 230
   return (
-    <Browser h={h} url="localhost:3002/cleanup" tab={ui.appTab}>
-      <AppSidebar h={h} active={4} />
-      <Box x={88} y={72} w={300} h={156} r={8} fill={K.s2} stroke={K.b1} />
-      <BridgeCardHead x={100} y={92} ui={ui} />
-      <Box x={100} y={104} w={276} h={5} r={2.5} fill={K.b2} />
-      <Box x={100} y={104} w={80} h={5} r={2.5} fill={K.ac} />
-      <Txt x={100} y={123} size={8} color={K.t2}>{ui.bridgeProgress}</Txt>
-      <Focus x={97} y={100} w={282} h={28} r={5} n={2} bx={378} by={97} />
-
-      <Txt x={100} y={146} size={9} weight={600}>{ui.bridgeQueue}</Txt>
+    <Browser h={h} url="instagram.com/p/…" tab="Instagram" pinned>
+      <Box x={12} y={70} w={234} h={148} r={6} fill={K.s1} stroke={K.b1} />
+      <Tile x={12} y={70} w={110} h={148} tone={2} />
+      <circle cx={136} cy={84} r={6} style={{ fill: K.s2, stroke: K.ac, strokeWidth: 1.2 }} />
+      <Txt x={146} y={87} size={8} weight={600}>{ui.igHandle}</Txt>
+      <Line x1={122} y1={96} x2={246} y2={96} />
       {[0, 1, 2, 3].map(i => (
         <g key={i}>
-          <Tile x={100 + i * 70} y={154} w={48} h={48} tone={i} framed />
-          <Txt x={100 + i * 70} y={215} size={7.5} weight={600} color={K.ac}>{ui.bridgeOpenIg}</Txt>
+          <circle cx={136} cy={112 + i * 20} r={5.5} style={{ fill: K.s2, stroke: K.b2 }} />
+          <Box x={146} y={107 + i * 20} w={28} h={4.5} r={2.2} fill={K.t3} />
+          <Box x={178} y={107 + i * 20} w={i % 2 ? 40 : 56} h={4.5} r={2.2} fill={K.b2} />
+          <Box x={146} y={115 + i * 20} w={i % 2 ? 60 : 44} h={4} r={2} fill={K.b1} />
         </g>
       ))}
-      <Focus x={98} y={206} w={linkW} h={12} r={3} n={1} bx={98 + linkW + 3} by={203} />
+      <Focus x={128} y={103} w={112} h={78} r={5} n={1} />
+      <Line x1={122} y1={192} x2={246} y2={192} />
+      <Heart x={132} y={199} />
+      <circle cx={156} cy={204.5} r={5} style={paint({ stroke: K.t1, sw: 1.2 })} />
+
+      <Line x1={247} y1={150} x2={251} y2={150} color={K.ac} sw={2} />
+      <path d="M250 145.5l6 4.5-6 4.5z" style={{ fill: K.ac }} />
+      <Txt x={260} y={116} size={7.5} color={K.t3}>{ui.extName}</Txt>
+      <ToolCard x={258} y={122} w={132} k="comments" ui={ui} compact focus={{ card: 2 }} fb={{ bx: 386, by: 119 }} />
     </Browser>
   )
 }
@@ -757,21 +943,17 @@ function UseNextArt({ ui }: { ui: ArtLabels }) {
 
 /** Güncelleme sekmesi, olağan hâli: iki sürüm aynı, "Güncel". */
 function UpdateTabArt({ ui }: { ui: ArtLabels }) {
-  return (
-    <g>
-      <PopupPanel x={85} y={6} ui={ui} tab="update" focus={{ updateTab: 1, check: 2 }} />
-    </g>
-  )
+  return <PopupPanel x={PX} y={PY} ui={ui} tab="update" focus={{ updateTab: 1, check: 2 }} />
 }
 
 /** Zip kopyası: simgede turuncu "↑", Güncelleme sekmesinde elle kurulum uyarısı. */
 function UpdateManualArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={64 + POPUP_H + 12} url="instagram.com" tab="Instagram" pinned badge="update">
-      <IgContent w={124} />
+    <Browser h={64 + popupH(ui, 'update', true) + 12} url="instagram.com" tab="Instagram" pinned badge="update">
+      <IgContent w={104} />
       {/* Çerçeve simgenin köşesindeki turuncu "↑"yü de içine alsın */}
       <Focus x={313} y={32} w={25} h={24} r={5} n={1} bx={298} by={46} />
-      <PopupPanel x={160} y={64} ui={ui} tab="update" manual focus={{ status: 2 }} />
+      <PopupPanel x={140} y={64} ui={ui} tab="update" manual focus={{ status: 2 }} />
     </Browser>
   )
 }
@@ -779,7 +961,7 @@ function UpdateManualArt({ ui }: { ui: ArtLabels }) {
 /** Uyarı sonrası: uygulamada kırmızı şerit, eklenti simgesinde kırmızı "!". */
 function WarningArt({ ui }: { ui: ArtLabels }) {
   return (
-    <Browser h={150} url="localhost:3002" tab={ui.appTab} pinned badge="alert">
+    <Browser h={150} url="localhost:3002" tab={ui.appTab} pinned badge="alert" logoTab>
       <Box x={3} y={62} w={394} h={24} fill={BAD} op={0.92} />
       <circle cx={18} cy={74} r={6} style={{ fill: '#fff' }} />
       <Txt x={18} y={77.5} size={9} weight={800} color={BAD} anchor="middle">!</Txt>
@@ -792,8 +974,16 @@ function WarningArt({ ui }: { ui: ArtLabels }) {
   )
 }
 
-/** `crop` resmin yalnızca bir kısmını gösterir (viewBox: x, y, genişlik, yükseklik). */
-const ARTS: Record<ArtId, { h: number; crop?: [number, number, number, number]; Draw: (p: { ui: ArtLabels }) => JSX.Element }> = {
+/** viewBox: x, y, genişlik, yükseklik. */
+type Crop = [number, number, number, number]
+type Size<T> = T | ((ui: ArtLabels) => T)
+const sized = <T,>(s: Size<T>, ui: ArtLabels): T => (typeof s === 'function' ? (s as (ui: ArtLabels) => T)(ui) : s)
+
+/**
+ * `h` resmin yüksekliği, `crop` resmin yalnızca bir kısmını gösterir. Eklenti penceresinin boyu içindeki yazılara
+ * göre hesaplandığı için ikisi de etiketlerden hesaplanabilir.
+ */
+const ARTS: Record<ArtId, { h: Size<number>; crop?: Size<Crop>; Draw: (p: { ui: ArtLabels }) => JSX.Element }> = {
   appFolder: { h: 200, Draw: AppFolderArt },
   address: { h: 160, Draw: AddressArt },
   devmode: { h: 190, Draw: DevModeArt },
@@ -802,21 +992,24 @@ const ARTS: Record<ArtId, { h: number; crop?: [number, number, number, number]; 
   card: { h: 220, Draw: CardArt },
   pin: { h: 210, Draw: PinArt },
   reload: { h: 180, Draw: ReloadArt },
-  popup: { h: 64 + POPUP_H + 12, Draw: PopupArt },
+  popup: { h: ui => 64 + popupH(ui, 'tools') + 12, Draw: PopupArt },
   connected: { h: 200, Draw: ConnectedArt },
-  useToggle: { h: POPUP_H + 12, Draw: UseToggleArt },
+  useToggle: { h: ui => popupH(ui, 'tools') + 12, Draw: UseToggleArt },
+  postsOpen: { h: ui => popupH(ui, 'tools') + 12, crop: ui => cardCrop(ui, 'posts'), Draw: PostsOpenArt },
   useProfile: { h: 250, Draw: UseProfileArt },
-  useOpenPost: { h: 230, Draw: UseOpenPostArt },
+  likersNext: { h: ui => popupH(ui, 'tools') + 12, crop: ui => cardCrop(ui, 'likers'), Draw: LikersNextArt },
   useLikes: { h: 250, Draw: UseLikesArt },
-  useNext: { h: 240, Draw: UseNextArt },
-  updateTab: { h: POPUP_H + 12, Draw: UpdateTabArt },
-  updateManual: { h: 64 + POPUP_H + 12, Draw: UpdateManualArt },
+  likersProgress: { h: ui => popupH(ui, 'tools') + 12, crop: ui => cardCrop(ui, 'likers'), Draw: LikersProgressArt },
+  comments: { h: 230, Draw: CommentsArt },
+  toolOff: { h: ui => popupH(ui, 'tools') + 12, Draw: ToolOffArt },
+  updateTab: { h: ui => popupH(ui, 'update') + 12, Draw: UpdateTabArt },
+  updateManual: { h: ui => 64 + popupH(ui, 'update', true) + 12, Draw: UpdateManualArt },
 }
 
 export const ART_IDS = Object.keys(ARTS) as ArtId[]
 
 function Figure({ h, crop, alt, caption, children, className = '' }: {
-  h: number; crop?: [number, number, number, number]; alt: string; caption: string; children: ReactNode; className?: string
+  h: number; crop?: Crop; alt: string; caption: string; children: ReactNode; className?: string
 }) {
   return (
     <figure className={`m-0 ${className}`}>
@@ -832,7 +1025,11 @@ function Figure({ h, crop, alt, caption, children, className = '' }: {
 
 export function Illustration({ id, ui, alt, caption, className }: { id: ArtId; ui: ArtLabels; alt: string; caption: string; className?: string }) {
   const { h, crop, Draw } = ARTS[id]
-  return <Figure h={h} crop={crop} alt={alt} caption={caption} className={className}><Draw ui={ui} /></Figure>
+  return (
+    <Figure h={sized(h, ui)} crop={crop && sized(crop, ui)} alt={alt} caption={caption} className={className}>
+      <Draw ui={ui} />
+    </Figure>
+  )
 }
 
 export function WarningIllustration({ ui, alt, caption, className }: { ui: ArtLabels; alt: string; caption: string; className?: string }) {

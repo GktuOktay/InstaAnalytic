@@ -6,32 +6,28 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <h1>InstaAnalytic Köprüsü</h1>
-    <span class="version" id="version"></span>
+  <header class="appbar">
+    <img src="icons/icon-48.png" alt="" width="28" height="28" class="logo">
+    <div class="brand">
+      <h1>InstaAnalytic</h1>
+      <span class="sub">Köprü <span id="version"></span></span>
+    </div>
+    <label class="toggle master" title="Köprüyü aç / kapat">
+      <input type="checkbox" id="enabled" aria-label="Köprü açık">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Bölümler">
-    <button type="button" role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true">Durum</button>
+    <button type="button" role="tab" id="tab-tools" aria-controls="panel-tools" aria-selected="true">Araçlar</button>
     <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Ayarlar</button>
     <button type="button" role="tab" id="tab-update" aria-controls="panel-update" aria-selected="false" tabindex="-1">
       Güncelleme <span class="tab-dot" id="update-dot" hidden></span>
     </button>
   </nav>
 
-  <!-- Durum -->
-  <section class="panel" role="tabpanel" id="panel-status" aria-labelledby="tab-status">
-    <label class="toggle">
-      <input type="checkbox" id="enabled">
-      <span class="switch" aria-hidden="true"></span>
-      <span class="toggle-text">Gezinirken beğenenleri kaydet</span>
-    </label>
-
-    <p class="note">
-      Instagram'a kendisi hiçbir istek göndermez. Siz kendi gönderinizin beğenenlerini açtığınızda,
-      sayfanın zaten indirdiği listeyi kaydeder.
-    </p>
-
+  <!-- Araçlar -->
+  <section class="panel" role="tabpanel" id="panel-tools" aria-labelledby="tab-tools">
     <section class="warning" id="warning" role="alert" hidden>
       <strong id="warning-title">Instagram uyarı verdi.</strong>
       <p id="warning-until"></p>
@@ -39,9 +35,63 @@
         <li>Beğenen listelerini açmayı bu süre boyunca bırakın.</li>
         <li>Instagram'ı telefonunuzdan normal şekilde kullanın.</li>
         <li>Instagram bir doğrulama isterse onu kendiniz tamamlayın.</li>
-        <li>Süre dolunca daha yavaş devam edin: bir oturumda birkaç gönderi yeter.</li>
       </ul>
     </section>
+
+    <p class="lead" id="lead">
+      Instagram'a kendisi istek göndermez. Siz gezerken sayfanın zaten indirdiği bilgiyi kaydeder.
+    </p>
+
+    <article class="tool" data-tool="posts">
+      <div class="tool-head">
+        <span class="tool-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+        </span>
+        <div class="tool-title">
+          <h2>Gönderi listesi</h2>
+          <p>Profilinizi açıp aşağı kaydırdığınızda gönderilerinizi tarih, beğeni ve yorum sayısıyla kaydeder.</p>
+        </div>
+        <label class="toggle small"><input type="checkbox" data-tool-switch="posts" aria-label="Gönderi listesi"><span class="switch" aria-hidden="true"></span></label>
+      </div>
+      <div class="tool-foot">
+        <span class="stat" id="stat-posts">—</span>
+        <button type="button" class="secondary" id="act-posts">Profilimi aç</button>
+      </div>
+    </article>
+
+    <article class="tool" data-tool="likers">
+      <div class="tool-head">
+        <span class="tool-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.1A4.4 4.4 0 0 1 12 7.6a4.4 4.4 0 0 1 7.5 2.8c0 5.5-7.5 10.1-7.5 10.1z"/></svg>
+        </span>
+        <div class="tool-title">
+          <h2>Beğenenler</h2>
+          <p>Bir gönderinizin altındaki beğenme sayısına tıklayıp listeyi sonuna kadar kaydırdığınızda, beğenenleri kaydeder.</p>
+        </div>
+        <label class="toggle small"><input type="checkbox" data-tool-switch="likers" aria-label="Beğenenler"><span class="switch" aria-hidden="true"></span></label>
+      </div>
+      <div class="progress" aria-hidden="true"><span id="bar-likers"></span></div>
+      <div class="tool-foot">
+        <span class="stat" id="stat-likers">—</span>
+        <button type="button" class="secondary" id="act-likers">Sıradaki gönderiyi aç</button>
+      </div>
+    </article>
+
+    <article class="tool" data-tool="comments">
+      <div class="tool-head">
+        <span class="tool-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9.5L5 19.5v-4H4z"/></svg>
+        </span>
+        <div class="tool-title">
+          <h2>Yorumlar</h2>
+          <p>Bir gönderinizi açtığınızda yorum yapanları kendiliğinden kaydeder.</p>
+        </div>
+        <label class="toggle small"><input type="checkbox" data-tool-switch="comments" aria-label="Yorumlar"><span class="switch" aria-hidden="true"></span></label>
+      </div>
+      <div class="tool-foot">
+        <span class="stat" id="stat-comments">—</span>
+      </div>
+    </article>
 
     <section class="status" id="status" data-state="off">
       <div class="status-line"><span class="dot"></span><span id="status-text">Kapalı.</span></div>

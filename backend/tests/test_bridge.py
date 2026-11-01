@@ -283,3 +283,21 @@ async def test_extension_reports_its_version(client, make_session):
         assert bad.status_code == 422
     finally:
         app.dependency_overrides.pop(get_kv, None)
+
+
+@pytest.mark.asyncio
+async def test_only_the_tools_the_user_turned_on_are_saved(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    r = await bridge.observe(db, kv, s, url=GQL, page_url="https://www.instagram.com/me/", req_body="",
+                             status=200, text=timeline_text(), now=NOW, kinds={"likers"})
+    assert r["posts"] == 0                                   # gönderi listesi kapalı
+    await bridge.observe(db, kv, s, url=GQL, page_url="https://www.instagram.com/me/", req_body="",
+                         status=200, text=timeline_text(), now=NOW, kinds={"posts"})
+    likers = '{"data":{"xdt_api__v1__media__likers":{"users":[{"pk":"555","username":"a"}]}}}'
+    r = await bridge.observe(db, kv, s, url=GQL, page_url="https://www.instagram.com/p/OLD1/", req_body=likers_req(BIG_PK),
+                             status=200, text=likers, now=NOW, kinds={"posts", "comments"})
+    assert r["likers"] == 0 and (await db.execute(select(Interaction))).first() is None
+    r = await bridge.observe(db, kv, s, url=GQL, page_url="https://www.instagram.com/p/OLD1/", req_body=likers_req(BIG_PK),
+                             status=200, text=likers, now=NOW, kinds={"likers"})
+    assert r["likers"] == 1
