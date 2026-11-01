@@ -1,20 +1,15 @@
 // InstaAnalytic Köprüsü: arka plan (service worker).
-// Instagram'a hiçbir istek göndermez. Instagram sekmesinin zaten indirdiği yanıtları (content.js'ten gelir)
-// bu bilgisayardaki uygulamaya iletir. Hangi verinin kaydedileceğine uygulama karar verir.
+//
+// Yalnızca iletir: Instagram sekmesinin zaten indirdiği yanıtları bu bilgisayardaki uygulamaya gönderir.
+// Instagram'a hiçbir istek göndermez, çerez okumaz. Neyin kaydedileceğine, uyarının ne anlama geldiğine
+// ve kullanıcıya ne söyleneceğine uygulama karar verir; eklenti yalnızca uygulamanın cevabını gösterir.
 'use strict';
 
 const DEFAULT_APP = 'http://localhost:3002';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VIEWER_RE = /^\d{1,20}$/;
 const MAX_BODY_CHARS = 8 * 1024 * 1024;
-
-// Uygulamadaki açıklamalarla aynı başlıklar (son kullanıcı dili)
-const WARNING_TEXT = {
-  rate_limit: 'Instagram çok sık işlem yapıldığını düşündü. Beğenen listelerini açmayı bırakın.',
-  action_blocked: 'Instagram bazı işlemleri geçici olarak kısıtladı. Bir gün toplu işlem yapmayın.',
-  verify: 'Instagram hesabınız için doğrulama istiyor. Telefondan kendiniz tamamlayın.',
-  logged_out: "Instagram oturumu kapanmış görünüyor. instagram.com'a yeniden giriş yapın.",
-};
-const DEFAULT_WARNING = 'Instagram uyarı verdi. Beğenen listelerini açmayı bırakın.';
+const MAX_QUEUE = 20;            // uygulama yavaşsa bekleyen yanıt birikmesin; fazlası atılır
 
 // ── Depolama ─────────────────────────────────────────────────────────────────
 
@@ -31,11 +26,12 @@ function normalizeAppUrl(value) {
 }
 
 async function getCfg() {
-  const s = await chrome.storage.local.get(['enabled', 'appUrl', 'profiles']);
+  const s = await chrome.storage.local.get(['enabled', 'appUrl', 'profiles', 'lastViewer']);
   return {
     enabled: s.enabled === true,
     appUrl: normalizeAppUrl(s.appUrl) || DEFAULT_APP,
     profiles: s.profiles && typeof s.profiles === 'object' ? s.profiles : {},
+    lastViewer: VIEWER_RE.test(String(s.lastViewer || '')) ? String(s.lastViewer) : null,
   };
 }
 
@@ -84,7 +80,7 @@ async function callApp(appUrl, path, body, timeoutMs = 20000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const init = { signal: ctrl.signal, headers: { Accept: 'application/json' } };
+    const init = { signal: ctrl.signal, credentials: 'omit', headers: { Accept: 'application/json' } };
     if (body !== undefined) {
       init.method = 'POST';
       init.headers['Content-Type'] = 'application/json';
@@ -98,15 +94,6 @@ async function callApp(appUrl, path, body, timeoutMs = 20000) {
     return { status: 0, data: null };
   } finally {
     clearTimeout(timer);
-  }
-}
-
-async function readViewer() {
-  try {
-    const c = await chrome.cookies.get({ url: 'https://www.instagram.com', name: 'ds_user_id' });
-    return c && /^\d+$/.test(c.value) ? c.value : null;
-  } catch {
-    return null;
   }
 }
 
@@ -139,28 +126,40 @@ async function resolveProfile(cfg, viewerId) {
   return profile;
 }
 
+// ── İçerik betiği için ayar ──────────────────────────────────────────────────
+
+async function configFor(viewer) {
+  const cfg = await getCfg();
+  if (!cfg.enabled || !VIEWER_RE.test(String(viewer || ''))) return { on: false };
+  await chrome.storage.local.set({ lastViewer: String(viewer) });
+  const profile = await resolveProfile(cfg, String(viewer));
+  if (!profile) return { on: false };
+  return { on: true, username: profile.username || null };
+}
+
 // ── Gözlem ───────────────────────────────────────────────────────────────────
 
-// Yanıtlar sırayla iletilir; uygulamaya aynı anda yığılmasın.
 let chain = Promise.resolve();
+let pending = 0;
 
 async function handleObserved(msg) {
   const cfg = await getCfg();
-  if (!cfg.enabled) return;
-  const viewerId = await readViewer();
-  if (!viewerId) {
-    await setStatus({ state: 'needs_login', message: "Instagram'a giriş yapılmamış." });
-    return;
-  }
+  if (!cfg.enabled || !VIEWER_RE.test(String(msg.viewer || ''))) return;
+  const viewerId = String(msg.viewer);
   const profile = await resolveProfile(cfg, viewerId);
   if (!profile) return;
+
+  // Uygulamanın beklediği biçim: yalnızca sorgu adı ve değişkenler (oturum anahtarı yok)
+  const req = new URLSearchParams();
+  if (msg.friendly) req.set('fb_api_req_friendly_name', msg.friendly);
+  if (msg.variables) req.set('variables', msg.variables);
 
   const rep = await callApp(cfg.appUrl, '/api/bridge/observe', {
     session_id: profile.id,
     viewer_id: viewerParam(viewerId),
     url: msg.url,
     page_url: msg.page || '',
-    req_body: msg.reqBody || '',
+    req_body: req.toString(),
     status: msg.status,
     body: msg.text,
   }, 60000);
@@ -183,12 +182,9 @@ async function handleObserved(msg) {
 
   const r = rep.data;
   const until = r.paused_until ? Date.parse(r.paused_until) : null;
-  if (r.warning || (until && until > Date.now())) {
-    await setStatus({
-      state: 'warning', profile,
-      message: WARNING_TEXT[r.warning_kind] || DEFAULT_WARNING,
-      warningUntil: until || Date.now() + 24 * 3600 * 1000,
-    });
+  if (until && until > Date.now()) {
+    // Metni uygulama belirler (son kullanıcı dili)
+    await setStatus({ state: 'warning', profile, message: String(r.message || 'Instagram uyarı verdi.'), warningUntil: until });
     return;
   }
   if (r.stopped) {
@@ -204,17 +200,23 @@ async function handleObserved(msg) {
     await countSaved(r);
   } else {
     const { status } = await chrome.storage.local.get('status');
-    if (!status || ['needs_login', 'app_down', 'off', 'error'].includes(status.state)) {
+    if (!status || ['needs_login', 'app_down', 'off', 'error', 'warning'].includes(status.state)) {
       await setStatus({ state: 'listening', profile, message: 'Dinliyor.', warningUntil: null });
     }
   }
+}
+
+function enqueue(msg) {
+  if (pending >= MAX_QUEUE) return;
+  pending += 1;
+  chain = chain.then(() => handleObserved(msg)).catch(() => {}).finally(() => { pending -= 1; });
 }
 
 // ── Açılır pencere için yardımcılar ──────────────────────────────────────────
 
 async function helloForPopup() {
   const cfg = await getCfg();
-  const viewerId = await readViewer();
+  const viewerId = cfg.lastViewer;
   const q = viewerId ? `?viewer_id=${encodeURIComponent(viewerId)}` : '';
   const r = await callApp(cfg.appUrl, `/api/bridge/hello${q}`);
   if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı. Açık mı?' };
@@ -233,19 +235,16 @@ async function helloForPopup() {
   };
 }
 
-// Uygulamadaki duraklatma açılır pencereye ve simgeye de yansısın
+// Uygulamadaki durum (ör. bekleyen uyarı) açılır pencereye ve simgeye yansısın
 async function refreshFromApp() {
   const cfg = await getCfg();
-  const viewerId = await readViewer();
-  const profile = viewerId ? cfg.profiles[viewerId] : null;
+  const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
   if (!profile) return;
   const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`);
   if (r.status !== 200 || !r.data) return;
   const until = r.data.paused_until ? Date.parse(r.data.paused_until) : null;
   if (until && until > Date.now()) {
-    const { status } = await chrome.storage.local.get('status');
-    const keep = status && status.state === 'warning' ? status.message : DEFAULT_WARNING; // daha ayrıntılı mesaj varsa koru
-    await setStatus({ state: 'warning', profile, message: keep, warningUntil: until });
+    await setStatus({ state: 'warning', profile, message: String(r.data.paused_message || 'Instagram uyarı verdi.'), warningUntil: until });
   } else {
     const { status } = await chrome.storage.local.get('status');
     if (status && status.state === 'warning') await setStatus({ state: 'listening', message: 'Dinliyor.', warningUntil: null });
@@ -253,10 +252,10 @@ async function refreshFromApp() {
 }
 
 async function chooseProfile(id, username) {
-  const viewerId = await readViewer();
-  if (!viewerId) return { ok: false, error: "Önce Instagram'a giriş yapın." };
+  const { lastViewer } = await getCfg();
+  if (!lastViewer) return { ok: false, error: "Önce Instagram'ı bir sekmede açın." };
   if (id && !UUID_RE.test(String(id))) return { ok: false, error: 'Geçersiz profil.' };
-  await setProfile(viewerId, id ? { id, username: username ? String(username) : null } : null);
+  await setProfile(lastViewer, id ? { id, username: username ? String(username) : null } : null);
   await setStatus({ profile: id ? { id, username: username || null } : null, state: 'listening', message: 'Dinliyor.' });
   return { ok: true };
 }
@@ -265,14 +264,18 @@ async function chooseProfile(id, username) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !msg || typeof msg !== 'object') return false;
+  const fromInstagram = !!(sender.tab && String(sender.tab.url || '').startsWith('https://www.instagram.com/'));
 
-  // Instagram sekmesinden gelen yakalanmış yanıt
+  if (msg.type === 'ia-config') {
+    if (!fromInstagram) return false;
+    configFor(msg.viewer).then(sendResponse, () => sendResponse({ on: false }));
+    return true;
+  }
   if (msg.type === 'ia-observed') {
-    const tabUrl = (sender.tab && sender.tab.url) || '';
-    if (!tabUrl.startsWith('https://www.instagram.com/')) return false;
+    if (!fromInstagram) return false;
     if (typeof msg.url !== 'string' || !msg.url.startsWith('https://www.instagram.com/')) return false;
     if (typeof msg.text !== 'string' || msg.text.length > MAX_BODY_CHARS) return false;
-    chain = chain.then(() => handleObserved(msg)).catch(() => {});
+    enqueue(msg);
     return false;
   }
 

@@ -46,6 +46,18 @@ _MEDIA_TYPES = {1: "PHOTO", 2: "VIDEO", 8: "ALBUM"}
 _POST_PATH = re.compile(r"/(?:[\w.]+/)?(?:p|reel|tv)/([\w-]+)")
 _REST_MEDIA = re.compile(r"/api/v1/media/(\d+)(?:_\d+)?/(likers|comments)/")
 _INTERESTING = re.compile(r"liker|comment", re.I)
+# Uyarı yalnızca bizim okuduğumuz türden bir yanıtta sayılır; Instagram'ın arka plandaki önemsiz
+# isteklerinde (kayıt, reklam) ara sıra görülen 429'lar kullanıcıyı boşuna bekletmesin.
+_RELEVANT_FRIENDLY = re.compile(r"liker|likes|comment|post|media|timeline|profile|feed", re.I)
+_RELEVANT_REST = re.compile(r"/api/v1/(media/\d+(_\d+)?/(likers|comments)/|feed/user/)")
+
+# Kullanıcıya gösterilecek metin (eklenti bunu olduğu gibi gösterir)
+WARNING_MESSAGES = {
+    "rate_limit": "Instagram çok sık işlem yapıldığını düşündü. Beğenen listelerini açmayı bırakın.",
+    "action_blocked": "Instagram bazı işlemleri geçici olarak kısıtladı. Bir gün toplu işlem yapmayın.",
+    "verify": "Instagram hesabınız için doğrulama istiyor. Telefondan kendiniz tamamlayın.",
+    "logged_out": "Instagram oturumu kapanmış görünüyor. instagram.com'a yeniden giriş yapın.",
+}
 
 
 class KV(Protocol):
@@ -111,6 +123,20 @@ def warning_kind(status: int, body: Any) -> str:
     if "feedback_required" in msg or (isinstance(body, dict) and body.get("spam")):
         return "action_blocked"
     return "rate_limit"
+
+
+def relevant(url: str, friendly: str | None) -> bool:
+    """Yanıt, köprünün okuduğu türden mi (gönderi / beğenen / yorum / profil ızgarası)?"""
+    if _RELEVANT_REST.search(urlparse(url or "").path):
+        return True
+    if friendly:
+        return bool(_RELEVANT_FRIENDLY.search(friendly))
+    # Sorgu adı yoksa: sayfaya gömülü veri ya da eski biçim; risk sinyali olarak sayılmaz
+    return False
+
+
+def warning_message(kind: str) -> str:
+    return WARNING_MESSAGES.get(kind, WARNING_MESSAGES["rate_limit"])
 
 
 def parse_request(req_body: str, url: str) -> tuple[str | None, dict]:
@@ -384,19 +410,21 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
     result = {"posts": 0, "likers": 0, "comments": 0, "warning": False, "ignored": False}
 
     body = parse_body(text[:MAX_BODY_CHARS])
-    if is_risk(status, body, text):
+    friendly, variables = parse_request(req_body, url)
+    if is_risk(status, body, text) and relevant(url, friendly):
         msg = (body or {}).get("message") if isinstance(body, dict) else None
         await _pause(db, kv, session, f"Instagram uyarı verdi ({msg or f'HTTP {status}'})", now)
         await db.commit()
         result["warning"] = True
         result["warning_kind"] = warning_kind(status, body)
+        result["message"] = warning_message(result["warning_kind"])
+        result["paused_until"] = session.paused_until.isoformat()
         return result
     if status != 200 or body is None:
         result["ignored"] = True
         return result
 
     me = session.ig_username.lower()
-    friendly, variables = parse_request(req_body, url)
 
     # 1) Kendi gönderilerim (profil ızgarası, gönderi sayfası)
     mine = [m for m in find_media(body) if m["owner"].lower() == me]
@@ -465,7 +493,16 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
         await _diag(kv, sid, friendly, url, page_url, status, body)   # ilgili görünüyor ama tanınmadı
     if session.paused_until and session.paused_until > now:
         result["paused_until"] = session.paused_until.isoformat()
+        result["message"] = _pause_message(session.paused_reason)
     return result
+
+
+def _pause_message(reason: str | None) -> str:
+    r = (reason or "").lower()
+    kind = ("verify" if "challenge" in r or "checkpoint" in r else
+            "logged_out" if "login" in r else
+            "action_blocked" if "feedback" in r or "spam" in r else "rate_limit")
+    return warning_message(kind)
 
 
 # ── Durum (arayüz) ──────────────────────────────────────────────────────────────
@@ -494,6 +531,7 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
         "stopped": bool(await _get(kv, sid, "off")),
         "paused_until": session.paused_until.isoformat() if paused else None,
         "paused_reason": session.paused_reason if paused else None,
+        "paused_message": _pause_message(session.paused_reason) if paused else None,
     }
 
 

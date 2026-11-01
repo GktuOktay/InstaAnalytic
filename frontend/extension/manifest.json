@@ -2,15 +2,13 @@
   "manifest_version": 3,
   "name": "InstaAnalytic Köprüsü",
   "short_name": "IA Köprüsü",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Kendi gönderilerinizin beğenenlerini, siz Instagram'da açtığınızda kaydeder. Instagram'a kendisi hiçbir istek göndermez.",
   "minimum_chrome_version": "120",
   "permissions": [
-    "storage",
-    "cookies"
+    "storage"
   ],
   "host_permissions": [
-    "https://www.instagram.com/*",
     "http://localhost:3002/*",
     "http://127.0.0.1:3002/*"
   ],

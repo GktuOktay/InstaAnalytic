@@ -15,8 +15,40 @@ aşağı kaydırdığınızda gönderi listeniz, bir gönderiyi açtığınızda
 Instagram'ın gördüğü her istek sizin kendi tıklamanızdır. Bu yüzden normal kullanımdan ayırt edilemez ve
 Instagram adreslerini değiştirse de çalışmaya devam eder.
 
-Uygulama yalnızca **sizin gönderilerinize** ait beğenen ve yorumları saklar. Gezinirken gelen diğer her şey
-(akış, başkalarının gönderileri) uygulamada atılır. Mesajlar ve bildirimler hiç okunmaz.
+Uygulama yalnızca **sizin gönderilerinize** ait beğenen ve yorumları saklar. Akış, keşfet, mesajlar ve
+bildirimler eklentiden hiç geçmez; başkasının gönderi sayfasında yakalanan bir liste de uygulamada atılır.
+
+## Güvenlik ve izinler
+
+Eklenti yalnızca okur. Kararları (neyin kaydedileceği, bir yanıtın uyarı sayılıp sayılmayacağı, size ne
+gösterileceği) bu bilgisayardaki uygulama verir.
+
+**İstediği izinler**
+
+| İzin | Neden |
+|---|---|
+| `storage` | Açık/kapalı ayarı, uygulama adresi ve hangi Instagram hesabının hangi profile ait olduğu. |
+| `http://localhost:3002`, `http://127.0.0.1:3002` | Okunan yanıtları yalnızca bu bilgisayardaki uygulamaya iletmek. |
+| instagram.com'da içerik betiği | Sayfanın indirdiği yanıtların kopyasını okumak. |
+
+Çerez izni yoktur; oturum çerezinize (`sessionid`) erişemez. Hangi hesabın açık olduğunu anlamak için
+yalnızca sayfanın kendi kodunun da okuyabildiği `ds_user_id` değerini (hesabın sayısal kimliği) okur.
+
+**Yapmadıkları**
+
+- Instagram'a istek göndermez, istekleri değiştirmez, sayfada tıklamaz ya da kaydırmaz.
+- Kapalıyken hiçbir yanıtı kopyalamaz.
+- Yalnızca kendi profil sayfanızda ve gönderi sayfalarında, yalnızca gönderi / beğenen / yorum / profil
+  ızgarası yanıtlarını iletir. Mesajlar, bildirimler, hikâyeler, arama ve keşfet hiç okunmaz.
+- İstek gövdesinden yalnızca sorgu adını ve değişkenleri alır; `fb_dtsg`, `lsd` gibi oturum anahtarları
+  hiçbir zaman alınmaz ya da iletilmez.
+- Veriyi yalnızca `localhost`'taki uygulamaya gönderir; başka bir adrese gönderemez (adres alanı bunu engeller).
+- Kayıt (log) tutmaz; çerez, yanıt ya da kişisel veri yazmaz.
+- Uzaktan kod yüklemez; tüm kod bu klasördedir.
+
+**Bilinen sınır:** Yanıtları okuyabilmek için sayfanın `fetch` ve `XMLHttpRequest` işlevlerini sarmalar.
+Sarmalayıcı yanıtı değiştirmez, yalnızca bir kopyasını okur. Bu, reklam engelleyiciler gibi yaygın
+eklentilerin de kullandığı bir yöntemdir.
 
 ## Kurulum
 

@@ -160,13 +160,14 @@ async def test_someone_elses_posts_and_likers_are_ignored(db, make_session):
 async def test_instagram_warning_pauses_and_repeat_pauses_longer(db, make_session):
     s = await make_session(username="me")
     kv = FakeKV()
-    r = await _obs(db, kv, s, GQL, '{"message":"Please wait a few minutes","status":"fail"}', status=429)
-    assert r["warning"]
+    r = await _obs(db, kv, s, GQL, '{"message":"Please wait a few minutes","status":"fail"}', status=429, req=likers_req(1))
+    assert r["warning"] and r["warning_kind"] == "rate_limit" and "çok sık" in r["message"] and r["paused_until"]
     await db.refresh(s)
     assert abs((s.paused_until - NOW).total_seconds() - 24 * 3600) < 5 and s.paused_reason.startswith(bridge.PAUSE_PREFIX)
     s.paused_until = None
     await db.commit()
-    await _obs(db, kv, s, GQL, '{"message":"feedback_required","spam":true}', status=400)
+    await _obs(db, kv, s, GQL, '{"message":"feedback_required","spam":true}', status=400,
+               req=urlencode({"fb_api_req_friendly_name": "PolarisPostCommentsQuery"}))
     await db.refresh(s)
     assert abs((s.paused_until - NOW).total_seconds() - 72 * 3600) < 5
 
@@ -242,3 +243,26 @@ def test_warning_kind_for_user_language():
     assert bridge.warning_kind(400, {"message": "challenge_required"}) == "verify"
     assert bridge.warning_kind(400, {"message": "feedback_required", "spam": True}) == "action_blocked"
     assert bridge.warning_kind(401, {"message": "login_required"}) == "logged_out"
+
+
+@pytest.mark.asyncio
+async def test_unrelated_429_does_not_pause(db, make_session):
+    """Instagram'ın arka plandaki önemsiz isteklerindeki 429 kullanıcıyı bekletmez; karar uygulamada."""
+    s = await make_session(username="me")
+    kv = FakeKV()
+    for req in (urlencode({"fb_api_req_friendly_name": "PolarisLoggedOutExperimentQuery"}), ""):
+        r = await _obs(db, kv, s, GQL, '{"message":"rate limited"}', status=429, req=req)
+        assert not r["warning"]
+    await db.refresh(s)
+    assert s.paused_until is None
+    r = await _obs(db, kv, s, "https://www.instagram.com/api/v1/media/5/likers/", "", status=429)
+    assert r["warning"]
+
+
+@pytest.mark.asyncio
+async def test_status_explains_pause_in_user_language(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    await _obs(db, kv, s, GQL, '{"message":"challenge_required"}', status=400, req=likers_req(1))
+    st = await bridge.status(db, kv, s)
+    assert st["paused_until"] and "doğrulama" in st["paused_message"]

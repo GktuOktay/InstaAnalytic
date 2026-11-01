@@ -103,7 +103,7 @@ function fillProfiles() {
   }
   if (!hello.loggedIn) {
     sel.disabled = true;
-    setHint(el.profileHint, "Profil seçmek için önce Instagram'a giriş yapın.", true);
+    setHint(el.profileHint, "Profil seçmek için önce Instagram'ı bir sekmede açın (giriş yapılmış olmalı).", true);
     return;
   }
   if (!hello.sessions.length) {
