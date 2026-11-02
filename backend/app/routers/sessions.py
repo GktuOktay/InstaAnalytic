@@ -267,8 +267,7 @@ async def set_allow_actions(session_id: uuid.UUID, body: ActionsToggle, db: Asyn
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(404, "Session bulunamadı")
-    if body.allow_actions and session.source == "zip":
-        raise HTTPException(400, "ZIP profili Instagram'a bağlı değil; işlem yapılamaz. Önce tarayıcıdan hesap bağlayın.")
+    # ZIP profilinde işlemleri yalnızca eklenti yapar (kuyruk: bridge_actions); sunucunun kendi kuyruğu ZIP'te kapalı kalır
     session.allow_actions = body.allow_actions
     if body.allow_actions and not session.actions_enabled_at:
         session.actions_enabled_at = datetime.now(timezone.utc)   # ısınma süresi buradan başlar

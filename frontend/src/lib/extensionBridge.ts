@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * Uygulama sayfası ↔ Chrome eklentisi. Eklentinin bu sayfaya koyduğu app-bridge.js ile window.postMessage
  * üzerinden konuşur: eklenti kurulu mu, sürümü ne, iş başlat / durdur, çalışan işin durumu.
  */
-export type JobKind = 'posts' | 'likers' | 'comments'
+export type JobKind = 'posts' | 'likers' | 'comments' | 'actions'
 
 export interface ExtensionJob {
   id: string

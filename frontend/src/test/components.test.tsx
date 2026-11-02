@@ -145,11 +145,11 @@ describe('SessionPage — safety panel', () => {
     await waitFor(() => expect(api.setAllowActions).toHaveBeenCalledWith('s1', true))
   })
 
-  it('ZIP profiles have no actions switch at all', async () => {
+  it('ZIP profiles can turn actions on, but only for the extension queue', async () => {
     api.list.mockResolvedValue([makeSession({ source: 'zip' })])
     renderApp(<SessionPage />)
-    expect(await screen.findByText('ZIP profili: işlem yapılamaz')).toBeInTheDocument()
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(await screen.findByText(/Açarsan takip \/ takipten çıkma istekleri eklenti kuyruğuna alınır/)).toBeInTheDocument()
+    expect(screen.getByRole('switch')).toBeInTheDocument()
   })
 
   it('shows a visible warning while actions are paused', async () => {

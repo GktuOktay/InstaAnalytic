@@ -437,3 +437,95 @@ def test_short_code_of_old_posts_is_ten_characters():
     assert len(long) == 38
     assert bridge.short_code(long, pk) == "3bTX9NCaDG"
     assert bridge.short_code(long, None) == "3bTX9NCaDG"    # kimlik yoksa sondaki 28 karakter atılır
+
+
+# ── Eklentinin yaptığı takip / takipten çıkma kuyruğu ───────────────────────────
+
+from app.models.relationship import Relationship  # noqa: E402
+from app.services import bridge_actions  # noqa: E402
+
+DAY = datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc)      # 15:00 İstanbul: sessiz saat değil
+
+
+async def _pool_user(db, s, uid, name, we_follow=True, they_follow=False):
+    db.add(IgUser(id=uid, username=name))
+    await db.flush()
+    db.add(Relationship(session_id=s.id, ig_user_id=uid, we_follow=we_follow, they_follow=they_follow))
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_actions_queue_enqueue_dedupe_and_order(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 701, "ali")
+    await _pool_user(db, s, 702, "veli", we_follow=False)
+    r = await bridge_actions.enqueue(db, s, "unfollow", [701, 702, 701])
+    assert r == {"added": 1, "duplicate": 0, "skipped": 1}                 # veli zaten takip edilmiyor
+    assert (await bridge_actions.enqueue(db, s, "unfollow", [701]))["duplicate"] == 1
+    st = await bridge_actions.status(db, s, DAY)
+    assert st["pending_count"] == 1 and st["pending"][0]["username"] == "ali" and st["enabled"]
+
+
+@pytest.mark.asyncio
+async def test_actions_next_respects_gates_budget_and_batch_size(db, make_session):
+    s = await make_session(source="zip", allow_actions=False)
+    await _pool_user(db, s, 711, "a")
+    await bridge_actions.enqueue(db, s, "unfollow", [711])
+    assert (await bridge_actions.next_batch(db, s, 10, DAY))["reason"] == "off"          # işlemler kapalı
+    s.allow_actions = True
+    await db.commit()
+    quiet = datetime(2026, 11, 3, 0, 30, tzinfo=timezone.utc)                             # 03:30 İstanbul
+    assert (await bridge_actions.next_batch(db, s, 10, quiet))["reason"] == "quiet_hours"
+    b = await bridge_actions.next_batch(db, s, 10, DAY)
+    assert [i["username"] for i in b["items"]] == ["a"] and b["delay"][0] >= 60            # en az 60 sn bekleme
+    for i in range(2, 14):
+        await _pool_user(db, s, 710 + i, f"u{i}")
+    await bridge_actions.enqueue(db, s, "unfollow", list(range(712, 724)))
+    assert len((await bridge_actions.next_batch(db, s, 50, DAY))["items"]) <= bridge_actions.MAX_BATCH
+
+
+@pytest.mark.asyncio
+async def test_actions_report_updates_relationship_log_and_limits(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 721, "ali")
+    await bridge_actions.enqueue(db, s, "unfollow", [721])
+    [item] = (await bridge_actions.next_batch(db, s, 1, DAY))["items"]
+    assert (await bridge_actions.report(db, s, item["id"], "done", None, DAY))["status"] == "done"
+    rel = (await db.execute(select(Relationship).where(Relationship.ig_user_id == 721))).scalar_one()
+    await db.refresh(rel)
+    assert rel.we_follow is False
+    assert (await bridge_actions.report(db, s, item["id"], "done", None, DAY))["status"] == "done"   # çift bildirim zararsız
+    st = await bridge_actions.status(db, s, DAY)
+    assert st["pending_count"] == 0 and st["done_day"] == 1
+
+
+@pytest.mark.asyncio
+async def test_actions_hourly_limit_and_block_pause(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    hourly = bridge_actions.limits(s, DAY)[0]
+    for i in range(hourly + 3):
+        await _pool_user(db, s, 730 + i, f"h{i}")
+    await bridge_actions.enqueue(db, s, "unfollow", [730 + i for i in range(hourly + 3)])
+    for _ in range(hourly):
+        [it] = (await bridge_actions.next_batch(db, s, 1, DAY))["items"]
+        await bridge_actions.report(db, s, it["id"], "done", None, DAY)
+    assert (await bridge_actions.next_batch(db, s, 5, DAY))["reason"] == "limit"        # saatlik tavan doldu
+    later = DAY + timedelta(hours=2)
+    [it] = (await bridge_actions.next_batch(db, s, 1, later))["items"]
+    r = await bridge_actions.report(db, s, it["id"], "blocked", "Action Blocked", later)
+    assert r["status"] == "pending" and r["paused_until"]
+    assert (await bridge_actions.next_batch(db, s, 5, later + timedelta(hours=1)))["reason"] == "paused"
+
+
+@pytest.mark.asyncio
+async def test_actions_api_requires_allow_actions(client, make_session, db):
+    s = await make_session(source="zip", allow_actions=False)
+    await _pool_user(db, s, 741, "x")
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [741]})
+    assert r.status_code == 403
+    s.allow_actions = True
+    await db.commit()
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [741]})
+    assert r.status_code == 200 and r.json()["added"] == 1
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 1
+    assert (await client.delete(f"/api/sessions/{s.id}/bridge/actions")).json() == {"removed": 1}

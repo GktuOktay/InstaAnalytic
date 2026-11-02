@@ -165,6 +165,89 @@
     return { seen, detail };
   }
 
+  // ── Takip / takipten çıkma ────────────────────────────────────────────────
+  // Profili açar, "Takip ediliyor" / "Takip et" düğmesine bir insan gibi tıklar, sonucu doğrular.
+  // Hiçbir istek göndermez; yalnızca görünür düğmeler.
+  const FOLLOWING_RE = /^(following|takip ediliyor|takiptesin)$/i;
+  const FOLLOW_RE = /^(follow|follow back|takip et|geri takip et|sen de takip et)$/i;
+  const REQUESTED_RE = /^(requested|[iİ]stek gönderildi|i̇stek gönderildi)$/i;
+  const UNFOLLOW_RE = /^(unfollow|takibi bırak|takipten çık)$/i;
+  const BLOCKED_RE = /try again later|action blocked|we restrict certain activity|restrict certain activity|daha sonra tekrar dene|bazı etkinlikleri kısıtlıyoruz|işlem engellendi/i;
+
+  const btnText = (el) => (el.textContent || '').trim();
+
+  function profileButtons() {
+    const out = [];
+    for (const h of document.querySelectorAll('header')) {
+      for (const el of h.querySelectorAll('button, [role="button"]')) out.push(el);
+    }
+    return out;
+  }
+
+  // Profil düğmesinin durumu: following | requested | follow | null
+  function followState() {
+    for (const el of profileButtons()) {
+      const t = btnText(el);
+      if (FOLLOWING_RE.test(t)) return { el, state: 'following' };
+      if (REQUESTED_RE.test(t)) return { el, state: 'requested' };
+      if (FOLLOW_RE.test(t)) return { el, state: 'follow' };
+    }
+    return null;
+  }
+
+  function blockedNotice() {
+    for (const d of document.querySelectorAll('[role="dialog"], [role="alert"]')) {
+      if (BLOCKED_RE.test(d.textContent || '')) return true;
+    }
+    return false;
+  }
+
+  function pageMissing(username) {
+    const path = location.pathname.toLowerCase();
+    if (!path.startsWith(`/${username.toLowerCase()}/`) && path !== `/${username.toLowerCase()}`) return true;
+    return /page not found|sayfa bulunamadı|bu sayfa mevcut değil|isn't available|ulaşılamıyor/i.test(`${document.title} ${(document.body.innerText || '').slice(0, 600)}`);
+  }
+
+  async function performAction(item) {
+    if (loginWall()) return { error: "Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor." };
+    if (!item || !/^[\w.]{1,30}$/.test(String(item.username || '')) || (item.action !== 'follow' && item.action !== 'unfollow')) {
+      return { error: 'Geçersiz işlem.' };
+    }
+    if (cfg.username && item.username.toLowerCase() === cfg.username.toLowerCase()) return { error: 'Kendi hesabınız için işlem yapılmaz.' };
+    const first = await waitFor(() => followState() || (pageMissing(item.username) ? { missing: true } : null), 14000);
+    if (!first || first.missing) {
+      return { outcome: 'not_found', note: first ? 'Hesap bulunamadı: silinmiş, dondurulmuş ya da kullanıcı adı değişmiş olabilir.' : 'Profil düğmeleri bulunamadı; sayfa yüklenmedi ya da Instagram düzeni değişmiş olabilir.' };
+    }
+    if (blockedNotice()) return { outcome: 'blocked', note: 'Instagram bir kısıtlama uyarısı gösterdi.' };
+    await sleep(rand(1500, 3500));                           // profile bakıyormuş gibi bekle
+    const cur = followState();
+    if (!cur) return { outcome: 'failed', note: 'Takip düğmesi kayboldu; sayfa değişti.' };
+
+    if (item.action === 'unfollow') {
+      if (cur.state === 'follow') return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
+      cur.el.click();
+      await sleep(rand(900, 1800));
+      const confirmBtn = await waitFor(() => {
+        for (const d of document.querySelectorAll('[role="dialog"]')) {
+          for (const el of d.querySelectorAll('button, [role="button"], [role="menuitem"]')) if (UNFOLLOW_RE.test(btnText(el))) return el;
+        }
+        return null;
+      }, 6000);
+      if (confirmBtn) { await sleep(rand(700, 1500)); confirmBtn.click(); }
+      await sleep(rand(1500, 2500));
+      const after = await waitFor(() => { const s = followState(); return s && s.state === 'follow' ? s : null; }, 8000);
+      if (after) return { outcome: 'done' };
+    } else {
+      if (cur.state !== 'follow') return { outcome: 'already', note: cur.state === 'requested' ? 'Takip isteği zaten gönderilmiş.' : 'Zaten takip ediyorsunuz.' };
+      cur.el.click();
+      await sleep(rand(1500, 2500));
+      const after = await waitFor(() => { const s = followState(); return s && s.state !== 'follow' ? s : null; }, 8000);
+      if (after) return { outcome: 'done', note: after.state === 'requested' ? 'Gizli hesap: takip isteği gönderildi.' : undefined };
+    }
+    if (blockedNotice()) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
+    return { outcome: 'failed', note: 'Düğmeye tıklandı ama sonuç doğrulanamadı; Instagram sayfa düzenini değiştirmiş olabilir.' };
+  }
+
   const MORE_COMMENTS = /load more comments|view more comments|view all|daha fazla yorum|yorumların tümünü|tüm yorumları/i;
 
   function moreCommentsButton() {
@@ -203,11 +286,15 @@
       if (job.kind === 'posts') out = await collectPosts();
       else if (job.kind === 'likers') out = await collectLikers(String(job.shortcode || ''));
       else if (job.kind === 'comments') out = await collectComments();
+      else if (job.kind === 'actions') out = await performAction(job.item);
       await sleep(rand(1500, 2500));                       // son yanıtlar iletilsin
     } catch (e) {
       out = { error: `Sayfada beklenmeyen bir durum oldu (${String((e && e.message) || e).slice(0, 120)}).` };
     }
-    chrome.runtime.sendMessage({ type: 'ia-job-done', error: out.error || null, seen: Number(out.seen) || 0, detail: out.detail ? String(out.detail).slice(0, 200) : null }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'ia-job-done', error: out.error || null, seen: Number(out.seen) || 0, detail: out.detail ? String(out.detail).slice(0, 200) : null,
+      outcome: out.outcome || null, note: out.note ? String(out.note).slice(0, 300) : null }).catch(() => {});
+    // Takip işlemlerinde bir sonrakine geçene dek bekleme uzun: servis çalışanını uyanık tutan ve süreyi denetleyen nabız
+    if (job.kind === 'actions') setInterval(() => chrome.runtime.sendMessage({ type: 'ia-job-tick' }).catch(() => {}), 15000);
   }
 
   async function loadConfig() {

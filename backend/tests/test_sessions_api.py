@@ -41,12 +41,12 @@ async def test_actions_are_off_by_default_and_gated(client, make_session):
     assert r.status_code == 403
 
 
-async def test_zip_profile_can_never_enable_actions(client, make_session):
+async def test_zip_profile_actions_are_extension_only(client, make_session):
     s = await make_session(source="zip")
     r = await client.post(f"/api/sessions/{s.id}/allow-actions", json={"allow_actions": True})
-    assert r.status_code == 400
+    assert r.status_code == 200                                      # eklenti kuyruğu için açılabilir
     r = await client.post(f"/api/sessions/{s.id}/actions/follow/5")
-    assert r.status_code == 400
+    assert r.status_code == 400                                      # sunucunun kendi kuyruğu ZIP'te hâlâ kapalı
 
 
 async def test_enabling_starts_ramp_up_clock_and_disabling_resets(client, make_session):

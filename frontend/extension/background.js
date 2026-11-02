@@ -196,7 +196,7 @@ async function configFor(viewer, tabId) {
   if (job && job.state === 'running' && job.tabId === tabId) {
     const profile = await resolveProfile(cfg, String(viewer));
     if (!profile) return { on: false };
-    return { on: true, username: profile.username || null, tools: jobTools(job), job: { kind: job.kind, shortcode: job.queue[job.index] || null } };
+    return { on: true, username: profile.username || null, tools: jobTools(job), job: { kind: job.kind, shortcode: job.queue[job.index] || null, ...(job.items ? { item: job.items[job.index] || null } : {}) } };
   }
 
   if (!cfg.enabled || !TOOL_KEYS.some((k) => cfg.tools[k])) return { on: false };
@@ -298,8 +298,17 @@ function enqueue(msg, tabId) {
 // doğrudan istek yine gönderilmez. Aynı anda tek iş çalışır; durum chrome.storage.session'da tutulur.
 
 const SHORTCODE_RE = /^[\w-]{5,40}$/;
-const KINDS = ['posts', 'likers', 'comments'];
+const KINDS = ['posts', 'likers', 'comments', 'actions'];
 const BETWEEN_POSTS_MS = [6000, 18000];
+const ACTION_USER_RE = /^[\w.]{1,30}$/;
+// Takip / takipten çıkma sebepleri (uygulama /bridge/actions/next ile bildirir)
+const ACTION_REASON = {
+  off: 'Uygulamada takip / takipten çıkma işlemleri kapalı. Ayarlar sayfasından açın.',
+  paused: 'İşlemler güvenlik için duraklatıldı. Uygulamada nedenini görebilirsiniz.',
+  quiet_hours: 'Sessiz saatlerdesiniz (01:00-08:00). Sabah tekrar deneyin.',
+  limit: 'Bu saat ya da gün için işlem sınırına ulaşıldı. Biraz sonra tekrar deneyin.',
+  empty: 'Kuyrukta bekleyen işlem yok.',
+};
 
 async function getJob() {
   try {
@@ -316,6 +325,7 @@ async function setJob(job) {
 }
 
 function jobTools(job) {
+  if (job.kind === 'actions') return { posts: false, likers: false, comments: false };   // yalnızca düğmelere tıklanır, hiçbir şey kaydedilmez
   // Gönderi sayfasındaki gönderinin kendisi de kaydedilsin (beğeni / yorum sayısı tazelenir)
   return { posts: true, likers: job.kind === 'likers', comments: job.kind === 'comments' };
 }
@@ -327,6 +337,7 @@ function shortCode(c) {
 }
 
 function jobUrl(job, i) {
+  if (job.kind === 'actions') return `https://www.instagram.com/${encodeURIComponent(job.items[i].username)}/`;
   if (job.kind === 'posts') return `https://www.instagram.com/${encodeURIComponent(job.username)}/`;
   // Eski kayıtlarda 39 karakterlik uzun kod olabilir; gerçek kısa kod ilk 11 karakter
   const code = encodeURIComponent(shortCode(job.queue[i]));
@@ -335,7 +346,7 @@ function jobUrl(job, i) {
   return `https://www.instagram.com/p/${code}/`;
 }
 
-const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar' };
+const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar', actions: 'Takip işlemleri' };
 
 async function startJob(cmd) {
   const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
@@ -348,7 +359,21 @@ async function startJob(cmd) {
   if (!profile) return { ok: false, error: "Önce Instagram'ı bir sekmede açıp eklentide profilinizi seçin." };
 
   let queue = [null];
-  if (kind === 'posts') {
+  let items = null;
+  let delay = null;
+  if (kind === 'actions') {
+    const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10`);
+    if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
+    if (r.status === 404) return { ok: false, error: 'Seçili profil uygulamada bulunamadı. Eklentinin Ayarlar sekmesinden profili yeniden seçin.' };
+    const d = r.data || {};
+    items = Array.isArray(d.items)
+      ? d.items.filter((x) => x && Number.isInteger(x.id) && ACTION_USER_RE.test(String(x.username)) && (x.action === 'follow' || x.action === 'unfollow'))
+          .map((x) => ({ id: x.id, username: String(x.username), action: x.action }))
+      : [];
+    if (!items.length) return { ok: false, error: ACTION_REASON[d.reason] || 'Yapılacak işlem yok.' };
+    queue = items.map((x) => x.username);
+    delay = Array.isArray(d.delay) && d.delay.length === 2 ? [Math.max(60, Number(d.delay[0]) || 120), Math.max(75, Number(d.delay[1]) || 240)] : [120, 240];
+  } else if (kind === 'posts') {
     if (!profile.username) return { ok: false, error: 'Profilin kullanıcı adı bilinmiyor; Ayarlar sekmesinden profili yeniden seçin.' };
   } else {
     let codes = Array.isArray(cmd.shortcodes) ? cmd.shortcodes.map(String).filter((c) => SHORTCODE_RE.test(c)) : [];
@@ -364,7 +389,7 @@ async function startJob(cmd) {
 
   // Kullanıcı işi kendisi başlattı: uygulamada bu profil için kayıt durdurulmuşsa yeniden aç,
   // yoksa sayfa okunur ama hiçbir şey kaydedilmez
-  const st = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`);
+  const st = kind === 'actions' ? { status: 200, data: {} } : await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/status`);
   if (st.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı. Uygulama açık mı?' };
   if (st.status === 404) return { ok: false, error: 'Seçili profil uygulamada bulunamadı. Eklentinin Ayarlar sekmesinden profili yeniden seçin.' };
   let resumed = false;
@@ -378,6 +403,7 @@ async function startJob(cmd) {
 
   const job = {
     id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
+    items, delay, profileId: profile.id,
     username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0, resumed,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
@@ -466,7 +492,16 @@ function stepResult(job, error, seen, detail) {
   return { shortcode: code, saved, seen, ok: !error && saved > 0, note };
 }
 
+function summarizeActions(job) {
+  const res = job.results || [];
+  const okCount = res.filter((x) => x.ok).length;
+  const lines = [`${KIND_LABEL.actions}: ${res.length} / ${job.total} işlendi, ${okCount} tanesi tamam.`];
+  for (const x of res.filter((r) => !r.ok).slice(0, 5)) lines.push(`• @${x.shortcode}: ${x.note || 'yapılamadı'}`);
+  return lines.join('\n');
+}
+
 function summarize(job) {
+  if (job.kind === 'actions') return summarizeActions(job);
   const label = KIND_LABEL[job.kind];
   const res = job.results || [];
   const totalSaved = res.reduce((n, x) => n + x.saved, 0);
@@ -487,10 +522,11 @@ function summarize(job) {
   return lines.join('\n');
 }
 
-async function jobStepDone(tabId, error, seen, detail) {
+async function jobStepDone(tabId, error, seen, detail, extra) {
   await chain.catch(() => {});                  // bu adımın kayıt yanıtları sayılmış olsun
   const job = await getJob();
   if (!job || job.state !== 'running' || job.tabId !== tabId) return;
+  if (job.kind === 'actions') { await actionStepDone(job, error, extra || {}); return; }
   job.results = job.results || [];
   job.results.push(stepResult(job, error, Number(seen) || 0, detail));
   if (error) job.errors.push({ shortcode: job.queue[job.index], error: String(error).slice(0, 300) });
@@ -509,6 +545,42 @@ async function jobStepDone(tabId, error, seen, detail) {
     const cur = await getJob();
     if (cur && cur.state === 'running' && cur.id === job.id) chrome.tabs.update(tabId, { url: jobUrl(cur, cur.index) }).catch(() => {});
   }, wait);
+}
+
+// Takip / takipten çıkma: sonucu uygulamaya yaz, sonra bir sonrakine geçmeden önce uzun ve rastgele bekle.
+// Bekleme sırasında içerik betiği her 15 sn'de bir "ia-job-tick" gönderir (servis çalışanı uyumasın);
+// süre dolunca tick bir sonraki profile geçirir.
+const ACTION_NOTE = { done: 'Yapıldı.', already: 'Zaten istenen durumdaydı.' };
+
+async function actionStepDone(job, error, extra) {
+  const item = job.items[job.index];
+  const outcome = error ? 'failed' : (['done', 'already', 'not_found', 'failed', 'blocked'].includes(extra.outcome) ? extra.outcome : 'failed');
+  const note = String(error || extra.note || ACTION_NOTE[outcome] || '').slice(0, 300) || null;
+  const cfg = await getCfg();
+  const rep = await callApp(cfg.appUrl, `/api/sessions/${job.profileId}/bridge/actions/${item.id}/result`, { outcome, note }, 30000);
+  const ok = outcome === 'done' || outcome === 'already';
+  job.results = job.results || [];
+  job.results.push({ shortcode: item.username, saved: ok ? 1 : 0, seen: 0, ok, note });
+  if (!ok) job.errors.push({ shortcode: item.username, error: note || outcome });
+  if (rep.status === 0) {
+    await finishJob(job, 'stopped', `Uygulamaya ulaşılamadı; yapılan işlem kaydedilemedi, iş durduruldu.\n${summarize(job)}`);
+    return;
+  }
+  if (outcome === 'blocked') {
+    await finishJob(job, 'stopped', `Instagram işlemi engelledi, iş durduruldu. Uygulama işlemleri 24 saat duraklattı; bir süre ara verin.\n${summarize(job)}`);
+    return;
+  }
+  job.index += 1;
+  if (job.index >= job.total) {
+    await finishJob(job, 'done', summarize(job));
+    return;
+  }
+  const [lo, hi] = job.delay || [120, 240];
+  const waitMs = (lo + Math.random() * (hi - lo)) * 1000;
+  job.nextAt = Date.now() + waitMs;
+  job.message = `${KIND_LABEL.actions}: ${job.index} / ${job.total} yapıldı. Sıradaki ~${Math.round(waitMs / 60000 * 10) / 10} dk sonra; Instagram sekmesini kapatmayın.`;
+  job.step = 0;
+  await setJob(job);
 }
 
 async function stopJob() {
@@ -617,9 +689,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     enqueue(msg, sender.tab.id);
     return false;
   }
+  if (msg.type === 'ia-job-tick') {
+    if (!fromInstagram) return false;
+    getJob().then((job) => {
+      if (!job || job.state !== 'running' || job.kind !== 'actions' || job.tabId !== sender.tab.id) return;
+      if (!job.nextAt || Date.now() < job.nextAt) return;
+      job.nextAt = null;
+      job.message = `${KIND_LABEL.actions}: ${job.index + 1} / ${job.total}`;
+      setJob(job).then(() => chrome.tabs.update(job.tabId, { url: jobUrl(job, job.index) }).catch(() => {}));
+    });
+    return false;
+  }
   if (msg.type === 'ia-job-progress' || msg.type === 'ia-job-done') {
     if (!fromInstagram) return false;
-    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null, msg.seen, msg.detail || null);
+    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null, msg.seen, msg.detail || null, { outcome: msg.outcome, note: msg.note });
     else getJob().then((job) => {
       if (job && job.state === 'running' && job.tabId === sender.tab.id) { job.step = Number(msg.step) || 0; setJob(job); }
     });

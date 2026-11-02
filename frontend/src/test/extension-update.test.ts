@@ -201,6 +201,81 @@ describe('jobs started from the app', () => {
     vi.useRealTimers()
   })
 
+  describe('follow / unfollow queue (done slowly by the extension)', () => {
+    const items = [{ id: 11, username: 'ali', action: 'unfollow' }, { id: 12, username: 'veli', action: 'unfollow' }]
+    function withQueue(reason: string | null = null, list = items) {
+      const b = loadBackground('2.6.0', '2.6.0', { ...ME })
+      const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+      const results: any[] = []
+      b.fetchStub.mockImplementation(async (url: string, init?: any) => {
+        if (String(url).includes('/bridge/actions/next')) return new Response(JSON.stringify({ items: reason ? [] : list, delay: [120, 240], reason }), { status: 200 })
+        if (String(url).includes('/result')) { results.push({ url: String(url), body: JSON.parse(init.body) }); return new Response('{"ok":true}', { status: 200 }) }
+        return base(url, init)
+      })
+      return { b, results }
+    }
+
+    it('opens the first profile, waits 2-4 minutes between profiles and reports every result', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b, results } = withQueue()
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      expect(r).toEqual({ ok: true, total: 2 })
+      expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/ali/', active: true })
+      const cfg = await msg(b, { type: 'ia-config', viewer: '525' }, fromIg())
+      expect(cfg.job).toEqual({ kind: 'actions', shortcode: 'ali', item: items[0] })
+      expect(cfg.tools).toEqual({ posts: false, likers: false, comments: false })     // hiçbir şey kaydedilmez
+
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      expect(results[0]).toMatchObject({ url: expect.stringContaining('/bridge/actions/11/result'), body: { outcome: 'done' } })
+      // süre dolmadan nabız bir sonraki profile geçirmez
+      b.listeners.message({ type: 'ia-job-tick' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(50_000)
+      b.listeners.message({ type: 'ia-job-tick' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(100)
+      expect(b.chrome.tabs.update).not.toHaveBeenCalled()
+      // 4 dakika sonra geçer
+      await vi.advanceTimersByTimeAsync(4 * 60_000)
+      b.listeners.message({ type: 'ia-job-tick' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(100)
+      expect(b.chrome.tabs.update).toHaveBeenCalledWith(77, { url: 'https://www.instagram.com/veli/' })
+
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'already', note: 'Zaten takip etmiyorsunuz.' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      expect(b.session.job.state).toBe('done')
+      expect(b.session.job.message).toContain('2 / 2 işlendi, 2 tanesi tamam')
+      vi.useRealTimers()
+    })
+
+    it('stops at once when Instagram blocks the action', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b, results } = withQueue()
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'blocked', note: 'Action Blocked' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      expect(results[0].body.outcome).toBe('blocked')
+      expect(b.session.job.state).toBe('stopped')
+      expect(b.session.job.message).toContain('Instagram işlemi engelledi')
+      expect(b.chrome.notifications.create).toHaveBeenCalled()
+      vi.useRealTimers()
+    })
+
+    it('explains why nothing can run (app says: quiet hours / limit / off)', async () => {
+      const { b } = withQueue('quiet_hours')
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('Sessiz saat')
+      expect(b.chrome.tabs.create).not.toHaveBeenCalled()
+    })
+
+    it('ignores malformed queue items from the app', async () => {
+      const { b } = withQueue(null, [{ id: 1, username: '../evil', action: 'unfollow' }, { id: 2, username: 'ok.user', action: 'delete' }] as any)
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      expect(r.ok).toBe(false)
+      expect(b.chrome.tabs.create).not.toHaveBeenCalled()
+    })
+  })
+
   it('a single post can be fetched on its own', async () => {
     const b = loadBackground('2.4.0', '2.4.0', { ...ME })
     const r = await msg(b, { type: 'ia-run', cmd: { kind: 'comments', shortcodes: ['CCCCC', '../bad'] } }, fromApp)

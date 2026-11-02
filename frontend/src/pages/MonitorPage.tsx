@@ -74,6 +74,7 @@ export default function MonitorPage() {
     bridge_posts:           T.monitor.types.bridgePosts,
     bridge_likers:          T.monitor.types.bridgeLikers,
     bridge_comments:        T.monitor.types.bridgeComments,
+    bridge_actions:         T.monitor.types.bridgeActions,
   }
   const [activeSession, setActiveSession] = useState<string>('')
   const [jobs, setJobs] = useState<SyncJob[]>([])

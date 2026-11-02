@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
+import { bridgeApi, ActionQueue } from '../api/bridge'
+import { useExtension } from '../lib/extensionBridge'
+import { Link } from 'react-router-dom'
 import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
 import { apiErrorMessage } from '../lib/problems'
@@ -94,11 +97,21 @@ export default function UsersPage() {
   // Takip / takipten çıkarma yalnızca Instagram'a bağlı (ZIP olmayan), işlemleri açık ve duraklatılmamış profilde çalışır
   const profile = sessions.find(x => x.id === sid)
   const blockedReason: string | null = !profile ? null
-    : profile.source === 'zip' ? T.users.actionsOff.zip
-    : !profile.allow_actions ? T.users.actionsOff.disabled
+    : !profile.allow_actions ? (profile.source === 'zip' ? T.users.actionsOff.zip : T.users.actionsOff.disabled)
     : profile.paused_until && new Date(profile.paused_until) > new Date() ? T.users.actionsOff.paused
     : null
   const canAct = !blockedReason
+  // ZIP profilinde işlemleri eklenti yapar: butonlar anında işlem yapmaz, kuyruğa ekler
+  const viaExt = profile?.source === 'zip'
+  const ext = useExtension()
+  const [queue, setQueue] = useState<ActionQueue | null>(null)
+  const queuedById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.action]))
+  const extRunning = ext.job?.kind === 'actions' && ext.job.state === 'running'
+
+  const loadQueue = useCallback(async () => {
+    if (!sid || !viaExt) { setQueue(null); return }
+    setQueue(await bridgeApi.actions(sid).catch(() => null))
+  }, [sid, viaExt])
 
   // Sunucu iletileri yalnızca Türkçe: nedenini durum koduna göre seçili dilde göster
   const errMsg = (e: unknown) => {
@@ -126,6 +139,16 @@ export default function UsersPage() {
   }, [sid, search])
 
   useEffect(() => { if (sid) load(1, '') }, [sid])
+  useEffect(() => { loadQueue() }, [loadQueue])
+  // Kuyrukta iş varken ya da eklenti çalışırken durumu tazele; iş bitince listedeki takip durumları da güncellensin
+  useEffect(() => {
+    if (!viaExt || (!queue?.pending_count && !extRunning)) return
+    const t = setInterval(() => { loadQueue(); if (extRunning) load(1, search) }, 15_000)
+    return () => clearInterval(t)
+  }, [viaExt, queue?.pending_count, extRunning])   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ext.job?.kind === 'actions' && ext.job.state !== 'running') { loadQueue(); load(1, search) }
+  }, [ext.job?.state])                              // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -162,7 +185,33 @@ export default function UsersPage() {
     setTimeout(() => setToast(null), 3000)
   }
 
+  const enqueueActions = async (action: 'follow' | 'unfollow', ids: number[]) => {
+    try {
+      const r = await bridgeApi.enqueueActions(sid, action, ids)
+      showToast(r.added ? T.users.queue.added(r.added, r.duplicate, r.skipped) : T.users.queue.nothingAdded, r.added > 0)
+      await loadQueue()
+      return true
+    } catch (e) {
+      showToast(errMsg(e), false)
+      return false
+    }
+  }
+
+  const runQueue = async () => {
+    const r = await ext.run('actions')
+    if (!r.ok) showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
+  }
+
+  const clearQueue = async () => {
+    try {
+      const r = await bridgeApi.clearActions(sid)
+      showToast(T.users.queue.cleared(r.removed))
+      await loadQueue()
+    } catch (e) { showToast(errMsg(e), false) }
+  }
+
   const handleFollow = async (u: UserPoolItem) => {
+    if (viaExt) { await enqueueActions('follow', [u.id]); return }
     setActionLoading(p => ({ ...p, [u.id]: 'follow' }))
     try {
       const r = await actionsApi.follow(sid, u.id)
@@ -177,6 +226,7 @@ export default function UsersPage() {
   }
 
   const handleUnfollow = async (u: UserPoolItem) => {
+    if (viaExt) { await enqueueActions('unfollow', [u.id]); return }
     setActionLoading(p => ({ ...p, [u.id]: 'unfollow' }))
     try {
       const r = await actionsApi.unfollow(sid, u.id)
@@ -214,6 +264,7 @@ export default function UsersPage() {
 
   const handleBulkUnfollow = async () => {
     const ids = [...selected]
+    if (viaExt) { if (await enqueueActions('unfollow', ids)) setSelected(new Set()); return }
     setBulkLoading(true)
     try {
       const r = await actionsApi.bulkUnfollow(sid, ids)
@@ -226,6 +277,7 @@ export default function UsersPage() {
 
   const handleBulkFollow = async () => {
     const ids = [...selected]
+    if (viaExt) { if (await enqueueActions('follow', ids)) setSelected(new Set()); return }
     setBulkLoading(true)
     let ok = 0
     for (const id of ids) {
@@ -315,8 +367,38 @@ export default function UsersPage() {
 
       {blockedReason && (
         <p role="note" className="text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-xl px-3 py-2 mb-4">
-          {blockedReason} {T.users.actionsOff.manual}
+          {blockedReason} {T.users.actionsOff.manual}{' '}
+          {profile && !profile.allow_actions && <Link to="/settings" className="underline">{T.users.actionsOff.turnOn}</Link>}
         </p>
+      )}
+
+      {viaExt && canAct && queue && (
+        <div role="region" aria-label={T.users.queue.title} className="bg-gray-900 border border-purple-900 rounded-xl p-3 mb-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{T.users.queue.title}
+                <span className="text-gray-400 font-normal"> · {T.users.queue.pending(queue.pending_count)}</span>
+              </p>
+              <p className="text-xs text-gray-500">
+                {T.users.queue.limits(queue.done_hour, queue.hourly_limit, queue.done_day, queue.daily_limit, queue.delay[0], queue.delay[1])}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={runQueue} disabled={!ext.available || extRunning || !queue.pending_count || queue.quiet_hours}
+                className="px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-40 text-xs font-medium">
+                {extRunning ? T.users.queue.running : T.users.queue.run}
+              </button>
+              <button onClick={clearQueue} disabled={extRunning || !queue.pending_count}
+                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-xs">
+                {T.users.queue.clear}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">{T.users.queue.hint}</p>
+          {queue.quiet_hours && <p className="text-xs text-amber-300 mt-1">{T.users.queue.quiet}</p>}
+          {!ext.available && <p className="text-xs text-amber-300 mt-1">{T.users.queue.needExt}</p>}
+          {extRunning && ext.job && <p className="text-xs text-purple-300 mt-1 whitespace-pre-line">{ext.job.message}</p>}
+        </div>
       )}
 
       {/* Filter tabs */}
@@ -440,6 +522,7 @@ export default function UsersPage() {
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
                       {ghost && <span title={T.users.ghost.hint} style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
                       {silent && <span title={T.users.silent.hint} style={{ fontSize: 9, background: 'rgba(224,149,53,0.15)', color: '#e09535', padding: '1px 6px', borderRadius: 20 }}>{T.users.silent.badge}</span>}
+                      {queuedById.has(u.id) && <span style={{ fontSize: 9, background: 'rgba(155,143,224,0.18)', color: '#b9aef0', padding: '1px 6px', borderRadius: 20 }}>⏳ {T.users.queue.queuedBadge}</span>}
                       {u.we_follow   && <span style={{ fontSize: 9, background: 'rgba(78,202,138,0.15)', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
                       {u.they_follow && <span style={{ fontSize: 9, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
@@ -488,8 +571,8 @@ export default function UsersPage() {
                       </button>
                     )}
                     <button onClick={() => u.they_follow ? handleRemoveFollower(u) : undefined}
-                      disabled={!!actLoad || !u.they_follow || !canAct}
-                      title={blockedReason ?? T.users.action.removeFollower}
+                      disabled={!!actLoad || !u.they_follow || !canAct || viaExt}
+                      title={viaExt ? T.users.queue.removeZip : (blockedReason ?? T.users.action.removeFollower)}
                       style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: u.they_follow ? 'pointer' : 'default', background: 'rgba(155,143,224,0.15)', border: '1px solid rgba(155,143,224,0.3)', color: u.they_follow ? '#9b8fe0' : 'var(--text-3)', opacity: actLoad ? 0.5 : 1 }}>
                       {actLoad === 'remove_follower' ? <RefreshCw size={11} className="animate-spin" /> : <UserX size={11} />}
                     </button>

@@ -7,7 +7,7 @@
 
   const ORIGIN = location.origin;
   const version = chrome.runtime.getManifest().version;
-  const KINDS = ['posts', 'likers', 'comments'];
+  const KINDS = ['posts', 'likers', 'comments', 'actions'];
   const SHORTCODE_RE = /^[\w-]{5,40}$/;
 
   function post(data) {

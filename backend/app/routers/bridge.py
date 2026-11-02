@@ -15,7 +15,7 @@ from datetime import datetime
 
 from app.models.session import Session
 from app.models.sync_job import SyncJob
-from app.services import bridge
+from app.services import bridge, bridge_actions
 
 router = APIRouter(tags=["bridge"])
 
@@ -115,7 +115,7 @@ class JobResultItem(BaseModel):
 class JobReport(BaseModel):
     """Eklentinin bitirdiği bir işin sonucu (Kuyruk Monitörü'nde görünür)."""
     session_id: uuid.UUID
-    kind: Literal["posts", "likers", "comments"]
+    kind: Literal["posts", "likers", "comments", "actions"]
     outcome: Literal["ok", "partial", "failed", "stopped"]
     total: int = Field(ge=0, le=1000)
     done: int = Field(ge=0, le=1000)
@@ -141,3 +141,43 @@ async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
     db.add(job)
     await db.commit()
     return {"id": str(job.id)}
+
+
+# ── Takip / takipten çıkma kuyruğu (eklenti yapar) ─────────────────────────────────
+
+class EnqueueActions(BaseModel):
+    action: Literal["follow", "unfollow"]
+    user_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class ActionResult(BaseModel):
+    outcome: Literal["done", "already", "not_found", "failed", "blocked"]
+    note: str | None = Field(default=None, max_length=300)
+
+
+@router.get("/sessions/{session_id}/bridge/actions")
+async def actions_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await bridge_actions.status(db, await _session(db, session_id))
+
+
+@router.post("/sessions/{session_id}/bridge/actions")
+async def actions_enqueue(session_id: uuid.UUID, body: EnqueueActions, db: AsyncSession = Depends(get_db)):
+    s = await _session(db, session_id)
+    if not s.allow_actions:
+        raise HTTPException(403, "Takip/takipten çıkma işlemleri kapalı. Ayarlar sayfasından bilinçli olarak açın.")
+    return await bridge_actions.enqueue(db, s, body.action, body.user_ids)
+
+
+@router.get("/sessions/{session_id}/bridge/actions/next")
+async def actions_next(session_id: uuid.UUID, limit: int = 10, db: AsyncSession = Depends(get_db)):
+    return await bridge_actions.next_batch(db, await _session(db, session_id), limit)
+
+
+@router.post("/sessions/{session_id}/bridge/actions/{action_id}/result")
+async def actions_result(session_id: uuid.UUID, action_id: int, body: ActionResult, db: AsyncSession = Depends(get_db)):
+    return await bridge_actions.report(db, await _session(db, session_id), action_id, body.outcome, body.note)
+
+
+@router.delete("/sessions/{session_id}/bridge/actions")
+async def actions_clear(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return {"removed": await bridge_actions.clear(db, await _session(db, session_id))}

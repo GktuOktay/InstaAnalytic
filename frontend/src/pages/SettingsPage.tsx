@@ -398,9 +398,9 @@ function SessionCard({ s, onChanged, S }: { s: Session; onChanged: () => Promise
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <p className="text-sm font-medium">{S.actionsLabel}</p>
-            <p className="text-xs text-gray-500">{isZip ? S.zipOnly : s.allow_actions ? S.actionsOn : S.actionsOff}</p>
+            <p className="text-xs text-gray-500">{s.allow_actions ? (isZip ? S.zipOn : S.actionsOn) : (isZip ? S.zipOff : S.actionsOff)}</p>
           </div>
-          {!isZip && (
+          {(
             <button onClick={toggleActions} disabled={busy} role="switch" aria-checked={s.allow_actions}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold ${
                 s.allow_actions ? 'bg-amber-700 hover:bg-amber-600 text-amber-50' : 'bg-gray-800 hover:bg-gray-700 text-gray-200'}`}>
