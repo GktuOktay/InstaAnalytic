@@ -439,7 +439,7 @@ async function addToJob(jobId, r) {
 const UNIT = { posts: 'gönderi', likers: 'beğenen', comments: 'yorum yapan' };
 
 // Bir adımın sonucunu son kullanıcı diliyle açıklar
-function stepResult(job, error, seen) {
+function stepResult(job, error, seen, detail) {
   const code = job.queue[job.index];
   const saved = (job.cur && job.cur[job.kind]) || 0;
   let note = null;
@@ -453,6 +453,7 @@ function stepResult(job, error, seen) {
   } else if (!saved) {
     note = job.kind === 'comments' ? 'Yeni yorum bulunamadı.' : job.kind === 'likers' ? 'Kaydedilecek beğenen bulunamadı.' : 'Gönderi bulunamadı.';
   }
+  if (detail) note = note ? `${note} ${detail}` : detail;
   return { shortcode: code, saved, seen, ok: !error && saved > 0, note };
 }
 
@@ -471,17 +472,18 @@ function summarize(job) {
   const lines = [head];
   for (const x of bad.slice(0, 5)) lines.push(`• ${x.shortcode ? x.shortcode + ': ' : ''}${x.note}`);
   if (bad.length > 5) lines.push(`• …ve ${bad.length - 5} gönderi daha.`);
+  for (const x of res.filter((r) => r.ok && r.note).slice(0, 5)) lines.push(`• ${x.shortcode}: ${x.saved} kaydedildi. ${x.note}`);
   if (job.warned) lines.push(`Uyarı: ${job.warned}`);
   if (job.resumed) lines.push('Not: Uygulamada bu profil için kayıt durdurulmuştu; işi başlattığınız için yeniden açıldı.');
   return lines.join('\n');
 }
 
-async function jobStepDone(tabId, error, seen) {
+async function jobStepDone(tabId, error, seen, detail) {
   await chain.catch(() => {});                  // bu adımın kayıt yanıtları sayılmış olsun
   const job = await getJob();
   if (!job || job.state !== 'running' || job.tabId !== tabId) return;
   job.results = job.results || [];
-  job.results.push(stepResult(job, error, Number(seen) || 0));
+  job.results.push(stepResult(job, error, Number(seen) || 0, detail));
   if (error) job.errors.push({ shortcode: job.queue[job.index], error: String(error).slice(0, 300) });
   job.cur = { posts: 0, likers: 0, comments: 0 };
   job.index += 1;
@@ -606,7 +608,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'ia-job-progress' || msg.type === 'ia-job-done') {
     if (!fromInstagram) return false;
-    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null, msg.seen);
+    if (msg.type === 'ia-job-done') jobStepDone(sender.tab.id, msg.error || null, msg.seen, msg.detail || null);
     else getJob().then((job) => {
       if (job && job.state === 'running' && job.tabId === sender.tab.id) { job.step = Number(msg.step) || 0; setJob(job); }
     });

@@ -80,6 +80,7 @@
   // Bir kutuyu (ya da sayfayı) içerik bitene kadar kaydırır: üst üste 3 kez uzamazsa bitti sayılır
   async function scrollToEnd(getBox, maxSteps, pause) {
     let stable = 0;
+    let steps = 0;
     for (let i = 0; i < maxSteps && stable < 3; i++) {
       const box = getBox();
       if (!box) break;
@@ -88,7 +89,9 @@
       await sleep(rand(pause[0], pause[1]));
       stable = box.scrollHeight === h ? stable + 1 : 0;   // yeni içerik gelmediyse
       report({ step: i + 1 });
+      steps = i + 1;
     }
+    return steps;
   }
 
   function scrollableIn(root) {
@@ -142,8 +145,12 @@
     await sleep(rand(1200, 2200));
     // Az beğenili gönderide liste kaydırılabilir olmaz: ilk sayfa zaten kaydedildi
     const box = await waitFor(() => scrollableIn(dialog), 6000);
-    if (box) await scrollToEnd(() => box, 120, [900, 2200]);
-    return { seen: countProfiles(dialog) };
+    const first = countProfiles(dialog);
+    const steps = box ? await scrollToEnd(() => box, 120, [900, 2200]) : 0;
+    const seen = countProfiles(dialog);
+    // Ölçüm: kaydırma ek kişi getirdi mi? (Instagram ilk ~100'den sonrasını vermiyorsa burada görünür)
+    const detail = box ? `Liste kaydırıldı (${steps} adım): ${first} → ${seen} kişi göründü.` : `Liste kaydırılamadı; ${first} kişi göründü.`;
+    return { seen, detail };
   }
 
   const MORE_COMMENTS = /load more comments|view more comments|view all|daha fazla yorum|yorumların tümünü|tüm yorumları/i;
@@ -188,7 +195,7 @@
     } catch (e) {
       out = { error: `Sayfada beklenmeyen bir durum oldu (${String((e && e.message) || e).slice(0, 120)}).` };
     }
-    chrome.runtime.sendMessage({ type: 'ia-job-done', error: out.error || null, seen: Number(out.seen) || 0 }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'ia-job-done', error: out.error || null, seen: Number(out.seen) || 0, detail: out.detail ? String(out.detail).slice(0, 200) : null }).catch(() => {});
   }
 
   async function loadConfig() {
