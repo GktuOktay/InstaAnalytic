@@ -316,7 +316,7 @@ const en: Translations = {
     incomplete:     'incomplete',
     readPeople:     'People Read',
     incompletePosts:'Incomplete Posts',
-    incompleteHint: 'The number read is clearly below the like count. Small gaps (your own like, deleted or hidden accounts) are not counted as incomplete.',
+    incompleteHint: 'The number read is clearly below the like count. Gaps up to 10% (your own like, deleted or hidden accounts) are not counted as incomplete.',
     runCommentsOne: 'Fetch this post\'s comments',
     stop:           'Stop',
     jobNote:        'The extension is working in an Instagram tab and closes it when done. Closing the tab stops the job.',

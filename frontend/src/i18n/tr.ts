@@ -314,7 +314,7 @@ const tr = {
     incomplete:     'eksik',
     readPeople:     'Okunan Kişi',
     incompletePosts:'Eksik Gönderi',
-    incompleteHint: 'Okunan sayı beğeni sayısının belirgin altında. Küçük farklar (kendi beğeniniz, silinen ya da gizli hesaplar) eksik sayılmaz.',
+    incompleteHint: 'Okunan sayı beğeni sayısının belirgin altında. %10’a kadar farklar (kendi beğeniniz, silinen ya da gizli hesaplar) eksik sayılmaz.',
     runCommentsOne: 'Bu gönderinin yorumlarını çek',
     stop:           'Durdur',
     jobNote:        'Eklenti Instagram sekmesinde çalışıyor; iş bitince sekmeyi kendisi kapatır. Sekmeyi kapatırsan iş durur.',

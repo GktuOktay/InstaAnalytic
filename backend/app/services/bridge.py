@@ -555,8 +555,8 @@ def saved_likers_expr():
 
 def likers_missing_cond():
     """Beğenenleri eksik gönderi: hiç okunmamış ya da kaydedilen sayı beğeni sayısının belirgin altında.
-    Kendi beğeniniz, silinen ve gizli hesaplar yüzünden küçük fark (>=2 ya da %3) eksik sayılmaz."""
-    tol = func.greatest(2, func.ceil(Post.like_count * 0.03))
+    Kendi beğeniniz, silinen ve gizli hesaplar yüzünden küçük fark (>=2 ya da %10) eksik sayılmaz."""
+    tol = func.greatest(2, func.ceil(Post.like_count * 0.10))
     return (Post.like_count > 0) & (Post.likers_synced_at.is_(None) | (saved_likers_expr() < Post.like_count - tol))
 
 
