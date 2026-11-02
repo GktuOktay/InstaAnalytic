@@ -45,10 +45,10 @@ _RISK_MESSAGES = ("login_required", "checkpoint_required", "challenge_required",
 _MEDIA_TYPES = {1: "PHOTO", 2: "VIDEO", 8: "ALBUM"}
 _POST_PATH = re.compile(r"/(?:[\w.]+/)?(?:p|reel|tv)/([\w-]+)")
 _REST_MEDIA = re.compile(r"/api/v1/media/(\d+)(?:_\d+)?/(likers|comments)/")
-_INTERESTING = re.compile(r"liker|comment", re.I)
+_INTERESTING = re.compile(r"liker|liked_?by|comment", re.I)
 # Uyarı yalnızca bizim okuduğumuz türden bir yanıtta sayılır; Instagram'ın arka plandaki önemsiz
 # isteklerinde (kayıt, reklam) ara sıra görülen 429'lar kullanıcıyı boşuna bekletmesin.
-_RELEVANT_FRIENDLY = re.compile(r"liker|likes|comment|post|media|timeline|profile|feed", re.I)
+_RELEVANT_FRIENDLY = re.compile(r"liker|likes|liked_?by|comment|post|media|timeline|profile|feed", re.I)
 _RELEVANT_REST = re.compile(r"/api/v1/(media/\d+(_\d+)?/(likers|comments)/|feed/user/)")
 
 # Kullanıcıya gösterilecek metin (eklenti bunu olduğu gibi gösterir)
@@ -274,7 +274,7 @@ def find_media(body: Any) -> list[dict]:
 
 def _user_list(v: Any) -> list[dict]:
     if isinstance(v, dict):
-        for key in ("users", "edges", "items", "likers"):
+        for key in ("users", "edges", "nodes", "items", "likers"):
             if isinstance(v.get(key), list):
                 return _user_list(v[key])
         return []

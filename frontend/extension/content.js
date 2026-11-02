@@ -19,7 +19,7 @@
   // Yanıtın hangi araca ait olduğu: gönderi listesi, beğenenler ya da yorumlar
   function toolOf(url, friendly) {
     const path = (() => { try { return new URL(url).pathname; } catch { return ''; } })();
-    if (/\/api\/v1\/media\/\d+(_\d+)?\/likers\//.test(path) || /liker|likes/i.test(friendly)) return 'likers';
+    if (/\/api\/v1\/media\/\d+(_\d+)?\/likers\//.test(path) || /liker|likes|liked_?by/i.test(friendly)) return 'likers';
     if (/\/api\/v1\/media\/\d+(_\d+)?\/comments\//.test(path) || /comment/i.test(friendly)) return 'comments';
     return 'posts';
   }

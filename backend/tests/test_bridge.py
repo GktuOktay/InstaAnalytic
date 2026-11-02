@@ -390,3 +390,19 @@ async def test_long_code_post_gets_its_likers_from_either_page_address(db, make_
     for page in (f"https://www.instagram.com/p/{SHORT_CODE}/liked_by/", f"https://www.instagram.com/p/{LONG_CODE}/liked_by/"):
         r = await _obs(db, kv, s, GQL, likers, page=page, req="")        # kimlik yok: yalnızca sayfa adresiyle eşleşmeli
         assert r["likers"] == 2 and not r["ignored"]
+
+
+@pytest.mark.asyncio
+async def test_likers_connection_nodes_shape_is_saved(db, make_session):
+    """Instagram'ın PolarisPostLikedByListDialogQuery yanıtı: data.fetch__XDTMediaDict.likers_connection.nodes"""
+    s = await make_session(username="me")
+    kv = FakeKV()
+    await _obs(db, kv, s, GQL, long_code_timeline())
+    body = json.dumps({"data": {"fetch__XDTMediaDict": {"likers_connection": {"fb_like_count": None, "nodes": [
+        {"pk": "555", "username": "ayse", "full_name": "Ayşe"}, {"pk": "556", "username": "ali"},
+        {"pk": "1001", "username": "me"}]}, "id": "x"}}})
+    assert bridge.find_likers(bridge.parse_body(body), "https://www.instagram.com/api/graphql")[0]["username"] == "ayse"
+    req = urlencode({"fb_api_req_friendly_name": "PolarisPostLikedByListDialogQuery", "variables": "{}"})
+    r = await _obs(db, kv, s, "https://www.instagram.com/api/graphql", body,
+                   page=f"https://www.instagram.com/p/{SHORT_CODE}/", req=req)
+    assert r["likers"] == 2 and not r["ignored"]                       # kendi beğenisi sayılmaz
