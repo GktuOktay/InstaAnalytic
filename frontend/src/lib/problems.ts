@@ -57,7 +57,7 @@ export function apiErrorMessage(e: any, T: Translations, fallback: string): stri
   const status: number | undefined = e?.response?.status
   const detail = detailText(e?.response?.data?.detail)
   if (status === 422) return T.problems.bad_input.title
-  if (detail && (!status || status < 500) && !TECHNICAL.test(detail)) return detail
+  if (detail && T.locale === 'tr' && (!status || status < 500) && !TECHNICAL.test(detail)) return detail
   if (!e?.response) {
     return e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message ?? '') ? T.problems.timeout.title : T.problems.app_down.title
   }

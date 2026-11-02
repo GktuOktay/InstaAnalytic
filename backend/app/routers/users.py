@@ -119,6 +119,7 @@ async def list_users(
             "profile_pic_url":  u.profile_pic_url,
             "is_private":       u.is_private,
             "is_verified":      u.is_verified,
+            "reach_status":     u.reach_status,   # unreachable = hayalet (silinmiş/dondurulmuş); etkileşimsizlikle karıştırılmaz
             "follower_count":   u.follower_count,
             "following_count":  u.following_count,
             "we_follow":        row.we_follow,

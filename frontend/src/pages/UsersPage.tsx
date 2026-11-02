@@ -5,13 +5,16 @@ import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
+import { apiErrorMessage } from '../lib/problems'
 import {
   BadgeCheck, Lock, Download, RefreshCw, Heart, MessageSquare,
   TrendingUp, UserPlus, UserMinus, UserX, ChevronLeft, ChevronRight, CheckSquare, Square
 } from 'lucide-react'
 
-type SortKey = 'engagement_desc' | 'engagement_asc' | 'username_asc' | 'username_desc'
-type FilterTab = 'all' | 'following' | 'followers' | 'ghosts'
+type SortCol = 'username' | 'like_count' | 'comment_count' | 'engagement_score' | 'they_follow' | 'we_follow'
+type SortDir = 'asc' | 'desc'
+// ghosts: silinmiş/dondurulmuş hesap (hayalet). silent: takip/takipçi ama hiç etkileşim yok (etkileşimsiz).
+type FilterTab = 'all' | 'following' | 'followers' | 'silent' | 'ghosts'
 
 interface UserPoolItem {
   id: number
@@ -22,6 +25,7 @@ interface UserPoolItem {
   is_verified: boolean
   follower_count: number | null
   following_count: number | null
+  reach_status?: string | null
   we_follow: boolean | null
   they_follow: boolean | null
   like_count: number
@@ -30,20 +34,17 @@ interface UserPoolItem {
   first_seen_at: string | null
 }
 
-const SORT_META: { key: SortKey; apiSort: string; apiDir: 'asc'|'desc' }[] = [
-  { key: 'engagement_desc', apiSort: 'engagement', apiDir: 'desc' },
-  { key: 'engagement_asc',  apiSort: 'engagement', apiDir: 'asc'  },
-  { key: 'username_asc',    apiSort: 'username',   apiDir: 'asc'  },
-  { key: 'username_desc',   apiSort: 'username',   apiDir: 'desc' },
-]
+const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'silent', 'ghosts']
 
-const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'ghosts']
+const isGhost  = (u: UserPoolItem) => u.reach_status === 'unreachable'
+const isSilent = (u: UserPoolItem) => u.engagement_score === 0 && !isGhost(u) && !!(u.we_follow || u.they_follow)
 
 function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
   switch (tab) {
     case 'following': return items.filter(u => u.we_follow)
     case 'followers': return items.filter(u => u.they_follow)
-    case 'ghosts':    return items.filter(u => u.engagement_score === 0 && (u.we_follow || u.they_follow))
+    case 'silent':    return items.filter(isSilent)
+    case 'ghosts':    return items.filter(isGhost)
     default:          return items
   }
 }
@@ -66,15 +67,10 @@ function EngagementBar({ val }: { val: number }) {
 export default function UsersPage() {
   const { T, lang } = useLang()
 
-  const SORT_OPTIONS = SORT_META.map((m, i) => ({
-    ...m,
-    label: [T.users.sort.engDesc, T.users.sort.engAsc, T.users.sort.nameAsc, T.users.sort.nameDesc][i],
-  }))
-
   const FILTER_TABS = FILTER_KEYS.map(key => ({
     key,
     label: T.users.tabs[key],
-    hint:  T.users.ghost.hint,
+    hint:  key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
   const { sessions, loading: sessionLoading } = useSession()
@@ -82,7 +78,7 @@ export default function UsersPage() {
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
   const [total,         setTotal]         = useState(0)
   const [page,          setPage]          = useState(1)
-  const [sort,          setSort]          = useState<SortKey>('engagement_desc')
+  const [sort,          setSort]          = useState<{ col: SortCol; dir: SortDir }>({ col: 'engagement_score', dir: 'desc' })
   const [search,        setSearch]        = useState('')
   const [tab,           setTab]           = useState<FilterTab>('all')
   const [loading,       setLoading]       = useState(false)
@@ -94,39 +90,65 @@ export default function UsersPage() {
 
   const LIMIT = 50
 
+  // Takip / takipten çıkarma yalnızca Instagram'a bağlı (ZIP olmayan), işlemleri açık ve duraklatılmamış profilde çalışır
+  const profile = sessions.find(x => x.id === sid)
+  const blockedReason: string | null = !profile ? null
+    : profile.source === 'zip' ? T.users.actionsOff.zip
+    : !profile.allow_actions ? T.users.actionsOff.disabled
+    : profile.paused_until && new Date(profile.paused_until) > new Date() ? T.users.actionsOff.paused
+    : null
+  const canAct = !blockedReason
+
+  // Sunucu iletileri yalnızca Türkçe: nedenini durum koduna göre seçili dilde göster
+  const errMsg = (e: unknown) => {
+    const status = (e as { response?: { status?: number } })?.response?.status
+    if (status === 400) return T.users.actionsOff.zip
+    if (status === 403) return T.users.actionsOff.disabled
+    if (status === 423) return T.users.actionsOff.paused
+    return apiErrorMessage(e, T, T.users.toast.failed)
+  }
+
   useEffect(() => {
     if (sessions.length > 0 && !sid) setSid(sessions[0].id)
   }, [sessions, sid])
 
-  const load = useCallback(async (p = 1, s = sort, q = search) => {
+  const load = useCallback(async (p = 1, q = search) => {
     if (!sid) return
     setLoading(true)
     try {
-      const opt = SORT_OPTIONS.find(o => o.key === s) ?? SORT_OPTIONS[0]
-      const r = await api.get(`/sessions/${sid}/users`, { params: { page: p, limit: 2000, sort: opt.apiSort, search: q } })
+      const r = await api.get(`/sessions/${sid}/users`, { params: { page: p, limit: 2000, sort: 'engagement', search: q } })
       setAllItems(r.data.items)
       setTotal(r.data.total)
     } finally {
       setLoading(false)
     }
-  }, [sid, sort, search])
+  }, [sid, search])
 
-  useEffect(() => { if (sid) load(1, sort, '') }, [sid, sort])
+  useEffect(() => { if (sid) load(1, '') }, [sid])
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { if (sid) load(1, sort, search) }, 380)
+    debounceRef.current = setTimeout(() => { if (sid) load(1, search) }, 380)
   }, [search])
 
-  // Client-side sıralama (backend desc döner, asc için ters çevir)
+  // Tüm sütunlarda istemci tarafı sıralama; eşitlikte kullanıcı adına göre
   const sortedItems = (() => {
-    const items = [...allItems]
-    if (sort === 'engagement_asc') items.sort((a, b) => a.engagement_score - b.engagement_score)
-    else if (sort === 'username_asc') items.sort((a, b) => a.username.localeCompare(b.username))
-    else if (sort === 'username_desc') items.sort((a, b) => b.username.localeCompare(a.username))
-    // engagement_desc: backend zaten bu sırayla döndürüyor
-    return items
+    const dir = sort.dir === 'asc' ? 1 : -1
+    const val = (u: UserPoolItem): string | number =>
+      sort.col === 'username' ? u.username.toLowerCase()
+      : sort.col === 'they_follow' || sort.col === 'we_follow' ? (u[sort.col] ? 1 : 0)
+      : u[sort.col]
+    return [...allItems].sort((a, b) => {
+      const x = val(a), y = val(b)
+      const c = typeof x === 'string' ? x.localeCompare(y as string) : (x as number) - (y as number)
+      return c * dir || a.username.localeCompare(b.username)
+    })
   })()
+
+  const toggleSort = (col: SortCol) => {
+    setSort(p => p.col === col ? { col, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'username' ? 'asc' : 'desc' })
+    setPage(1)
+  }
 
   // Filtrelenmiş + sayfalanmış liste
   const filtered = applyFilter(sortedItems, tab)
@@ -149,7 +171,7 @@ export default function UsersPage() {
       } else {
         showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast(T.users.toast.failed, false) }
+    } catch (e) { showToast(errMsg(e), false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -163,7 +185,7 @@ export default function UsersPage() {
       } else {
         showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast(T.users.toast.failed, false) }
+    } catch (e) { showToast(errMsg(e), false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -177,7 +199,7 @@ export default function UsersPage() {
       } else {
         showToast(r.error ?? T.common.error, false)
       }
-    } catch { showToast(T.users.toast.failed, false) }
+    } catch (e) { showToast(errMsg(e), false) }
     finally { setActionLoading(p => { const n = { ...p }; delete n[u.id]; return n }) }
   }
 
@@ -194,10 +216,10 @@ export default function UsersPage() {
     setBulkLoading(true)
     try {
       const r = await actionsApi.bulkUnfollow(sid, ids)
-      showToast(`${ids.length} hesap takipten çıkarma kuyruğuna eklendi (~${r.estimated_duration_minutes} dk)`)
+      showToast(T.users.bulkUnfollowed(ids.length, r.estimated_duration_minutes))
       setAllItems(prev => prev.map(x => ids.includes(x.id) ? { ...x, we_follow: false } : x))
       setSelected(new Set())
-    } catch { showToast('Toplu işlem başarısız', false) }
+    } catch { showToast(T.users.bulkFailed, false) }
     finally { setBulkLoading(false) }
   }
 
@@ -216,7 +238,7 @@ export default function UsersPage() {
         }
       } catch {}
     }
-    showToast(`${ok} hesap takip edildi`)
+    showToast(T.users.bulkFollowed(ok))
     setSelected(new Set())
     setBulkLoading(false)
   }
@@ -228,11 +250,23 @@ export default function UsersPage() {
     URL.revokeObjectURL(url)
   }
 
+  const SortHead = ({ col, label, icon, right }: { col: SortCol; label: string; icon?: React.ReactNode; right?: boolean }) => {
+    const active = sort.col === col
+    return (
+      <button onClick={() => toggleSort(col)} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        title={T.users.sortBy}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
+          color: active ? 'var(--text)' : 'inherit', display: 'flex', alignItems: 'center', gap: 2, justifyContent: right ? 'flex-end' : 'flex-start' }}>
+        {icon}{label}{active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+      </button>
+    )
+  }
+
   if (sessionLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 240, color: 'var(--text-3)' }}>
         <RefreshCw size={18} className="animate-spin" style={{ marginRight: 10 }} />
-        <span style={{ fontSize: 14 }}>Yükleniyor…</span>
+        <span style={{ fontSize: 14 }}>{T.users.loading}</span>
       </div>
     )
   }
@@ -259,7 +293,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold">{T.users.title}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {allItems.length.toLocaleString('tr-TR')} kişi · {filtered.length.toLocaleString('tr-TR')} filtreli
+            {T.users.peopleCount(allItems.length.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'), filtered.length.toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR'))}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -272,11 +306,17 @@ export default function UsersPage() {
           <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
             <Download size={13} /> {T.users.exportCsv}
           </button>
-          <button onClick={() => load(1, sort, search)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
+          <button onClick={() => load(1, search)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
+
+      {blockedReason && (
+        <p role="note" className="text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-xl px-3 py-2 mb-4">
+          {blockedReason} {T.users.actionsOff.manual}
+        </p>
+      )}
 
       {/* Filter tabs */}
       <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
@@ -301,19 +341,15 @@ export default function UsersPage() {
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={T.common.search}
           className="w-52 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-purple-500" />
-        <select value={sort} onChange={e => { setSort(e.target.value as SortKey); setPage(1) }}
-          style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text)', padding: '5px 10px', fontSize: 12 }}>
-          {SORT_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>
 
         {selected.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
-            <span className="text-xs text-gray-400">{selected.size} seçili</span>
-            <button onClick={handleBulkFollow} disabled={bulkLoading}
+            <span className="text-xs text-gray-400">{T.users.selectedN(selected.size)}</span>
+            <button onClick={handleBulkFollow} disabled={bulkLoading || !canAct} title={blockedReason ?? undefined}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900 hover:bg-green-800 disabled:opacity-50 rounded-lg text-xs text-green-300">
               <UserPlus size={12} /> {T.users.action.bulkFollow}
             </button>
-            <button onClick={handleBulkUnfollow} disabled={bulkLoading}
+            <button onClick={handleBulkUnfollow} disabled={bulkLoading || !canAct} title={blockedReason ?? undefined}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 rounded-lg text-xs text-red-300">
               <UserMinus size={12} /> {T.users.action.bulkUnfollow}
             </button>
@@ -328,9 +364,9 @@ export default function UsersPage() {
         {pageItems.length > 0 && (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 66px',
+            gridTemplateColumns: '20px 32px minmax(140px,1fr) 52px 78px 62px 66px 78px 66px',
             gap: '0 10px',
-            minWidth: 480,
+            minWidth: 720,
             padding: '5px 10px',
             fontSize: 10,
             color: 'var(--text-3)',
@@ -344,10 +380,12 @@ export default function UsersPage() {
               {selected.size === pageItems.length && pageItems.length > 0 ? <CheckSquare size={12} /> : <Square size={12} />}
             </button>
             <span />
-            <span>{T.users.col.user}</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><Heart size={8} />{T.users.col.likes}</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><MessageSquare size={8} />{T.users.col.comments}</span>
-            <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}><TrendingUp size={8} />{T.users.col.engagement}</span>
+            <SortHead col="username" label={T.users.col.user} />
+            <SortHead col="like_count" label={T.users.col.likes} icon={<Heart size={8} />} right />
+            <SortHead col="comment_count" label={T.users.col.comments} icon={<MessageSquare size={8} />} right />
+            <SortHead col="engagement_score" label={T.users.col.engagement} icon={<TrendingUp size={8} />} right />
+            <SortHead col="they_follow" label={T.users.col.followers} right />
+            <SortHead col="we_follow" label={T.users.col.following} right />
             <span style={{ textAlign: 'center' }}>{T.users.col.action}</span>
           </div>
         )}
@@ -355,23 +393,24 @@ export default function UsersPage() {
         {/* Liste */}
         {pageItems.length === 0 && !loading ? (
           <div className="text-center py-14 text-gray-600 border border-dashed border-gray-800 rounded-xl text-sm">
-            <p>Bu filtre için kullanıcı yok.</p>
+            <p>{T.users.noneInFilter}</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {pageItems.map(u => {
               const isSelected = selected.has(u.id)
               const actLoad = actionLoading[u.id]
-              const isGhost = u.engagement_score === 0 && (u.we_follow || u.they_follow)
+              const ghost = isGhost(u)
+              const silent = isSilent(u)
               return (
                 <div key={u.id} style={{
                   display: 'grid',
-                  gridTemplateColumns: '20px 32px minmax(140px,1fr) 44px 44px 56px 66px',
+                  gridTemplateColumns: '20px 32px minmax(140px,1fr) 52px 78px 62px 66px 78px 66px',
                   gap: '0 10px',
-                  minWidth: 480,
+                  minWidth: 720,
                   alignItems: 'center',
                   background: isSelected ? 'rgba(232,97,58,0.08)' : 'var(--surface)',
-                  border: `1px solid ${isSelected ? 'rgba(232,97,58,0.35)' : isGhost ? 'rgba(210,70,31,0.2)' : 'var(--border)'}`,
+                  border: `1px solid ${isSelected ? 'rgba(232,97,58,0.35)' : ghost ? 'rgba(210,70,31,0.35)' : silent ? 'rgba(210,70,31,0.2)' : 'var(--border)'}`,
                   borderRadius: 10,
                   padding: '7px 10px',
                   transition: 'border-color 0.15s',
@@ -398,7 +437,8 @@ export default function UsersPage() {
                       </a>
                       {u.is_verified && <BadgeCheck size={12} style={{ color: '#60a5fa' }} />}
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
-                      {isGhost && <span style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
+                      {ghost && <span title={T.users.ghost.hint} style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
+                      {silent && <span title={T.users.silent.hint} style={{ fontSize: 9, background: 'rgba(224,149,53,0.15)', color: '#e09535', padding: '1px 6px', borderRadius: 20 }}>{T.users.silent.badge}</span>}
                       {u.we_follow   && <span style={{ fontSize: 9, background: 'rgba(78,202,138,0.15)', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
                       {u.they_follow && <span style={{ fontSize: 9, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
@@ -423,24 +463,32 @@ export default function UsersPage() {
                     {u.engagement_score > 0 && <EngagementBar val={u.engagement_score} />}
                   </div>
 
+                  {/* Takipçi / Takip Edilen */}
+                  <span style={{ fontSize: 12, textAlign: 'right', color: u.they_follow ? '#60a5fa' : 'var(--text-3)' }}>
+                    {u.they_follow ? T.users.yes : '-'}
+                  </span>
+                  <span style={{ fontSize: 12, textAlign: 'right', color: u.we_follow ? '#4eca8a' : 'var(--text-3)' }}>
+                    {u.we_follow ? T.users.yes : '-'}
+                  </span>
+
                   {/* Aksiyon */}
                   <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
                     {u.we_follow ? (
-                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad}
-                        title={T.users.action.unfollow}
-                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(224,112,112,0.15)', border: '1px solid rgba(224,112,112,0.3)', color: '#e07070', opacity: actLoad ? 0.5 : 1 }}>
+                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad || !canAct}
+                        title={blockedReason ?? T.users.action.unfollow}
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(224,112,112,0.15)', border: '1px solid rgba(224,112,112,0.3)', color: '#e07070', opacity: actLoad || !canAct ? 0.4 : 1 }}>
                         {actLoad === 'unfollow' ? <RefreshCw size={11} className="animate-spin" /> : <UserMinus size={11} />}
                       </button>
                     ) : (
-                      <button onClick={() => handleFollow(u)} disabled={!!actLoad}
-                        title={T.users.action.follow}
-                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(78,202,138,0.15)', border: '1px solid rgba(78,202,138,0.3)', color: '#4eca8a', opacity: actLoad ? 0.5 : 1 }}>
+                      <button onClick={() => handleFollow(u)} disabled={!!actLoad || !canAct}
+                        title={blockedReason ?? T.users.action.follow}
+                        style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(78,202,138,0.15)', border: '1px solid rgba(78,202,138,0.3)', color: '#4eca8a', opacity: actLoad || !canAct ? 0.4 : 1 }}>
                         {actLoad === 'follow' ? <RefreshCw size={11} className="animate-spin" /> : <UserPlus size={11} />}
                       </button>
                     )}
                     <button onClick={() => u.they_follow ? handleRemoveFollower(u) : undefined}
-                      disabled={!!actLoad || !u.they_follow}
-                      title={T.users.action.removeFollower}
+                      disabled={!!actLoad || !u.they_follow || !canAct}
+                      title={blockedReason ?? T.users.action.removeFollower}
                       style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: u.they_follow ? 'pointer' : 'default', background: 'rgba(155,143,224,0.15)', border: '1px solid rgba(155,143,224,0.3)', color: u.they_follow ? '#9b8fe0' : 'var(--text-3)', opacity: actLoad ? 0.5 : 1 }}>
                       {actLoad === 'remove_follower' ? <RefreshCw size={11} className="animate-spin" /> : <UserX size={11} />}
                     </button>
@@ -457,12 +505,12 @@ export default function UsersPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 20 }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', opacity: page <= 1 ? 0.4 : 1 }}>
-            <ChevronLeft size={14} /> {lang === 'tr' ? 'Önceki' : 'Prev'}
+            <ChevronLeft size={14} /> {T.users.prev}
           </button>
           <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{page} / {totalPages} · {filtered.length}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
             style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: 'var(--surface)', border: '1px solid var(--border-2)', borderRadius: 8, color: 'var(--text-2)', fontSize: 13, cursor: 'pointer', opacity: page >= totalPages ? 0.4 : 1 }}>
-            {lang === 'tr' ? 'Sonraki' : 'Next'} <ChevronRight size={14} />
+            {T.users.next} <ChevronRight size={14} />
           </button>
         </div>
       )}

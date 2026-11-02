@@ -1,6 +1,7 @@
 import type { Translations } from './tr'
 
 const en: Translations = {
+  locale: 'en',
   nav: {
     dashboard:    'Dashboard',
     session:      'Session',
@@ -17,6 +18,10 @@ const en: Translations = {
   },
   common: {
     loading:      'Loading…',
+    profile:      'profile',
+    copy:         'Copy',
+    lightMode:    'Light mode',
+    darkMode:     'Dark mode',
     error:        'Error',
     save:         'Save',
     cancel:       'Cancel',
@@ -257,6 +262,15 @@ const en: Translations = {
   },
 
   followers: {
+    loadFailed:     'Could not load data',
+    syncFailed:     'Could not start the sync',
+    queueN:         (n: number) => `${n} actions queued`,
+    doneOf:         (d: number, t: number) => `${d} / ${t} done`,
+    unfollowN:      (n: number) => `Unfollow ${n} people`,
+    selectAllN:     (n: number) => `Select all (${n})`,
+    selectedUsers:  (n: number) => `${n} users selected`,
+    estMinutes:     (m: number) => `Estimated time: ~${m} min`,
+    startBulk:      'Start',
     title:          'Follower Analysis',
     sync:           'Sync',
     syncFollowers:  'Fetch Followers',
@@ -416,16 +430,14 @@ const en: Translations = {
       all:          'All',
       following:    'Following',
       followers:    'Followers',
+      silent:       'Inactive',
       ghosts:       '👻 Ghosts',
     },
-    sort: {
-      engDesc:      'Engagement ↓ (Highest)',
-      engAsc:       'Engagement ↑ (Lowest)',
-      nameAsc:      'Username A → Z',
-      nameDesc:     'Username Z → A',
-    },
+    sortBy:         'Sort',
     col: {
       user:         'User',
+      followers:    'Follower',
+      following:    'Following',
       likes:        'Likes',
       comments:     'Comments',
       engagement:   'Rate',
@@ -446,10 +458,31 @@ const en: Translations = {
     },
     ghost: {
       badge:      'ghost',
-      hint:       'Follows/follower but zero engagement',
+      hint:       'Account deleted, suspended or closed (found by the Ghost account hunt)',
+    },
+    silent: {
+      badge:      'inactive',
+      hint:       'Account is alive; follows or is followed but has no likes/comments on your posts',
     },
     syncAll:      'Scan All',
     exportCsv:    'Export CSV',
+    loading:      'Loading…',
+    actionsOff: {
+      zip:        'This profile was added from a ZIP; the app is not connected to Instagram, so follow / unfollow is unavailable.',
+      disabled:   'Follow / unfollow actions are turned off. You can deliberately turn them on in Settings.',
+      paused:     'Actions are temporarily paused for safety.',
+      manual:     'Click a username to do it by hand on Instagram.',
+    },
+    peopleCount:  (n: string, f: string) => `${n} people · ${f} filtered`,
+    selectedN:    (n: number) => `${n} selected`,
+    noneInFilter: 'No users for this filter.',
+    prev:         'Prev',
+    next:         'Next',
+    yes:          'Yes',
+    no:           'No',
+    bulkUnfollowed: (n: number, m: number) => `${n} accounts queued for unfollow (~${m} min)`,
+    bulkFollowed:   (n: number) => `${n} accounts followed`,
+    bulkFailed:     'Bulk action failed',
     selectAll:    'Select all',
     page:         'Page',
   },

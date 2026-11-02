@@ -70,7 +70,7 @@ export default function CleanupPage() {
         </div>
         <div className="flex items-center gap-2">
           {sessions.length > 1 && (
-            <select value={sid} onChange={e => setSid(e.target.value)} aria-label="profil"
+            <select value={sid} onChange={e => setSid(e.target.value)} aria-label={T.common.profile}
               className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm">
               {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
             </select>

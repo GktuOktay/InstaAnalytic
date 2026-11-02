@@ -70,7 +70,7 @@ export default function Layout() {
               {/* Theme toggle */}
               <button
                 onClick={toggleTheme}
-                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                title={theme === 'dark' ? T.common.lightMode : T.common.darkMode}
                 style={{
                   width: 30, height: 30,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',

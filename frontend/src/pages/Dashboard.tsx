@@ -158,10 +158,11 @@ export default function Dashboard() {
 /* ── Sub-components ──────────────────────────────────────────────────── */
 
 function LoadingState() {
+  const { T } = useLang()
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--text-3)', fontSize: 14 }}>
       <RefreshCw size={16} style={{ marginRight: 8, animation: 'spin 1s linear infinite' }} />
-      Yükleniyor…
+      {T.common.loading}
     </div>
   )
 }

@@ -170,7 +170,7 @@ async def get_interaction_report(session_id: uuid.UUID, db: AsyncSession = Depen
         .where(Interaction.session_id == session_id)
         .group_by(IgUser.id)
         .order_by(func.count(Interaction.id).desc())
-        .limit(15)
+        .limit(10)
     )).all()
 
     top_fans = [

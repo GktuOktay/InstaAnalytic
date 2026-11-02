@@ -29,7 +29,7 @@ export async function extractExportJson(
     const wanted = entries.filter(e => !e.directory && isImportantEntry(e.filename))
     const files: File[] = []
     for (const [i, e] of wanted.entries()) {
-      if (e.uncompressedSize > MAX_MEMBER_BYTES) throw new Error(`${e.filename} çok büyük`)
+      if (e.uncompressedSize > MAX_MEMBER_BYTES) throw new Error(`${e.filename} too large`)
       if (!e.getData) continue
       const blob = await e.getData(new BlobWriter('application/json'))
       const base = e.filename.replace(/\\/g, '/').split('/').pop() as string

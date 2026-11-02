@@ -31,7 +31,7 @@ export default function DashboardCharts({ sessionId }: Props) {
       )}
       {hasFans && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <TopFansCard fans={top_fans.slice(0, 5)} lang={lang} />
+          <TopFansCard fans={top_fans.slice(0, 10)} lang={lang} />
           <KpiMini kpi={kpi} lang={lang} />
         </div>
       )}

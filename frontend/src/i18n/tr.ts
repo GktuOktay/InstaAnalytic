@@ -1,4 +1,5 @@
 const tr = {
+  locale: 'tr' as string,   // sunucu mesajları yalnızca Türkçe: başka dilde ham sunucu metni gösterilmez
   nav: {
     dashboard:    'Dashboard',
     session:      'Oturum',
@@ -15,6 +16,10 @@ const tr = {
   },
   common: {
     loading:      'Yükleniyor…',
+    profile:      'profil',
+    copy:         'Kopyala',
+    lightMode:    'Açık tema',
+    darkMode:     'Koyu tema',
     error:        'Hata',
     save:         'Kaydet',
     cancel:       'İptal',
@@ -255,6 +260,15 @@ const tr = {
   },
 
   followers: {
+    loadFailed:     'Veri yüklenemedi',
+    syncFailed:     'Senkronizasyon başlatılamadı',
+    queueN:         (n: number) => `${n} işlem kuyrukta`,
+    doneOf:         (d: number, t: number) => `${d} / ${t} tamamlandı`,
+    unfollowN:      (n: number) => `${n} Kişiyi Takipten Çık`,
+    selectAllN:     (n: number) => `Tümünü seç (${n})`,
+    selectedUsers:  (n: number) => `${n} kullanıcı seçildi`,
+    estMinutes:     (m: number) => `Tahmini süre: ~${m} dakika`,
+    startBulk:      'Başlat',
     title:          'Takipçi Analizi',
     sync:           'Senkronize Et',
     syncFollowers:  'Takipçileri Çek',
@@ -414,16 +428,14 @@ const tr = {
       all:          'Tümü',
       following:    'Takip Ettiklerim',
       followers:    'Takipçilerim',
+      silent:       'Etkileşimsizler',
       ghosts:       '👻 Hayaletler',
     },
-    sort: {
-      engDesc:      'Etkileşim ↓ (Yüksekten)',
-      engAsc:       'Etkileşim ↑ (Düşükten)',
-      nameAsc:      'Kullanıcı adı A → Z',
-      nameDesc:     'Kullanıcı adı Z → A',
-    },
+    sortBy:         'Sırala',
     col: {
       user:         'Kullanıcı',
+      followers:    'Takipçi',
+      following:    'Takip Edilen',
       likes:        'Like',
       comments:     'Yorum',
       engagement:   'Oran',
@@ -444,12 +456,33 @@ const tr = {
     },
     ghost: {
       badge:      'hayalet',
-      hint:       'Takipçi/takip ama hiç etkileşim yok',
+      hint:       'Hesap silinmiş, dondurulmuş ya da kapatılmış (Hayalet hesap avı ile bulunur)',
+    },
+    silent: {
+      badge:      'etkileşimsiz',
+      hint:       'Hesap duruyor; takip ediyor ya da ediliyorsun ama hiçbir gönderine beğeni/yorum yok',
     },
     syncAll:      'Tümünü Tara',
     exportCsv:    'CSV İndir',
     selectAll:    'Tümünü seç',
     page:         'Sayfa',
+    loading:      'Yükleniyor…',
+    actionsOff: {
+      zip:        'Bu profil ZIP ile eklendi; uygulama Instagram\'a bağlı olmadığı için takip etme / takipten çıkarma yapılamaz.',
+      disabled:   'Takip etme / takipten çıkarma işlemleri kapalı. Ayarlar sayfasından bilinçli olarak açılabilir.',
+      paused:     'İşlemler güvenlik için geçici olarak durduruldu.',
+      manual:     'Kullanıcı adına tıklayıp Instagram\'da elle yapabilirsin.',
+    },
+    peopleCount:  (n: string, f: string) => `${n} kişi · ${f} filtreli`,
+    selectedN:    (n: number) => `${n} seçili`,
+    noneInFilter: 'Bu filtre için kullanıcı yok.',
+    prev:         'Önceki',
+    next:         'Sonraki',
+    yes:          'Evet',
+    no:           'Hayır',
+    bulkUnfollowed: (n: number, m: number) => `${n} hesap takipten çıkarma kuyruğuna eklendi (~${m} dk)`,
+    bulkFollowed:   (n: number) => `${n} hesap takip edildi`,
+    bulkFailed:     'Toplu işlem başarısız',
   },
 
   connect: {

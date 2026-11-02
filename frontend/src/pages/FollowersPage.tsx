@@ -79,7 +79,7 @@ export default function FollowersPage() {
       setUsers(list)
       setSelected(new Set())
     } catch (e: any) {
-      toast.error(apiErrorMessage(e, T, 'Veri yüklenemedi'))
+      toast.error(apiErrorMessage(e, T, T.followers.loadFailed))
     }
   }, [activeSession, fetchTab])
 
@@ -118,7 +118,7 @@ export default function FollowersPage() {
       setSyncTaskId(resp.task_id)
     } catch (e: any) {
       // 429: bütçe/cooldown, 409: tarama zaten çalışıyor
-      toast.error(apiErrorMessage(e, T, 'Senkronizasyon başlatılamadı'))
+      toast.error(apiErrorMessage(e, T, T.followers.syncFailed))
       setSyncing(false)
     }
   }
@@ -181,7 +181,7 @@ export default function FollowersPage() {
     return (
       <div className="flex items-center justify-center h-64" style={{ color: 'var(--text-3)' }}>
         <RefreshCw size={18} className="animate-spin" style={{ marginRight: 10 }} />
-        <span style={{ fontSize: 14 }}>Yükleniyor…</span>
+        <span style={{ fontSize: 14 }}>{T.common.loading}</span>
       </div>
     )
   }
@@ -204,7 +204,7 @@ export default function FollowersPage() {
           {queueLength > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-900/40 border border-amber-700 rounded-lg text-xs text-amber-300">
               <RefreshCw size={11} className="animate-spin" />
-              <span>{queueLength} işlem kuyrukta</span>
+              <span>{T.followers.queueN(queueLength)}</span>
             </div>
           )}
           {sessions.length > 1 && (
@@ -259,7 +259,7 @@ export default function FollowersPage() {
           <div className="flex justify-between text-sm mb-2">
             <span className="text-amber-400">{T.followers.bulkUnfollowing}</span>
             {bulkProgress && (
-              <span>{bulkProgress.done ?? 0} / {bulkProgress.total} tamamlandı</span>
+              <span>{T.followers.doneOf(bulkProgress.done ?? 0, bulkProgress.total)}</span>
             )}
           </div>
           {bulkProgress && bulkProgress.total > 0 && (
@@ -314,7 +314,7 @@ export default function FollowersPage() {
         {selected.size > 0 && (
           <button onClick={() => setShowBulkModal(true)} disabled={bulkRunning}
             className="flex items-center gap-2 px-4 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 rounded-lg text-sm font-medium">
-            <UserMinus size={14} /> {selected.size} Kişiyi Takipten Çık
+            <UserMinus size={14} /> {T.followers.unfollowN(selected.size)}
           </button>
         )}
       </div>
@@ -330,7 +330,7 @@ export default function FollowersPage() {
           <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 mb-1">
             <button onClick={toggleAll} className="flex items-center gap-1.5 hover:text-gray-300">
               {selected.size === filtered.length ? <CheckSquare size={14} /> : <Square size={14} />}
-              Tümünü seç ({filtered.length})
+              {T.followers.selectAllN(filtered.length)}
             </button>
           </div>
           <div className="space-y-1.5">
@@ -416,7 +416,7 @@ export default function FollowersPage() {
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-96"
             onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">{T.followers.bulkUnfollow}</h2>
-            <p className="text-sm text-gray-500 mb-5">{selected.size} kullanıcı seçildi</p>
+            <p className="text-sm text-gray-500 mb-5">{T.followers.selectedUsers(selected.size)}</p>
             <div className="space-y-4 mb-6">
               {[
                 { label: T.followers.minDelay, key: 'min', min: 10 },
@@ -432,17 +432,17 @@ export default function FollowersPage() {
                 </div>
               ))}
               <p className="text-xs text-gray-600">
-                Tahmini süre: ~{Math.round((selected.size * ((bulkDelay.min + bulkDelay.max) / 2)) / 60)} dakika
+                {T.followers.estMinutes(Math.round((selected.size * ((bulkDelay.min + bulkDelay.max) / 2)) / 60))}
               </p>
             </div>
             <div className="flex gap-3">
               <button onClick={handleBulkUnfollow}
                 className="flex-1 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-sm font-medium">
-                Başlat
+                {T.followers.startBulk}
               </button>
               <button onClick={() => setShowBulkModal(false)}
                 className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
-                İptal
+                {T.common.cancel}
               </button>
             </div>
           </div>

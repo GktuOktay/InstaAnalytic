@@ -289,7 +289,7 @@ function BrowserFlow({ onConnected }: { onConnected: () => Promise<void> }) {
             <span className="text-green-400">$</span>
             <span className="flex-1 select-all">{AGENT_CMD}</span>
             <button
-              aria-label="copy"
+              aria-label={T.common.copy}
               onClick={() => { navigator.clipboard.writeText(AGENT_CMD); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
               className="text-gray-500 hover:text-gray-300"
             >
