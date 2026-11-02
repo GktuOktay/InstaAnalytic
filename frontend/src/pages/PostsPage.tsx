@@ -76,9 +76,9 @@ export default function PostsPage() {
   }
 
   // İşi eklenti yapar: Instagram sekmesini açar, kaydırır / tıklar, bitince kapatır
-  const start = async (kind: JobKind, shortcodes?: string[]) => {
+  const start = async (kind: JobKind, shortcodes?: string[], scope?: 'missing') => {
     setRunError(null)
-    const r = await ext.run(kind, shortcodes ? { shortcodes } : {})
+    const r = await ext.run(kind, { ...(shortcodes ? { shortcodes } : {}), ...(scope ? { scope } : {}) })
     if (!r.ok) {
       const msg = r.error === 'timeout' ? T.posts.extNoAnswer : (r.error ?? T.problems.unknown.title)
       setRunError(msg)
@@ -107,6 +107,12 @@ export default function PostsPage() {
               <Icon size={13} /> {label}
             </button>
           ))}
+          {!!stats?.posts_incomplete && (
+            <button onClick={() => start('likers', undefined, 'missing')} disabled={!ext.available || jobRunning || !activeSession}
+              className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-800 text-amber-200 disabled:opacity-50 rounded-lg text-sm">
+              <Heart size={13} /> {fill(T.posts.runMissing, { n: stats.posts_incomplete })}
+            </button>
+          )}
         </div>
       </div>
 
@@ -163,13 +169,15 @@ export default function PostsPage() {
       )}
 
       {stats && stats.total_posts > 0 && (
-        <div className="grid grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-7 gap-3 mb-6">
           {[
             { label: T.posts.totalPosts,    value: stats.total_posts.toLocaleString() },
             { label: T.posts.totalLikes,    value: stats.total_likes.toLocaleString() },
             { label: T.posts.totalComments, value: stats.total_comments.toLocaleString() },
             { label: T.posts.avgLikes,      value: stats.avg_likes.toLocaleString() },
             { label: T.posts.avgComments,   value: stats.avg_comments.toLocaleString() },
+            { label: T.posts.readPeople,    value: stats.likers_saved.toLocaleString() },
+            { label: T.posts.incompletePosts, value: stats.posts_incomplete.toLocaleString() },
           ].map(c => (
             <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold">{c.value}</p>
@@ -206,6 +214,13 @@ export default function PostsPage() {
                   <span className="flex items-center gap-1 text-red-400"><Heart size={13} />{post.like_count.toLocaleString()}</span>
                   <span className="flex items-center gap-1 text-blue-400"><MessageCircle size={13} />{post.comment_count.toLocaleString()}</span>
                 </div>
+                <p title={post.likers_incomplete ? T.posts.incompleteHint : undefined}
+                  className={`text-xs mb-1 ${post.likers_incomplete ? 'text-amber-300' : 'text-gray-500'}`}>
+                  {post.likers_synced_at || post.likers_saved > 0
+                    ? fill(T.posts.readOf, { saved: post.likers_saved.toLocaleString(), total: post.like_count.toLocaleString() })
+                    : T.posts.readNone}
+                  {post.likers_incomplete && ` · ${T.posts.incomplete}`}
+                </p>
                 {post.taken_at && (
                   <p className="text-xs text-gray-600">{new Date(post.taken_at).toLocaleDateString(lang === 'en' ? 'en-US' : 'tr-TR')}</p>
                 )}

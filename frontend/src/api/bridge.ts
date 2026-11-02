@@ -4,6 +4,8 @@ export interface BridgeStatus {
   posts: number
   likers_done: number
   comments_done: number
+  likers_incomplete?: number
+  likers_saved?: number
   today_posts: number
   today_people: number
   last_seen: string | null

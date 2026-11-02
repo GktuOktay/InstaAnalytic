@@ -8,6 +8,7 @@ from app.models.post import Post
 from app.models.ig_user import IgUser
 from app.models.interaction import Interaction
 from app.models.sync_job import SyncJob
+from app.services import bridge
 from app.schemas.posts import PostResponse, PostLiker, PostComment, PostStats
 from app.schemas.analysis import SyncResponse
 from app.tasks.sync_tasks import sync_posts, sync_post_interactions, sync_all_interactions
@@ -76,14 +77,20 @@ async def start_sync_interactions(session_id: uuid.UUID, shortcode: str, db: Asy
 @router.get("/posts", response_model=list[PostResponse])
 async def list_posts(session_id: uuid.UUID, page: int = 1, limit: int = 100, db: AsyncSession = Depends(get_db)):
     await _get_session(session_id, db)
-    result = await db.execute(
-        select(Post)
+    saved = bridge.saved_likers_expr()
+    rows = (await db.execute(
+        select(Post, saved.label("likers_saved"), bridge.likers_missing_cond().label("likers_incomplete"))
         .where(Post.session_id == session_id)
         .order_by(desc(Post.taken_at))
         .offset((page - 1) * limit)
         .limit(limit)
-    )
-    return result.scalars().all()
+    )).all()
+    out = []
+    for post, n, miss in rows:
+        item = PostResponse.model_validate(post)
+        item.likers_saved, item.likers_incomplete = int(n or 0), bool(miss)
+        out.append(item)
+    return out
 
 
 @router.get("/posts/stats", response_model=PostStats)
@@ -104,7 +111,12 @@ async def post_stats(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         .order_by(desc(Post.like_count)).limit(1)
     )).scalar_one_or_none()
 
+    saved_total = (await db.execute(select(func.count(Interaction.ig_user_id)).where(
+        Interaction.session_id == session_id, Interaction.interaction_type == "like"))).scalar() or 0
+    incomplete = (await db.execute(select(func.count(Post.id)).where(
+        Post.session_id == session_id, bridge.likers_missing_cond()))).scalar() or 0
     return PostStats(
+        likers_saved=saved_total, posts_incomplete=incomplete,
         total_posts=row[0] or 0,
         total_likes=row[1] or 0,
         total_comments=row[2] or 0,

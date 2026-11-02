@@ -14,6 +14,7 @@ const el = {
   barLikers: $('bar-likers'),
   actPosts: $('act-posts'),
   actLikers: $('act-likers'),
+  actLikersMissing: $('act-likers-missing'),
   actComments: $('act-comments'),
   job: $('job'),
   jobText: $('job-text'),
@@ -320,7 +321,9 @@ function renderTools(tools, enabled) {
     return;
   }
   el.statPosts.textContent = s.posts ? `${s.posts} gönderi bulundu` : 'Henüz gönderi yok';
-  el.statLikers.textContent = s.posts ? `${s.likersDone} / ${s.posts} gönderi okundu` : 'Önce gönderi listesi gerekli';
+  el.statLikers.textContent = s.posts
+    ? `${s.likersDone} / ${s.posts} gönderi okundu · ${s.likersSaved} kişi kayıtlı${s.likersIncomplete ? ` · ${s.likersIncomplete} gönderi eksik` : ''}`
+    : 'Önce gönderi listesi gerekli';
   el.statComments.textContent = s.commentsDone ? `${s.commentsDone} gönderinin yorumları kaydedildi` : 'Henüz kayıt yok';
   el.barLikers.style.width = s.posts ? `${Math.round((100 * s.likersDone) / s.posts)}%` : '0%';
   // İş düğmeleri ana anahtardan bağımsızdır: açık bir komuttur. Aynı anda tek iş çalışır.
@@ -328,6 +331,9 @@ function renderTools(tools, enabled) {
   el.actPosts.disabled = busy || !s.username;
   el.actLikers.disabled = busy || !s.next;
   el.actLikers.textContent = s.posts && !s.next ? 'Hepsi okundu' : 'Beğenenleri çek';
+  el.actLikersMissing.hidden = !s.likersIncomplete;
+  el.actLikersMissing.disabled = busy;
+  el.actLikersMissing.textContent = `Eksik gönderileri tara (${s.likersIncomplete})`;
   el.actComments.disabled = busy || !s.nextComments;
   el.actComments.textContent = s.posts && !s.nextComments ? 'Hepsi okundu' : 'Yorumları çek';
 }
@@ -349,12 +355,13 @@ for (const input of document.querySelectorAll('[data-tool-switch]')) {
 // İşler: eklenti bir Instagram sekmesi açar ve işi yapar; bitince sekmeyi kapatır
 let jobView = null;
 
-async function run(kind) {
-  const r = await send({ type: 'ia-run', cmd: { kind } });
+async function run(kind, scope) {
+  const r = await send({ type: 'ia-run', cmd: scope ? { kind, scope } : { kind } });
   if (!r || !r.ok) el.statusText.textContent = (r && r.error) || 'İş başlatılamadı.';
 }
 el.actPosts.addEventListener('click', () => run('posts'));
 el.actLikers.addEventListener('click', () => run('likers'));
+el.actLikersMissing.addEventListener('click', () => run('likers', 'missing'));
 el.actComments.addEventListener('click', () => run('comments'));
 el.jobStop.addEventListener('click', () => send({ type: 'ia-stop' }));
 

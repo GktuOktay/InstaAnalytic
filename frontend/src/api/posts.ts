@@ -12,6 +12,9 @@ export interface Post {
   view_count: number | null
   taken_at: string | null
   last_synced_at: string | null
+  likers_saved: number
+  likers_synced_at: string | null
+  likers_incomplete: boolean
 }
 
 export interface PostLiker {
@@ -36,6 +39,8 @@ export interface PostStats {
   avg_likes: number
   avg_comments: number
   top_post_shortcode: string | null
+  likers_saved: number
+  posts_incomplete: number
 }
 
 const s = (id: string) => `/sessions/${id}`

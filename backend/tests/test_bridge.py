@@ -406,3 +406,26 @@ async def test_likers_connection_nodes_shape_is_saved(db, make_session):
     r = await _obs(db, kv, s, "https://www.instagram.com/api/graphql", body,
                    page=f"https://www.instagram.com/p/{SHORT_CODE}/", req=req)
     assert r["likers"] == 2 and not r["ignored"]                       # kendi beğenisi sayılmaz
+
+
+@pytest.mark.asyncio
+async def test_missing_likers_scope_and_counts(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    await _obs(db, kv, s, GQL, long_code_timeline())              # 140 beğenili gönderi
+    assert [p["shortcode"] for p in await bridge.todo(db, s, 10, "likers", "missing")] == [SHORT_CODE]
+
+    body = json.dumps({"data": {"fetch__XDTMediaDict": {"likers_connection": {"nodes": [
+        {"pk": str(5000 + i), "username": f"u{i}"} for i in range(99)]}}}})
+    req = urlencode({"fb_api_req_friendly_name": "PolarisPostLikedByListDialogQuery", "variables": "{}"})
+    await _obs(db, kv, s, "https://www.instagram.com/api/graphql", body, page=f"https://www.instagram.com/p/{SHORT_CODE}/", req=req)
+    assert await bridge.todo(db, s, 10, "likers", "new") == []            # okundu sayılır
+    assert [p["shortcode"] for p in await bridge.todo(db, s, 10, "likers", "missing")] == [SHORT_CODE]   # 99 / 140 eksik
+    st = await bridge.status(db, kv, s)
+    assert st["likers_saved"] == 99 and st["likers_incomplete"] == 1
+
+    more = json.dumps({"data": {"fetch__XDTMediaDict": {"likers_connection": {"nodes": [
+        {"pk": str(6000 + i), "username": f"v{i}"} for i in range(38)]}}}})
+    await _obs(db, kv, s, "https://www.instagram.com/api/graphql", more, page=f"https://www.instagram.com/p/{SHORT_CODE}/liked_by/", req=req)
+    assert await bridge.todo(db, s, 10, "likers", "missing") == []        # 137 / 140: tolerans içinde
+    assert (await bridge.status(db, kv, s))["likers_incomplete"] == 0

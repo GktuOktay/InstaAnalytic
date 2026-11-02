@@ -61,7 +61,7 @@ export function useExtension() {
     if (version) call('ia-job').then(j => { if (j && typeof j === 'object' && 'kind' in j) setJob(j as ExtensionJob) })
   }, [version, call])
 
-  const run = useCallback(async (kind: JobKind, opts: { shortcodes?: string[]; count?: number } = {}): Promise<RunReply> =>
+  const run = useCallback(async (kind: JobKind, opts: { shortcodes?: string[]; count?: number; scope?: 'missing' } = {}): Promise<RunReply> =>
     (await call('ia-run', { cmd: { kind, ...opts } })) ?? { ok: false, error: 'timeout' }, [call])
 
   const stop = useCallback(() => call('ia-stop'), [call])

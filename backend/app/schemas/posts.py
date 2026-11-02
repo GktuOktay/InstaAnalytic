@@ -13,6 +13,9 @@ class PostResponse(BaseModel):
     view_count: int | None
     taken_at: datetime | None
     last_synced_at: datetime | None
+    likers_saved: int = 0                    # uygulamada kayıtlı beğenen sayısı
+    likers_synced_at: datetime | None = None
+    likers_incomplete: bool = False          # beğenenleri hiç okunmamış ya da belirgin eksik
 
     model_config = {"from_attributes": True}
 
@@ -43,3 +46,5 @@ class PostStats(BaseModel):
     avg_likes: float
     avg_comments: float
     top_post_shortcode: str | None
+    likers_saved: int = 0
+    posts_incomplete: int = 0

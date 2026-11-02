@@ -192,6 +192,15 @@ describe('jobs started from the app', () => {
     vi.useRealTimers()
   })
 
+  it('"scan incomplete" asks the app only for posts with missing likers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const b = loadBackground('2.5.6', '2.5.6', { ...ME }, [{ shortcode: 'AAAAA' }])
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'likers', scope: 'missing' } }, fromApp)
+    expect(r).toEqual({ ok: true, total: 1 })
+    expect(b.fetchStub.mock.calls.some((c: any[]) => String(c[0]).includes('/bridge/todo?kind=likers') && String(c[0]).includes('&scope=missing'))).toBe(true)
+    vi.useRealTimers()
+  })
+
   it('a single post can be fetched on its own', async () => {
     const b = loadBackground('2.4.0', '2.4.0', { ...ME })
     const r = await msg(b, { type: 'ia-run', cmd: { kind: 'comments', shortcodes: ['CCCCC', '../bad'] } }, fromApp)

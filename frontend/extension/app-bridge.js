@@ -23,6 +23,7 @@
     if (!cmd || !KINDS.includes(cmd.kind)) return null;
     const out = { kind: cmd.kind };
     if (Array.isArray(cmd.shortcodes)) out.shortcodes = cmd.shortcodes.map(String).filter((c) => SHORTCODE_RE.test(c)).slice(0, 50);
+    if (cmd.scope === 'missing') out.scope = 'missing';   // yalnızca beğenenleri eksik gönderiler
     if (Number.isFinite(Number(cmd.count))) out.count = Math.max(1, Math.min(Number(cmd.count), 50));
     return out;
   }

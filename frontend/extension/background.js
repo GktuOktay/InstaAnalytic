@@ -348,11 +348,11 @@ async function startJob(cmd) {
     let codes = Array.isArray(cmd.shortcodes) ? cmd.shortcodes.map(String).filter((c) => SHORTCODE_RE.test(c)) : [];
     if (!codes.length) {
       const limit = Math.max(1, Math.min(Number(cmd.count) || 50, 50));
-      const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?kind=${kind}&limit=${limit}`);
+      const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/todo?kind=${kind}&limit=${limit}${cmd.scope === 'missing' && kind === 'likers' ? '&scope=missing' : ''}`);
       if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
       codes = Array.isArray(r.data) ? r.data.map((p) => String(p.shortcode)).filter((c) => SHORTCODE_RE.test(c)) : [];
     }
-    if (!codes.length) return { ok: false, error: kind === 'likers' ? 'Beğenenleri okunacak gönderi kalmadı.' : 'Yorumları okunacak gönderi kalmadı.' };
+    if (!codes.length) return { ok: false, error: cmd.scope === 'missing' ? 'Beğenenleri eksik gönderi kalmadı.' : kind === 'likers' ? 'Beğenenleri okunacak gönderi kalmadı.' : 'Yorumları okunacak gönderi kalmadı.' };
     queue = codes.slice(0, 50);
   }
 
@@ -561,6 +561,8 @@ async function summaryForPopup() {
     posts: Number(st.data.posts) || 0,
     likersDone: Number(st.data.likers_done) || 0,
     commentsDone: Number(st.data.comments_done) || 0,
+    likersIncomplete: Number(st.data.likers_incomplete) || 0,
+    likersSaved: Number(st.data.likers_saved) || 0,
     next: next && /^[\w-]{5,40}$/.test(String(next.shortcode)) ? { shortcode: String(next.shortcode), likes: Number(next.like_count) || 0 } : null,
     nextComments: todoComments.status === 200 && Array.isArray(todoComments.data) && todoComments.data.length > 0,
   };

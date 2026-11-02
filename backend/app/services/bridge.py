@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator, Protocol
 from urllib.parse import parse_qs, urlparse
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, literal_column, case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -546,6 +546,20 @@ def _pause_message(reason: str | None) -> str:
     return warning_message(kind)
 
 
+def saved_likers_expr():
+    """Gönderi başına kaydedilmiş beğenen sayısı (Post ile ilişkili alt sorgu)."""
+    return (select(func.count(Interaction.ig_user_id))
+            .where(Interaction.post_id == Post.id, Interaction.interaction_type == "like")
+            .correlate(Post).scalar_subquery())
+
+
+def likers_missing_cond():
+    """Beğenenleri eksik gönderi: hiç okunmamış ya da kaydedilen sayı beğeni sayısının belirgin altında.
+    Kendi beğeniniz, silinen ve gizli hesaplar yüzünden küçük fark (>=2 ya da %3) eksik sayılmaz."""
+    tol = func.greatest(2, func.ceil(Post.like_count * 0.03))
+    return (Post.like_count > 0) & (Post.likers_synced_at.is_(None) | (saved_likers_expr() < Post.like_count - tol))
+
+
 # ── Durum (arayüz) ──────────────────────────────────────────────────────────────
 
 async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | None = None) -> dict:
@@ -554,6 +568,9 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
     row = (await db.execute(select(
         func.count(Post.id), func.count(Post.likers_synced_at), func.count(Post.comments_synced_at),
     ).where(Post.session_id == sid))).one()
+    incomplete = (await db.execute(select(func.count(Post.id)).where(Post.session_id == sid, likers_missing_cond()))).scalar() or 0
+    saved_total = (await db.execute(select(func.count(Interaction.ig_user_id)).where(
+        Interaction.session_id == sid, Interaction.interaction_type == "like"))).scalar() or 0
     seen = await _get(kv, sid, "seen")
     saved = await _get(kv, sid, "last_saved")
     today = now.strftime("%Y-%m-%d")
@@ -566,6 +583,7 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
     ts = lambda v: datetime.fromtimestamp(float(v), tz=timezone.utc).isoformat() if v else None  # noqa: E731
     return {
         "posts": row[0], "likers_done": row[1], "comments_done": row[2],
+        "likers_incomplete": incomplete, "likers_saved": saved_total,
         "today_posts": counts["today_posts"], "today_people": counts["today_people"],
         "last_seen": ts(seen), "last_saved": ts(saved),
         "connected": bool(seen and time.time() - float(seen) < 15 * 60),
@@ -578,10 +596,12 @@ async def status(db: AsyncSession, kv: KV, session: Session, now: datetime | Non
     }
 
 
-async def todo(db: AsyncSession, session: Session, limit: int = 8, kind: str = "likers") -> list[dict]:
+async def todo(db: AsyncSession, session: Session, limit: int = 8, kind: str = "likers", scope: str = "new") -> list[dict]:
     """Beğenenleri (kind="likers") ya da yorumları (kind="comments") henüz okunmamış gönderiler, en yeniden."""
     if kind == "comments":
         cond = (Post.comments_synced_at.is_(None), Post.comment_count > 0)
+    elif scope == "missing":
+        cond = (likers_missing_cond(),)
     else:
         cond = (Post.likers_synced_at.is_(None), Post.like_count > 0)
     rows = (await db.execute(
