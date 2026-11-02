@@ -17,7 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("UPDATE posts SET shortcode = left(shortcode, 11) WHERE length(shortcode) > 11")
+    op.execute("UPDATE posts SET shortcode = left(shortcode, length(shortcode) - 28) WHERE length(shortcode) > 33")
 
 
 def downgrade() -> None:

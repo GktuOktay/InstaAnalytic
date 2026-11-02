@@ -429,3 +429,11 @@ async def test_missing_likers_scope_and_counts(db, make_session):
     await _obs(db, kv, s, "https://www.instagram.com/api/graphql", more, page=f"https://www.instagram.com/p/{SHORT_CODE}/liked_by/", req=req)
     assert await bridge.todo(db, s, 10, "likers", "missing") == []        # 137 / 140: tolerans içinde
     assert (await bridge.status(db, kv, s))["likers_incomplete"] == 0
+
+
+def test_short_code_of_old_posts_is_ten_characters():
+    pk = 998476951541358790                                 # 2015 tarihli gönderi: kısa kodu 10 karakter
+    long = "3bTX9NCaDG" + "elynp5p90Hwoo9t9qRlVtUdeWD40"
+    assert len(long) == 38
+    assert bridge.short_code(long, pk) == "3bTX9NCaDG"
+    assert bridge.short_code(long, None) == "3bTX9NCaDG"    # kimlik yoksa sondaki 28 karakter atılır

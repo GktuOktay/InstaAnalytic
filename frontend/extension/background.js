@@ -320,10 +320,16 @@ function jobTools(job) {
   return { posts: true, likers: job.kind === 'likers', comments: job.kind === 'comments' };
 }
 
+// Eski kayıtlarda uzun kod (gerçek kod + 28 karakter) olabilir
+function shortCode(c) {
+  const s = String(c);
+  return s.length > 33 ? s.slice(0, -28) : s;
+}
+
 function jobUrl(job, i) {
   if (job.kind === 'posts') return `https://www.instagram.com/${encodeURIComponent(job.username)}/`;
   // Eski kayıtlarda 39 karakterlik uzun kod olabilir; gerçek kısa kod ilk 11 karakter
-  const code = encodeURIComponent(String(job.queue[i]).slice(0, 11));
+  const code = encodeURIComponent(shortCode(job.queue[i]));
   // Beğenenler: küçük pencere ilk ~100 kişide kalıyor, tam liste sayfası daha fazlasını veriyor
   if (job.kind === 'likers') return `https://www.instagram.com/p/${code}/liked_by/`;
   return `https://www.instagram.com/p/${code}/`;

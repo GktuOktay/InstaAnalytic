@@ -195,6 +195,7 @@ def _user(u: Any) -> dict | None:
             "is_verified": bool(u.get("is_verified"))}
 
 
+_CODE_SUFFIX = 28    # uzun kodda gerçek kısa kodun ardına eklenen karakter sayısı (kısa kod eski gönderilerde 10, yenilerde 11)
 _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
 
@@ -209,7 +210,7 @@ def short_code(code: str, pk: int | None) -> str:
             n, r = divmod(n, 64)
             out = _B64[r] + out
         return out
-    return code[:11]
+    return code[:-_CODE_SUFFIX] if len(code) > _CODE_SUFFIX + 5 else code[:11]
 
 
 def _media_pk(d: dict) -> int | None:
