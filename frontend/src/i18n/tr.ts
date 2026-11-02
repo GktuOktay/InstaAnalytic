@@ -428,10 +428,12 @@ const tr = {
       all:          'Tümü',
       following:    'Takip Ettiklerim',
       followers:    'Takipçilerim',
+      notBack:      'Beni Takip Etmeyenler',
       silent:       'Etkileşimsizler',
       ghosts:       '👻 Hayaletler',
     },
     sortBy:         'Sırala',
+    notBackHint:    'Sen takip ediyorsun, o seni takip etmiyor',
     col: {
       user:         'Kullanıcı',
       followers:    'Takipçi',

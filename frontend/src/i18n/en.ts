@@ -430,10 +430,12 @@ const en: Translations = {
       all:          'All',
       following:    'Following',
       followers:    'Followers',
+      notBack:      'Not Following Me Back',
       silent:       'Inactive',
       ghosts:       '👻 Ghosts',
     },
     sortBy:         'Sort',
+    notBackHint:    'You follow them, they do not follow you',
     col: {
       user:         'User',
       followers:    'Follower',

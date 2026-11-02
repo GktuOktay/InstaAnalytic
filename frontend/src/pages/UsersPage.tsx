@@ -14,7 +14,7 @@ import {
 type SortCol = 'username' | 'like_count' | 'comment_count' | 'engagement_score' | 'they_follow' | 'we_follow'
 type SortDir = 'asc' | 'desc'
 // ghosts: silinmiş/dondurulmuş hesap (hayalet). silent: takip/takipçi ama hiç etkileşim yok (etkileşimsiz).
-type FilterTab = 'all' | 'following' | 'followers' | 'silent' | 'ghosts'
+type FilterTab = 'all' | 'following' | 'followers' | 'notBack' | 'silent' | 'ghosts'
 
 interface UserPoolItem {
   id: number
@@ -34,7 +34,7 @@ interface UserPoolItem {
   first_seen_at: string | null
 }
 
-const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'silent', 'ghosts']
+const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'notBack', 'silent', 'ghosts']
 
 const isGhost  = (u: UserPoolItem) => u.reach_status === 'unreachable'
 const isSilent = (u: UserPoolItem) => u.engagement_score === 0 && !isGhost(u) && !!(u.we_follow || u.they_follow)
@@ -43,6 +43,7 @@ function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
   switch (tab) {
     case 'following': return items.filter(u => u.we_follow)
     case 'followers': return items.filter(u => u.they_follow)
+    case 'notBack':   return items.filter(u => u.we_follow && !u.they_follow)   // ben takip ediyorum, o etmiyor
     case 'silent':    return items.filter(isSilent)
     case 'ghosts':    return items.filter(isGhost)
     default:          return items
@@ -70,7 +71,7 @@ export default function UsersPage() {
   const FILTER_TABS = FILTER_KEYS.map(key => ({
     key,
     label: T.users.tabs[key],
-    hint:  key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
+    hint:  key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
   const { sessions, loading: sessionLoading } = useSession()
