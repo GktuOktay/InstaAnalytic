@@ -10,6 +10,12 @@
   window.__iaListener = true;
 
   let enabled = false;   // content.js açar; kapalıyken hiçbir yanıt kopyalanmaz
+  // Ayar gelene kadar (sayfa yenilenince ilk istekler ayardan önce biter) yanıtlar yalnızca bellekte beklenir.
+  // Ayar açıksa iletilir, kapalıysa atılır; hiçbir şey kalıcı yazılmaz.
+  let known = false;     // content.js ayarı en az bir kez bildirdi mi
+  const held = [];
+  const HOLD_MAX = 60;
+  const HOLD_MS = 30000;
 
   const ORIGIN = 'https://www.instagram.com';
   // REST: gönderi beğenenleri / yorumları, profil ızgarası
@@ -21,7 +27,13 @@
   const MAX_CHARS = 8 * 1024 * 1024;
 
   window.addEventListener('message', (e) => {
-    if (e.source === window && e.origin === ORIGIN && e.data && e.data.__ia === 'ia-config') enabled = e.data.on === true;
+    if (!(e.source === window && e.origin === ORIGIN && e.data && e.data.__ia === 'ia-config')) return;
+    enabled = e.data.on === true;
+    known = true;
+    const now = Date.now();
+    const batch = held.splice(0);
+    if (!enabled) return;
+    for (const h of batch) if (now - h.at < HOLD_MS) post(h.url, h.info, h.status, h.text);
   });
 
   // İstek gövdesinden yalnızca sorgu adı ve değişkenler (gerisi oturum anahtarları içerir)
@@ -54,7 +66,14 @@
   }
 
   function emit(url, info, status, text) {
-    if (!enabled || typeof text !== 'string' || !text || text.length > MAX_CHARS) return;
+    if (typeof text !== 'string' || !text || text.length > MAX_CHARS) return;
+    if (enabled) return post(url, info, status, text);
+    if (known) return;
+    held.push({ at: Date.now(), url, info, status, text });
+    if (held.length > HOLD_MAX) held.shift();
+  }
+
+  function post(url, info, status, text) {
     window.postMessage({
       __ia: 'ia-observed', url: url.split('#')[0], status,
       friendly: info.friendly, variables: info.variables, text,
@@ -68,7 +87,7 @@
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
     const p = origFetch.apply(this, arguments);
-    if (!enabled) return p;
+    if (known && !enabled) return p;
     try {
       const url = absolute(typeof input === 'string' ? input : (input && input.url) || String(input || ''));
       const info = queryInfo(init && init.body);
@@ -88,7 +107,7 @@
   XMLHttpRequest.prototype.send = function (body) {
     try {
       const url = this.__iaUrl || '';
-      const info = enabled ? queryInfo(body) : null;
+      const info = (enabled || !known) ? queryInfo(body) : null;
       if (info && wanted(url, info)) {
         this.addEventListener('load', () => {
           try {

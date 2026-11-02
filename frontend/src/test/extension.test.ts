@@ -32,6 +32,9 @@ async function igGraphql(friendly: string, extra: Record<string, string> = {}) {
 
 describe('extension listener (read-only)', () => {
   it('copies nothing while the extension is off', async () => {
+    await igGraphql('PolarisPostLikersQuery')      // ayar henüz gelmedi: yalnızca bellekte bekler
+    expect(seen).toHaveLength(0)
+    sendConfig(false)                              // kapalı: bekleyen yanıt atılır
     await igGraphql('PolarisPostLikersQuery')
     expect(seen).toHaveLength(0)
   })
@@ -45,7 +48,7 @@ describe('extension listener (read-only)', () => {
     expect(msg.friendly).toBe('PolarisPostLikersQuery')
     expect(msg.variables).toBe('{"media_id":"5"}')
     expect(JSON.stringify(msg)).not.toContain('GIZLI')                       // fb_dtsg / lsd asla
-    expect(pageFetch).toHaveBeenCalledTimes(2)                               // eklenti kendi isteğini göndermedi
+    expect(pageFetch).toHaveBeenCalledTimes(3)                               // yalnızca sayfanın kendi istekleri; eklenti istek göndermedi
 
     for (const f of ['PolarisDirectInboxQuery', 'PolarisStoriesV3TrayQuery', 'PolarisSearchBoxQuery', 'PolarisExploreQuery']) {
       await igGraphql(f)
@@ -74,5 +77,64 @@ describe('extension listener (read-only)', () => {
     expect(JSON.stringify(m)).not.toMatch(/cookies|webRequest|scripting|"tabs"|<all_urls>|debugger/)
     // Uygulamayla aynı logo, Chrome'un beklediği boyutlarda
     for (const size of ['16', '32', '48', '128']) expect(m.icons[size]).toBe(`icons/icon-${size}.png`)
+  })
+})
+
+
+// Sayfa yenilenince Instagram ilk isteklerini eklentinin ayarı gelmeden yapar: o yanıtlar kaybolmamalı
+describe('extension listener: responses that arrive before the config', () => {
+  async function freshListener() {
+    seen.length = 0
+    ;(window as any).__iaListener = false
+    ;(window as any).fetch = pageFetch
+    // eslint-disable-next-line no-new-func
+    new Function(listenerSrc)()
+  }
+
+  it('delivers responses that finished before the config said "on"', async () => {
+    await freshListener()
+    await igGraphql('PolarisProfilePostsQuery')
+    await window.fetch('https://www.instagram.com/api/v1/media/5/likers/')
+    await flush()
+    expect(seen).toHaveLength(0)                   // ayar gelmeden hiçbir şey iletilmedi
+    sendConfig(true)
+    expect(seen).toHaveLength(2)                   // ayar gelince beklenenler sırayla iletildi
+    expect(seen[0].friendly).toBe('PolarisProfilePostsQuery')
+    sendConfig(true)
+    expect(seen).toHaveLength(2)                   // tampon boşaldı: ikinci kez iletilmez
+  })
+
+  it('drops unrelated queries and never holds session tokens', async () => {
+    await freshListener()
+    await igGraphql('PolarisDirectInboxQuery')
+    sendConfig(true)
+    expect(seen).toHaveLength(0)
+  })
+
+  it('discards the held responses when the config says "off"', async () => {
+    await freshListener()
+    await igGraphql('PolarisPostLikersQuery')
+    sendConfig(false)
+    sendConfig(true)
+    expect(seen).toHaveLength(0)
+  })
+
+  it('does not deliver responses that waited longer than the hold time', async () => {
+    await freshListener()
+    const now = vi.spyOn(Date, 'now')
+    now.mockReturnValue(1_000_000)
+    await igGraphql('PolarisPostLikersQuery')
+    now.mockReturnValue(1_000_000 + 31_000)
+    sendConfig(true)
+    now.mockRestore()
+    expect(seen).toHaveLength(0)
+  })
+
+  it('keeps at most 60 held responses', async () => {
+    await freshListener()
+    for (let i = 0; i < 70; i++) await window.fetch(`https://www.instagram.com/api/v1/media/${i + 1}/likers/`)
+    await flush()
+    sendConfig(true)
+    expect(seen).toHaveLength(60)
   })
 })

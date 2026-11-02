@@ -195,6 +195,23 @@ def _user(u: Any) -> dict | None:
             "is_verified": bool(u.get("is_verified"))}
 
 
+_B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def short_code(code: str, pk: int | None) -> str:
+    """Instagram `code` alanına 28 karakterlik bir son ek ekleyebiliyor; gerçek kısa kod gönderi kimliğinin taban-64 hâli."""
+    if len(code) <= 11:
+        return code
+    if pk and pk > 0:
+        out = ""
+        n = pk
+        while n:
+            n, r = divmod(n, 64)
+            out = _B64[r] + out
+        return out
+    return code[:11]
+
+
 def _media_pk(d: dict) -> int | None:
     head = str(d.get("id") or "").split("_")[0]
     if head.isdigit():
@@ -242,7 +259,7 @@ def find_media(body: Any) -> list[dict]:
         mt = d.get("media_type")
         comments = _count(d, "comment_count", "edge_media_to_comment", "edge_media_to_parent_comment")
         out[pk] = {
-            "id": pk, "shortcode": code, "owner": str(owner["username"]),
+            "id": pk, "shortcode": short_code(code, pk), "owner": str(owner["username"]),
             "media_type": _MEDIA_TYPES.get(mt, str(mt)) if mt is not None else prev.get("media_type"),
             "thumbnail_url": _thumb(d) or prev.get("thumbnail_url"),
             "caption": ((d.get("caption") or {}).get("text") if isinstance(d.get("caption"), dict) else None)
@@ -326,10 +343,10 @@ def _shortcode_candidates(page_url: str, url: str, variables: dict) -> tuple[set
             if head.isdigit():
                 ids.add(int(head))
         if lk in ("shortcode", "code") and isinstance(v, str):
-            codes.add(v)
+            codes.add(short_code(v, None))
     m = _POST_PATH.search(urlparse(page_url or "").path)
     if m:
-        codes.add(m.group(1))
+        codes.add(short_code(m.group(1), None))
     return ids, codes
 
 

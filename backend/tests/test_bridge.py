@@ -356,3 +356,37 @@ async def test_extension_job_result_is_recorded(client, db, make_session):
     jobs = (await client.get("/api/tasks/jobs")).json()
     assert any(j["job_type"] == "bridge_likers" for j in (jobs if isinstance(jobs, list) else jobs.get("jobs", [])))
     assert (await client.post("/api/bridge/jobs", json={**body, "kind": "takip"})).status_code == 422
+
+
+# ── 39 karakterlik uzun `code` ────────────────────────────────────────────────
+# Instagram `code` alanına 28 karakterlik son ek ekleyebiliyor; gerçek kısa kod ilk 11 karakter.
+
+LONG_PK = 3989028458000674667
+LONG_CODE = "Ddb4D9uDe9r9EsiO3g53RZOrMdbKjihbFHB4ww0"
+SHORT_CODE = "Ddb4D9uDe9r"
+
+
+def long_code_timeline(owner="me"):
+    node = {"id": f"{LONG_PK}_1001", "pk": str(LONG_PK), "code": LONG_CODE, "taken_at": 1700000000, "media_type": 1,
+            "like_count": 140, "user": {"pk": "1001", "username": owner}}
+    return json.dumps({"data": {"xdt_api__v1__feed__user_timeline_graphql_connection": {"edges": [{"node": node}]}}})
+
+
+def test_short_code_matches_the_post_id():
+    assert bridge.short_code(LONG_CODE, LONG_PK) == SHORT_CODE
+    assert bridge.short_code(LONG_CODE, None) == SHORT_CODE          # kimlik yoksa ilk 11 karakter
+    assert bridge.short_code("OLD1", BIG_PK) == "OLD1"               # kısa kodlara dokunulmaz
+    assert bridge.find_media(bridge.parse_body(long_code_timeline()))[0]["shortcode"] == SHORT_CODE
+
+
+@pytest.mark.asyncio
+async def test_long_code_post_gets_its_likers_from_either_page_address(db, make_session):
+    s = await make_session(username="me")
+    kv = FakeKV()
+    assert (await _obs(db, kv, s, GQL, long_code_timeline()))["posts"] == 1
+    assert (await db.get(Post, LONG_PK)).shortcode == SHORT_CODE
+
+    likers = '{"data":{"xdt_api__v1__media__likers":{"users":[{"pk":"555","username":"ayse"},{"pk":"556","username":"ali"}]}}}'
+    for page in (f"https://www.instagram.com/p/{SHORT_CODE}/liked_by/", f"https://www.instagram.com/p/{LONG_CODE}/liked_by/"):
+        r = await _obs(db, kv, s, GQL, likers, page=page, req="")        # kimlik yok: yalnızca sayfa adresiyle eşleşmeli
+        assert r["likers"] == 2 and not r["ignored"]

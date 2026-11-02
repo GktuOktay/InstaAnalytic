@@ -199,6 +199,15 @@
     }
   }
 
+  // Hesap kimliği sayfa yenilenince geç okunabilir: o zamana dek yeniden dene (tampondaki yanıtlar kaybolmasın)
+  async function loadConfigRetrying() {
+    for (let i = 0; i < 20; i++) {
+      await loadConfig();
+      if (cfg.on || viewerId()) return;
+      await sleep(500);
+    }
+  }
+
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.origin !== ORIGIN) return;
     const d = e.data;
@@ -233,7 +242,9 @@
   function onReady() {
     loadConfig().then(scanEmbedded);
   }
-  loadConfig();
+  loadConfigRetrying();
   if (document.readyState === 'complete') onReady();
   else window.addEventListener('load', onReady, { once: true });
+  // Gömülü veri DOMContentLoaded'da hazır; yükleme bitmesini beklemeden bir kez daha oku
+  document.addEventListener('DOMContentLoaded', () => { loadConfig().then(scanEmbedded); }, { once: true });
 })();
