@@ -323,7 +323,10 @@ function jobTools(job) {
 function jobUrl(job, i) {
   if (job.kind === 'posts') return `https://www.instagram.com/${encodeURIComponent(job.username)}/`;
   // Eski kayıtlarda 39 karakterlik uzun kod olabilir; gerçek kısa kod ilk 11 karakter
-  return `https://www.instagram.com/p/${encodeURIComponent(String(job.queue[i]).slice(0, 11))}/`;
+  const code = encodeURIComponent(String(job.queue[i]).slice(0, 11));
+  // Beğenenler: küçük pencere ilk ~100 kişide kalıyor, tam liste sayfası daha fazlasını veriyor
+  if (job.kind === 'likers') return `https://www.instagram.com/p/${code}/liked_by/`;
+  return `https://www.instagram.com/p/${code}/`;
 }
 
 const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar' };

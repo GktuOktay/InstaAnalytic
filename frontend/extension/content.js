@@ -134,6 +134,18 @@
   async function collectLikers(code) {
     if (loginWall()) return { error: "Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor." };
     if (/\/accounts\/|page not found|sayfa bulunamadı/i.test(document.title)) return { error: 'Gönderi açılamadı: silinmiş ya da arşivlenmiş olabilir.' };
+    // Tam liste sayfası (/liked_by/): sayfanın kendisini kaydır
+    if (/\/liked_by\/?$/.test(location.pathname)) {
+      const ready = await waitFor(() => countProfiles(document) > 0, 12000);
+      if (ready) {
+        await sleep(rand(1200, 2200));
+        const first = countProfiles(document);
+        const pageBox = () => scrollableIn(document.body) || document.scrollingElement;
+        const steps = await scrollToEnd(pageBox, 200, [900, 2200]);
+        const seen = countProfiles(document);
+        return { seen, detail: `Tam liste sayfası kaydırıldı (${steps} adım): ${first} → ${seen} kişi göründü.` };
+      }
+    }
     const link = await waitFor(() => document.querySelector(`a[href$="/p/${code}/liked_by/"], a[href$="/liked_by/"]`), 12000);
     if (!link) {
       return { error: 'Beğenme sayısı sayfada bulunamadı. Gönderinin beğeni sayısı gizlenmiş, hiç beğenisi yok ya da Instagram sayfa düzenini değiştirmiş olabilir. Gönderiyi açıp sayıya kendiniz tıklayarak deneyebilirsiniz.' };

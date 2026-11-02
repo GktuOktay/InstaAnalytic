@@ -158,7 +158,7 @@ describe('jobs started from the app', () => {
     const b = loadBackground('2.4.0', '2.4.0', { ...ME }, [{ shortcode: 'AAAAA' }, { shortcode: 'BBBBB' }])
     const r = await msg(b, { type: 'ia-run', cmd: { kind: 'likers' } }, fromApp)
     expect(r).toEqual({ ok: true, total: 2 })
-    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/p/AAAAA/', active: true })
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/p/AAAAA/liked_by/', active: true })
 
     // ikinci bir iş aynı anda başlamaz
     expect((await msg(b, { type: 'ia-run', cmd: { kind: 'posts' } }, fromApp)).ok).toBe(false)
@@ -172,7 +172,7 @@ describe('jobs started from the app', () => {
     await observeSaved(b, { likers: 40 })
     b.listeners.message({ type: 'ia-job-done', error: null, seen: 40 }, fromIg(), () => {})
     await vi.advanceTimersByTimeAsync(20000)
-    expect(b.chrome.tabs.update).toHaveBeenCalledWith(77, { url: 'https://www.instagram.com/p/BBBBB/' })
+    expect(b.chrome.tabs.update).toHaveBeenCalledWith(77, { url: 'https://www.instagram.com/p/BBBBB/liked_by/' })
 
     // 2. gönderi: liste açıldı, 12 kişi göründü ama hiçbiri kaydedilmedi → somut teşhis
     b.listeners.message({ type: 'ia-job-done', error: null, seen: 12 }, fromIg(), () => {})
