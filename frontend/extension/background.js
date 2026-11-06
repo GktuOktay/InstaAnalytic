@@ -384,12 +384,25 @@ async function findIgTab() {
   const ids = Object.entries(igTabs || {}).sort((a, b) => b[1] - a[1]).map(([id]) => Number(id));
   let loggedOut = false;
   for (const id of ids) {
-    const res = await pingTab(id);
-    if (!res) { await forgetIgTab(id); continue; }
+    const res = (await pingTab(id)) || (await pingTab(id));       // dondurulmuş arka plan sekmesi ilk yoklamaya geç cevap verebilir
+    if (!res) continue;                                           // kaydı silme: sekme kapanınca onRemoved siler
     if (res.csrf && !res.loginWall) return { id };
     loggedOut = true;
   }
   return { id: null, loggedOut };
+}
+
+// Uygun açık sekme yoksa eklenti arka planda (odağı çalmadan) bir Instagram sekmesi açar; iş bitince kapatır.
+async function openOwnIgTab() {
+  const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: false });
+  const deadline = Date.now() + 25000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const res = await pingTab(tab.id);
+    if (res) return { id: tab.id, ready: res.csrf && !res.loginWall, tab };
+  }
+  chrome.tabs.remove(tab.id).catch(() => {});
+  return { id: null };
 }
 
 async function startJob(cmd) {
@@ -408,6 +421,7 @@ async function startJob(cmd) {
   let manualDelay = null;
   let apiDelay = null;
   let apiTab = null;
+  let apiOwnTab = false;
   if (kind === 'actions') {
     const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10`);
     if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
@@ -452,18 +466,27 @@ async function startJob(cmd) {
 
   const useApi = kind === 'actions' && cmd.mode !== 'tab';
   if (useApi) {
-    const found = await findIgTab();
+    let found = await findIgTab();
+    if (found.id == null && found.loggedOut) {
+      return { ok: false, error: 'Açık Instagram sekmesinde oturum görünmüyor. Instagram\'a giriş yapıp tekrar dene.' };
+    }
     if (found.id == null) {
-      return { ok: false, error: found.loggedOut
-        ? 'Açık Instagram sekmesinde oturum görünmüyor. Instagram\'a giriş yapıp tekrar dene.'
-        : "Açık bir Instagram sekmesi yok. Instagram'ı herhangi bir sayfada aç (eklenti yeni sekme açmaz); eklentiyi yenilediysen o sekmeyi bir kez yenile ve tekrar dene." };
+      // Açık, yanıt veren sekme yok: arka planda kendimiz bir tane açalım
+      const own = await openOwnIgTab();
+      if (own.id == null) return { ok: false, error: "Instagram sekmesi açılamadı ya da yanıt vermedi. Instagram'ı bir sekmede açıp sayfayı yenile, sonra tekrar dene." };
+      if (!own.ready) {
+        chrome.tabs.remove(own.id).catch(() => {});
+        return { ok: false, error: "Instagram'da oturum görünmüyor. Instagram'a giriş yapıp tekrar dene." };
+      }
+      found = { id: own.id, own: true };
     }
     apiTab = found.id;
+    apiOwnTab = found.own === true;
   }
 
   const job = {
     id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
-    items, delay, manualDelay, apiDelay, api: useApi || undefined, profileId: profile.id,
+    items, delay, manualDelay, apiDelay, api: useApi || undefined, ownTab: (useApi && apiOwnTab) || undefined, profileId: profile.id,
     username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0, resumed,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
@@ -488,7 +511,7 @@ async function finishJob(job, state, message) {
     : (job.results || []).every((x) => x.ok) ? 'ok'
     : (job.results || []).some((x) => x.ok) ? 'partial' : 'failed';
   await setJob(job);
-  if (state === 'done' && job.tabId != null && !job.api) {
+  if (job.tabId != null && ((state === 'done' && !job.api) || job.ownTab)) {          // kendi açtığımız sekme her durumda kapanır
     setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
   }
   const title = state !== 'done' ? `${KIND_LABEL[job.kind]} durdu`
@@ -726,7 +749,7 @@ async function stopJob() {
   const job = await getJob();
   if (!job || job.state !== 'running') return { ok: true };
   await finishJob(job, 'stopped', `Durduruldu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
-  if (job.tabId != null && !job.api) chrome.tabs.remove(job.tabId).catch(() => {});     // kullanıcının kendi sekmesi kapatılmaz
+  if (job.tabId != null && (!job.api || job.ownTab)) chrome.tabs.remove(job.tabId).catch(() => {});     // kullanıcının kendi sekmesi kapatılmaz; kendi açtığımızı kapatırız
   return { ok: true };
 }
 

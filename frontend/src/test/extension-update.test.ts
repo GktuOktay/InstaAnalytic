@@ -505,12 +505,76 @@ describe('follow / unfollow without opening a tab (direct requests from an open 
     expect(b.session.job).toMatchObject({ api: true, tabId: 41, state: 'running' })
   })
 
-  it('without any Instagram tab it says so and opens nothing', async () => {
+  it('with no usable Instagram tab the extension opens one in the background (no focus) and uses it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { b, sent } = setup()
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(1500)
+    const r = await p
+    expect(r).toEqual({ ok: true, total: 2 })
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/', active: false })      // odağı çalmaz
+    expect(sent.find(s => s.m.type === 'ia-api-run')).toMatchObject({ tabId: 77 })
+    expect(b.session.job).toMatchObject({ api: true, ownTab: true, tabId: 77 })
+    vi.useRealTimers()
+  })
+
+  it('a tab it opened itself is closed when the job ends; the user\'s own tab never is', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     const { b } = setup()
-    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(1500)
+    await p
+    const next = (result?: any) => new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: b.session.job.id, result }, fromIg(77), res) })
+    await next(); await next({ outcome: 'done' }); await next({ outcome: 'done' })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(b.session.job.state).toBe('done')
+    expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    vi.useRealTimers()
+  })
+
+  it('a tab it opened is also closed when Instagram blocks the job', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { b } = setup()
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(1500)
+    await p
+    const next = (result?: any) => new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: b.session.job.id, result }, fromIg(77), res) })
+    await next(); await next({ outcome: 'blocked', note: 'x' })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    vi.useRealTimers()
+  })
+
+  it('if the tab it opened never answers, it gives up after ~25 s, closes it and explains', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { b } = setup({ ping: null })
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(40_000)
+    const r = await p
     expect(r.ok).toBe(false)
-    expect(r.error).toContain('Açık bir Instagram sekmesi yok')
+    expect(r.error).toContain('Instagram sekmesi açılamadı')
+    expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    vi.useRealTimers()
+  })
+
+  it('a tab it opened that is signed out is closed and the user is told to sign in', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { b } = setup({ ping: { ok: true, csrf: false, loginWall: true } })
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(2000)
+    const r = await p
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('oturum görünmüyor')
+    expect(b.chrome.tabs.remove).toHaveBeenCalledWith(77)
+    vi.useRealTimers()
+  })
+
+  it('a registered tab that answers late (frozen background tab) is still used; no second tab is opened', async () => {
+    const { b, sent, hello } = setup()
+    await hello()
+    await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
     expect(b.chrome.tabs.create).not.toHaveBeenCalled()
+    expect(sent.find(s => s.m.type === 'ia-api-run')).toMatchObject({ tabId: 41 })
   })
 
   it('a signed-out Instagram tab is not used', async () => {
@@ -519,6 +583,7 @@ describe('follow / unfollow without opening a tab (direct requests from an open 
     const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
     expect(r.ok).toBe(false)
     expect(r.error).toContain('oturum görünmüyor')
+    expect(b.chrome.tabs.create).not.toHaveBeenCalled()                                  // oturumsuz açık sekme varken ikinci sekme açılmaz
   })
 
   it('the loop: first item at once, then 3-5 s apart, each result is written to the app, id comes through', async () => {
@@ -571,7 +636,13 @@ describe('follow / unfollow without opening a tab (direct requests from an open 
     await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
     await b.listeners.removed(41)
     expect(b.session.job.state).toBe('stopped')
-    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
-    expect(r.error).toContain('Açık bir Instagram sekmesi yok')
+    expect(b.chrome.tabs.remove).not.toHaveBeenCalled()                                  // kullanıcının sekmesi zaten kapandı; biz kapatmadık
+    await b.listeners.removed(41)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const p = msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect((await p).ok).toBe(true)
+    expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/', active: false })   // kapanan sekme unutuldu: yenisi açıldı
+    vi.useRealTimers()
   })
 })
