@@ -99,15 +99,16 @@ export default function UsersPage() {
 
   const LIMIT = 50
 
-  // Takip / takipten çıkarma yalnızca Instagram'a bağlı (ZIP olmayan), işlemleri açık ve duraklatılmamış profilde çalışır
   const profile = sessions.find(x => x.id === sid)
-  const blockedReason: string | null = !profile ? null
+  // ZIP profilinde işlemleri eklenti yapar: butonlar anında işlem yapmaz, her zaman kalıcı kuyruğa ekler.
+  // İşlemlerin açık olması, sınırlar ve sessiz saat yalnızca eklenti kuyruktan işlem isteyince uygulanır.
+  const viaExt = profile?.source === 'zip'
+  // Sunucunun kendi kuyruğunu kullanan (ZIP olmayan) profilde ise işlemler açık ve duraklatılmamış olmalı
+  const blockedReason: string | null = !profile || viaExt ? null
     : !profile.allow_actions ? (profile.source === 'zip' ? T.users.actionsOff.zip : T.users.actionsOff.disabled)
     : profile.paused_until && new Date(profile.paused_until) > new Date() ? T.users.actionsOff.paused
     : null
   const canAct = !blockedReason
-  // ZIP profilinde işlemleri eklenti yapar: butonlar anında işlem yapmaz, kuyruğa ekler
-  const viaExt = profile?.source === 'zip'
   const ext = useExtension()
   const [queue, setQueue] = useState<ActionQueue | null>(null)
   const queuedById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.action]))
@@ -385,7 +386,7 @@ export default function UsersPage() {
         </p>
       )}
 
-      {viaExt && canAct && queue && (
+      {viaExt && queue && (
         <div role="region" aria-label={T.users.queue.title} className="bg-gray-900 border border-purple-900 rounded-xl p-3 mb-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
@@ -397,7 +398,7 @@ export default function UsersPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={runQueue} disabled={!ext.available || extRunning || !queue.pending_count || queue.quiet_hours}
+              <button onClick={runQueue} disabled={!ext.available || extRunning || !queue.pending_count || queue.quiet_hours || !!queue.blocked}
                 className="px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-40 text-xs font-medium">
                 {extRunning ? T.users.queue.running : T.users.queue.run}
               </button>
@@ -408,6 +409,15 @@ export default function UsersPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">{T.users.queue.hint}</p>
+          {queue.blocked === 'off' && (
+            <p className="text-xs text-amber-300 mt-1">
+              {T.users.queue.offNote}{' '}
+              <button onClick={enableActions} className="ml-1 px-2 py-0.5 rounded-md bg-amber-700 hover:bg-amber-600 text-amber-50 font-semibold">
+                {T.users.actionsOff.enable}
+              </button>
+            </p>
+          )}
+          {queue.blocked === 'paused' && <p className="text-xs text-amber-300 mt-1">{T.users.queue.pausedNote}</p>}
           {queue.quiet_hours && <p className="text-xs text-amber-300 mt-1">{T.users.queue.quiet}</p>}
           {!ext.available && <p className="text-xs text-amber-300 mt-1">{T.users.queue.needExt}</p>}
           {extRunning && ext.job && <p className="text-xs text-purple-300 mt-1 whitespace-pre-line">{ext.job.message}</p>}

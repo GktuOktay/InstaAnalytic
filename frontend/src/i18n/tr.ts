@@ -535,6 +535,8 @@ const tr = {
                       `${n} işlem kuyruğa eklendi${dup ? `, ${dup} zaten sıradaydı` : ''}${skipped ? `, ${skipped} zaten istenen durumda` : ''}`,
       nothingAdded: 'Kuyruğa eklenecek işlem yok: zaten sırada ya da istenen durumda.',
       cleared:      (n: number) => `${n} işlem kuyruktan çıkarıldı`,
+      offNote:      'İşlemler kapalı. İstekler kuyruğa eklenir ve silinmez; işlemleri açınca eklenti sırayla yapar.',
+      pausedNote:   'İşlemler güvenlik için duraklatıldı. Kuyruktaki istekler silinmez; duraklama bitince devam edilir.',
       quiet:        'Sessiz saatler (01:00-08:00): işlem yapılmaz, sabah devam edilir.',
       needExt:      'İşlemleri yapmak için Chrome eklentisi gerekli.',
       removeZip:    'ZIP profilinde takipçiyi çıkarma yapılamaz; Instagram\'da elle yapın.',

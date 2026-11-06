@@ -518,14 +518,17 @@ async def test_actions_hourly_limit_and_block_pause(db, make_session):
 
 
 @pytest.mark.asyncio
-async def test_actions_api_requires_allow_actions(client, make_session, db):
+async def test_queueing_is_always_accepted_and_nothing_is_lost_while_actions_are_off(client, make_session, db):
     s = await make_session(source="zip", allow_actions=False)
     await _pool_user(db, s, 741, "x")
     r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [741]})
-    assert r.status_code == 403
+    assert r.status_code == 200 and r.json()["added"] == 1                     # kapalıyken de kuyruğa girer
+    nxt = (await client.get(f"/api/sessions/{s.id}/bridge/actions/next")).json()
+    assert nxt["items"] == [] and nxt["reason"] == "off"                       # ama eklenti çağırınca verilmez
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 1   # kayıp yok
     s.allow_actions = True
     await db.commit()
-    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [741]})
-    assert r.status_code == 200 and r.json()["added"] == 1
+    nxt = (await client.get(f"/api/sessions/{s.id}/bridge/actions/next")).json()
+    assert [i["username"] for i in nxt["items"]] == ["x"]                      # açılınca aynı kayıt gelir
     assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 1
     assert (await client.delete(f"/api/sessions/{s.id}/bridge/actions")).json() == {"removed": 1}

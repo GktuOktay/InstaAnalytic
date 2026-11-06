@@ -71,26 +71,33 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     expect(await screen.findByText(/Sessiz saatler \(01:00-08:00\)/)).toBeInTheDocument()
   })
 
-  it('actions turned off: a click explains why, and one button turns actions on after a confirmation', async () => {
+  it('actions off: requests are still queued (kept), the panel says they wait, and one button turns actions on', async () => {
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: false })])
     sess.setAllowActions.mockResolvedValue(makeSession({ source: 'zip', allow_actions: true }))
+    bridge.actions.mockResolvedValue(queue({ enabled: false, blocked: 'off', pending_count: 1 }))
     renderApp(<UsersPage />)
-    const btn = (await screen.findAllByTitle(/Takip \/ takipten çıkarma işlemlerini eklenti yapar/))[0]
-    expect(btn).toHaveAttribute('aria-disabled', 'true')
-    await userEvent.click(btn)                                                   // sessiz kalmaz: nedeni söyler
-    expect(await screen.findByText(/Takip \/ takipten çıkarma işlemlerini eklenti yapar\.$/, { selector: 'div' })).toBeInTheDocument()
-    expect(bridge.enqueueActions).not.toHaveBeenCalled()
-    expect(screen.queryByRole('region', { name: 'Eklenti kuyruğu' })).not.toBeInTheDocument()
+    const unfollow = (await screen.findAllByTitle('Takipten çık'))[0]
+    expect(unfollow).not.toHaveAttribute('aria-disabled', 'true')               // kapalıyken de kuyruğa ekler
+    await userEvent.click(unfollow)
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5]))
+    expect(await screen.findByText(/İşlemler kapalı\. İstekler kuyruğa eklenir ve silinmez/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kuyruğu çalıştır' })).toBeDisabled()    // çalıştırmak için işlemler açık olmalı
 
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
     expect(sess.setAllowActions).not.toHaveBeenCalled()                          // onaylanmazsa açılmaz
     confirm.mockReturnValue(true)
-    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
     await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
     await waitFor(() => expect(sess.setAllowActions).toHaveBeenCalledWith('s1', true))
-    expect(await screen.findByRole('region', { name: 'Eklenti kuyruğu' })).toBeInTheDocument()
     confirm.mockRestore()
+  })
+
+  it('paused: still queues, and explains that queued requests are kept', async () => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    bridge.actions.mockResolvedValue(queue({ blocked: 'paused', pending_count: 2 }))
+    renderApp(<UsersPage />)
+    expect(await screen.findByText(/Kuyruktaki istekler silinmez/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kuyruğu çalıştır' })).toBeDisabled()
   })
 
   it('removing a follower is not offered for ZIP profiles', async () => {

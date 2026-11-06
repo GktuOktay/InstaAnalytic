@@ -535,6 +535,8 @@ const en: Translations = {
                       `${n} actions queued${dup ? `, ${dup} already queued` : ''}${skipped ? `, ${skipped} already in the wanted state` : ''}`,
       nothingAdded: 'Nothing to queue: already queued or already in the wanted state.',
       cleared:      (n: number) => `${n} actions removed from the queue`,
+      offNote:      'Actions are off. Requests are queued and kept; once you turn actions on, the extension does them in order.',
+      pausedNote:   'Actions are paused for safety. Queued requests are kept and continue when the pause ends.',
       quiet:        'Quiet hours (01:00-08:00): no actions run, they continue in the morning.',
       needExt:      'The Chrome extension is needed to run the actions.',
       removeZip:    'Removing a follower is not available for ZIP profiles; do it by hand on Instagram.',
