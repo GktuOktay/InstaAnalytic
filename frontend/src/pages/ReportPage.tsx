@@ -110,15 +110,12 @@ function FanBar({ val, max }: { val: number; max: number }) {
 
 export default function ReportPage() {
   const { T, lang } = useLang()
-  const { sessions } = useSession()
-  const [sid, setSid] = useState('')
+  const { activeId, sessions } = useSession()
+  const sid = activeId
   const [report, setReport] = useState<InteractionReport | null>(null)
   const [loading, setLoading] = useState(false)
   const toast = useToast()
 
-  useEffect(() => {
-    if (sessions.length > 0 && !sid) setSid(sessions[0].id)
-  }, [sessions, sid])
 
   useEffect(() => {
     if (!sid) return
@@ -155,13 +152,6 @@ export default function ReportPage() {
             {T.report.subtitle}
           </p>
         </div>
-        {sessions.length > 1 && (
-          <select value={sid} onChange={e => setSid(e.target.value)}
-            style={{ background: '#1A1E2B', border: '1px solid var(--c-border)', borderRadius: 8,
-              color: 'var(--c-text)', padding: '6px 12px', fontSize: 13 }}>
-            {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-          </select>
-        )}
       </div>
 
       {loading && (

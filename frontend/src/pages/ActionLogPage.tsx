@@ -15,14 +15,11 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 
 export default function ActionLogPage() {
   const { T, lang } = useLang()
-  const { sessions } = useSession()
-  const [activeSession, setActiveSession] = useState<string>('')
+  const { activeId, sessions } = useSession()
+  const activeSession = activeId
   const [logs, setLogs] = useState<ActionLogEntry[]>([])
   const [filter, setFilter] = useState<string>('all')
 
-  useEffect(() => {
-    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
-  }, [sessions, activeSession])
 
   useEffect(() => {
     if (activeSession) actionsApi.log(activeSession).then(setLogs)
@@ -35,12 +32,6 @@ export default function ActionLogPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{T.actionLog.title}</h1>
         <div className="flex items-center gap-2">
-          {sessions.length > 1 && (
-            <select value={activeSession} onChange={e => setActiveSession(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
-              {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-            </select>
-          )}
           <select value={filter} onChange={e => setFilter(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
             <option value="all">{T.common.all}</option>

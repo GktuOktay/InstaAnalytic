@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Image, Network,
-  History, MonitorDot, FileBarChart2, Moon, Sun, Flame, Settings, BookOpen,
+  History, MonitorDot, FileBarChart2, Flame, Settings, BookOpen,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -10,10 +10,11 @@ import SafetyBadge from './SafetyBadge'
 import logoUrl from '../../extension/icons/icon.svg'
 import BridgeWarningBanner from './BridgeWarningBanner'
 import JobWatcher from './JobWatcher'
+import Topbar from './Topbar'
 
 export default function Layout() {
-  const { T, lang, setLang } = useLang()
-  const { theme, toggleTheme } = useTheme()
+  const { T, lang } = useLang()
+  const { theme } = useTheme()
   const location = useLocation()
 
   const nav = [
@@ -65,46 +66,6 @@ export default function Layout() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 6 }}>
-              {/* Theme toggle */}
-              <button
-                onClick={toggleTheme}
-                title={theme === 'dark' ? T.common.lightMode : T.common.darkMode}
-                style={{
-                  width: 30, height: 30,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: 8,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {theme === 'dark'
-                  ? <Sun size={13} />
-                  : <Moon size={13} />}
-              </button>
-
-              {/* Lang toggle */}
-              <button
-                onClick={() => setLang(lang === 'tr' ? 'en' : 'tr')}
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {lang === 'tr' ? 'EN' : 'TR'}
-              </button>
-            </div>
           </div>
         </div>
 
@@ -177,7 +138,9 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* ── Main content ────────────────────────────────────────── */}
+      {/* ── Sağ sütun: üst çubuk + sayfa ───────────────────────── */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <Topbar />
       <main style={{
         flex: 1,
         minWidth: 0,
@@ -192,6 +155,7 @@ export default function Layout() {
           <ErrorBoundary lang={lang} key={location.pathname}><Outlet /></ErrorBoundary>
         </div>
       </main>
+      </div>
     </div>
   )
 }

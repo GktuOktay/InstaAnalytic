@@ -27,7 +27,8 @@ const AGENT_CMD   = 'python3 scripts/host_agent.py &'
 export default function Dashboard() {
   const { T, lang } = useLang()
   const navigate    = useNavigate()
-  const { sessions, loading: sessionsLoading, setSessionsDirectly: setSessions } = useSession()
+  const { sessions, active, loading: sessionsLoading, setSessionsDirectly: setSessions } = useSession()
+  const cur = active ?? sessions[0]
 
   const [health,      setHealth]      = useState<HealthStatus | null>(null)
   const [summary,     setSummary]     = useState<AnalysisSummary | null>(null)
@@ -39,11 +40,12 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    if (sessions.length > 0) {
-      analysisApi.summary(sessions[0].id).then(setSummary).catch(() => {})
+    if (cur) {
+      setSummary(null)
+      analysisApi.summary(cur.id).then(setSummary).catch(() => {})
     }
     setLoading(sessionsLoading)
-  }, [sessions, sessionsLoading])
+  }, [cur?.id, sessionsLoading])    // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasSessions = sessions.length > 0
   if (!sessionsLoading && !hasSessions) return <Navigate to="/start" replace />   // ilk açılış: kurulum sihirbazı
@@ -61,7 +63,7 @@ export default function Dashboard() {
               <>
                 <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 20 }}>@</span>
                 <span>
-                  {sessions[0].ig_username}
+                  {cur.ig_username}
                 </span>
               </>
             ) : 'Dashboard'}
@@ -147,8 +149,8 @@ export default function Dashboard() {
             </div>
           )}
 
-          <DashboardCharts sessionId={sessions[0].id} />
-          <GoldenHourHeatmap sessionId={sessions[0].id} />
+          <DashboardCharts sessionId={cur.id} />
+          <GoldenHourHeatmap sessionId={cur.id} />
         </>
       )}
     </div>

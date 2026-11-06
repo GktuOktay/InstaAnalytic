@@ -14,8 +14,8 @@ const TREND_COLOR = { warming: 'text-green-400', cooling: 'text-red-400', steady
 export default function FansPage() {
   const { T } = useLang()
   const L = T.fans
-  const { sessions } = useSession()
-  const [sid, setSid] = useState('')
+  const { activeId, sessions } = useSession()
+  const sid = activeId
   const [data, setData] = useState<FansResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -23,9 +23,6 @@ export default function FansPage() {
   const [q, setQ] = useState('')
   const [shown, setShown] = useState(PAGE)
 
-  useEffect(() => {
-    if (!sid) setSid(sessions.find(s => s.source === 'browser')?.id ?? sessions[0]?.id ?? '')
-  }, [sessions, sid])
 
   const load = () => {
     if (!sid) return
@@ -52,12 +49,6 @@ export default function FansPage() {
           <p className="text-sm text-gray-500">{L.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          {sessions.length > 1 && (
-            <select value={sid} onChange={e => setSid(e.target.value)} aria-label={T.common.profile}
-              className="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1.5 text-sm">
-              {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-            </select>
-          )}
           <button onClick={() => downloadCsv(`/sessions/${sid}/insights/fans.csv`, 'etkilesim-skorlari.csv')}
             disabled={!data?.fans.length}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-sm">

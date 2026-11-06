@@ -65,7 +65,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function MonitorPage() {
   const { T, lang } = useLang()
-  const { sessions } = useSession()
+  const { activeId, sessions } = useSession()
   const JOB_LABELS: Record<string, string> = {
     sync_followers:         T.monitor.types.followerSync,
     sync_following:         T.monitor.types.followingSync,
@@ -76,16 +76,13 @@ export default function MonitorPage() {
     bridge_comments:        T.monitor.types.bridgeComments,
     bridge_actions:         T.monitor.types.bridgeActions,
   }
-  const [activeSession, setActiveSession] = useState<string>('')
+  const activeSession = activeId
   const [jobs, setJobs] = useState<SyncJob[]>([])
   const [active, setActive] = useState<ActiveTask[]>([])
   const [queue, setQueue] = useState<QueueStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
-  useEffect(() => {
-    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
-  }, [sessions, activeSession])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -135,17 +132,6 @@ export default function MonitorPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {sessions.length > 1 && (
-            <select
-              value={activeSession}
-              onChange={e => setActiveSession(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200"
-            >
-              {sessions.map(s => (
-                <option key={s.id} value={s.id}>@{s.ig_username}</option>
-              ))}
-            </select>
-          )}
           <button
             onClick={load}
             disabled={loading}

@@ -25,8 +25,8 @@ const MEDIA_ICON: Record<string, React.ReactNode> = {
 
 export default function PostsPage() {
   const { T, lang } = useLang()
-  const { sessions } = useSession()
-  const [activeSession, setActiveSession] = useState<string>('')
+  const { activeId, sessions } = useSession()
+  const activeSession = activeId
   const [posts, setPosts] = useState<Post[]>([])
   const [stats, setStats] = useState<PostStats | null>(null)
   const [selected, setSelected] = useState<Post | null>(null)
@@ -37,9 +37,6 @@ export default function PostsPage() {
   const toast = useToast()
   const [runError, setRunError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
-  }, [sessions, activeSession])
 
   useEffect(() => { if (activeSession) loadData() }, [activeSession])
 
@@ -91,12 +88,6 @@ export default function PostsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{T.posts.title}</h1>
         <div className="flex items-center gap-2">
-          {sessions.length > 1 && (
-            <select value={activeSession} onChange={e => setActiveSession(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
-              {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-            </select>
-          )}
           {([
             ['posts', T.posts.runPosts, Images],
             ['likers', T.posts.runLikers, Heart],

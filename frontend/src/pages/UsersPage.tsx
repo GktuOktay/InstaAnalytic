@@ -80,8 +80,8 @@ export default function UsersPage() {
     hint:  key === 'oneWaySilent' ? T.users.oneWaySilentHint : key === 'mutualSilent' ? T.users.mutualSilentHint : key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
-  const { sessions, loading: sessionLoading } = useSession()
-  const [sid,           setSid]           = useState('')
+  const { activeId, sessions, loading: sessionLoading } = useSession()
+  const sid = activeId
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
   const [total,         setTotal]         = useState(0)
   const [page,          setPage]          = useState(1)
@@ -124,10 +124,6 @@ export default function UsersPage() {
     if (status === 423) return T.users.actionsOff.paused
     return apiErrorMessage(e, T, T.users.toast.failed)
   }
-
-  useEffect(() => {
-    if (sessions.length > 0 && !sid) setSid(sessions[0].id)
-  }, [sessions, sid])
 
   const load = useCallback(async (p = 1, q = search) => {
     if (!sid) return
@@ -353,12 +349,6 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {sessions.length > 1 && (
-            <select value={sid} onChange={e => setSid(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
-              {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-            </select>
-          )}
           <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs">
             <Download size={13} /> {T.users.exportCsv}
           </button>

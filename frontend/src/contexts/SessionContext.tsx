@@ -7,6 +7,10 @@ interface SessionContextValue {
   error: boolean
   refresh: () => Promise<void>
   setSessionsDirectly: (s: Session[]) => void
+  /** Üst çubukta seçilen profil: tüm sayfalar bunu kullanır. */
+  activeId: string
+  active: Session | null
+  setActiveId: (id: string) => void
 }
 
 const SessionContext = createContext<SessionContextValue>({
@@ -15,12 +19,23 @@ const SessionContext = createContext<SessionContextValue>({
   error: false,
   refresh: async () => {},
   setSessionsDirectly: () => {},
+  activeId: '',
+  active: null,
+  setActiveId: () => {},
 })
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [stored, setStored] = useState<string>(() => { try { return localStorage.getItem('activeSession') ?? '' } catch { return '' } })
+  const list = Array.isArray(sessions) ? sessions : []        // API yanıtı bozuksa boş say
+  const activeId = list.some(s => s.id === stored) ? stored : (list[0]?.id ?? '')
+  const active = list.find(s => s.id === activeId) ?? null
+  const setActiveId = useCallback((id: string) => {
+    setStored(id)
+    try { localStorage.setItem('activeSession', id) } catch { /* özel pencere */ }
+  }, [])
   const fetchedOnce = useRef(false)
   const retryTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -54,7 +69,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [refresh])
 
   return (
-    <SessionContext.Provider value={{ sessions, loading, error, refresh, setSessionsDirectly: setSessions }}>
+    <SessionContext.Provider value={{ sessions, loading, error, refresh, setSessionsDirectly: setSessions, activeId, active, setActiveId }}>
       {children}
     </SessionContext.Provider>
   )

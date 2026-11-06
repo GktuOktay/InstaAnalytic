@@ -17,7 +17,7 @@ type Tab = 'not_following_back' | 'ghosts' | 'not_followed_back' | 'mutual' | 'f
 
 export default function FollowersPage() {
   const { T } = useLang()
-  const { sessions, loading: sessionLoading } = useSession()
+  const { activeId, sessions, loading: sessionLoading } = useSession()
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'not_following_back', label: T.followers.notFollowingBackPlural },
@@ -27,7 +27,7 @@ export default function FollowersPage() {
     { key: 'followers',          label: T.followers.allFollowers           },
     { key: 'following',          label: T.followers.allFollowing           },
   ]
-  const [activeSession, setActiveSession] = useState<string>('')
+  const activeSession = activeId
   const isZipProfile = sessions.find(x => x.id === activeSession)?.source === 'zip'   // ZIP profili Instagram'a istek atmaz
   const [tab,           setTab]           = useState<Tab>('not_following_back')
   const [summary,       setSummary]       = useState<AnalysisSummary | null>(null)
@@ -100,9 +100,6 @@ export default function FollowersPage() {
   const bulkStatus = useTaskPoller(bulkTaskId, onBulkDone)
 
   // ── İlk yükleme ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (sessions.length > 0 && !activeSession) setActiveSession(sessions[0].id)
-  }, [sessions, activeSession])
 
   useEffect(() => {
     if (activeSession) loadData()
@@ -206,12 +203,6 @@ export default function FollowersPage() {
               <RefreshCw size={11} className="animate-spin" />
               <span>{T.followers.queueN(queueLength)}</span>
             </div>
-          )}
-          {sessions.length > 1 && (
-            <select value={activeSession} onChange={e => setActiveSession(e.target.value)}
-              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
-              {sessions.map(s => <option key={s.id} value={s.id}>@{s.ig_username}</option>)}
-            </select>
           )}
           {!isZipProfile && (
             <>
