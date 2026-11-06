@@ -16,6 +16,7 @@ from datetime import datetime
 from app.models.session import Session
 from app.models.sync_job import SyncJob
 from app.services import bridge, bridge_actions
+from app.services import notifications
 
 router = APIRouter(tags=["bridge"])
 
@@ -140,6 +141,10 @@ async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
     )
     db.add(job)
     await db.commit()
+    await notifications.add(db, session_id=body.session_id, kind=f"job_{body.outcome}", level=notifications.JOB_LEVEL[body.outcome],
+                            params={"job": body.kind, "done": body.done, "total": body.total, "ok": body.ok, "saved": body.saved},
+                            link="/monitor")
+    await notifications.trim(db)
     return {"id": str(job.id)}
 
 

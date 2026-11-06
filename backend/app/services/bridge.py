@@ -458,6 +458,9 @@ async def observe(db: AsyncSession, kv: KV, session: Session, *, url: str, page_
         result["warning_kind"] = warning_kind(status, body)
         result["message"] = warning_message(result["warning_kind"])
         result["warning_until"] = until.isoformat()
+        from app.services import notifications
+        await notifications.add(db, session_id=sid, kind="ig_warning", level="error", params={"until": until.isoformat()},
+                                link="/guide#uyari", dedupe=True)
         return result
     if status != 200 or body is None:
         result["ignored"] = True

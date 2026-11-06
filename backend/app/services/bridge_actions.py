@@ -139,6 +139,9 @@ async def report(db: AsyncSession, session: Session, action_id: int, outcome: st
         session.paused_until = now + BLOCK_PAUSE
         session.paused_reason = "Instagram işlemi engelledi; eklenti durdu"
         await db.commit()
+        from app.services import notifications
+        await notifications.add(db, session_id=session.id, kind="actions_blocked", level="error",
+                                params={"until": session.paused_until.isoformat()}, link="/users")
         return {"ok": True, "status": "pending", "paused_until": session.paused_until.isoformat()}
     if outcome in ("done", "already"):
         row.status = "done" if outcome == "done" else "skipped"

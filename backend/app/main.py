@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.auth import require_api_token
-from app.routers import health, sessions, analysis, tasks, actions, posts, users, graph, proxy, report, imports, privacy, insights, ghosts, bridge
+from app.routers import health, sessions, analysis, tasks, actions, posts, users, graph, proxy, report, imports, privacy, insights, ghosts, bridge, notifications
 
 app = FastAPI(title="InstaAnalytic API", version="1.0.0")
 
@@ -28,3 +28,4 @@ app.include_router(privacy.router, prefix="/api", dependencies=[Depends(require_
 app.include_router(insights.router, prefix="/api", dependencies=[Depends(require_api_token)])
 app.include_router(ghosts.router, prefix="/api", dependencies=[Depends(require_api_token)])
 app.include_router(bridge.router, prefix="/api", dependencies=[Depends(require_api_token)])
+app.include_router(notifications.router, prefix="/api", dependencies=[Depends(require_api_token)])

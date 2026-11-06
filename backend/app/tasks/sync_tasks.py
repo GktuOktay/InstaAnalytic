@@ -2,6 +2,7 @@ import json
 import time
 import random
 import logging
+from app.services.notifications import notify_sync_job
 from datetime import datetime, timezone
 from app.tasks.celery_app import celery_app
 from app.core.security import decrypt
@@ -246,6 +247,7 @@ def _run_budgeted_scan(task, session_id: str, job_id: str, kind: str):
         if job:
             job.status = "completed"; job.processed_items = total
             job.finished_at = datetime.now(timezone.utc); db.commit()
+            notify_sync_job(db, job)
         return {"status": "completed", "total": total, "plan": "B", **summary}
 
     except ScanPaused as p:
@@ -255,6 +257,8 @@ def _run_budgeted_scan(task, session_id: str, job_id: str, kind: str):
             job.status = "paused"
             job.error_msg = f"{p.reason} (devam: {resume_iso or 'elle başlat'})"
             db.commit()
+            if not p.auto_resume:
+                notify_sync_job(db, job)
         if p.auto_resume and p.resume_at:
             task.apply_async(args=[session_id, job_id], eta=datetime.fromtimestamp(p.resume_at + 30, tz=timezone.utc))
         logger.warning("Tarama duraklatıldı (%s): %s", kind, p.reason)
@@ -265,6 +269,7 @@ def _run_budgeted_scan(task, session_id: str, job_id: str, kind: str):
         db.rollback()
         if job:
             job.status = "failed"; job.error_msg = str(e); db.commit()
+            notify_sync_job(db, job)
         raise
     finally:
         db.close()
@@ -289,6 +294,8 @@ def _handle_pause(task, db, job, p, session_id: str, job_id: str, total: int = 0
         job.status = "paused"
         job.error_msg = f"{p.reason} (devam: {resume_iso or 'elle başlat'})"
         db.commit()
+        if not p.auto_resume:                  # kendiliğinden devam etmeyen duraklama: kullanıcının dikkati gerekir
+            notify_sync_job(db, job)
     if p.auto_resume and p.resume_at:
         task.apply_async(args=[session_id, job_id], eta=datetime.fromtimestamp(p.resume_at + 30, tz=timezone.utc))
     logger.warning("%s duraklatıldı: %s", task.name, p.reason)
@@ -458,7 +465,9 @@ def sync_posts(self, session_id: str, job_id: str):
             self.update_state(state="PROGRESS", meta={"current": total, "total": total, "step": "posts", "plan": "B"})
 
         db.commit()
-        if job: job.status = "completed"; job.processed_items = total; job.finished_at = datetime.now(timezone.utc); db.commit()
+        if job:
+            job.status = "completed"; job.processed_items = total; job.finished_at = datetime.now(timezone.utc); db.commit()
+            notify_sync_job(db, job)
 
         gov.report_clean_finish()
         # Beğeni/yorum taraması tek bir bütçeli görevde, sırayla ve en yeni N gönderi için çalışır.
@@ -477,6 +486,7 @@ def sync_posts(self, session_id: str, job_id: str):
         db.rollback()
         if job:
             job.status = "failed"; job.error_msg = str(e); db.commit()
+            notify_sync_job(db, job)
         raise
     finally:
         db.close()
@@ -584,6 +594,7 @@ def _run_interactions(task, session_id: str, job_id: str, post_ids: list[int] | 
         if job:
             job.status = "completed"; job.processed_items = done_posts
             job.finished_at = datetime.now(timezone.utc); db.commit()
+            notify_sync_job(db, job)
         return {"status": "completed", "posts": done_posts, "likes": n_likes, "comments": n_comments}
 
     except ScanPaused as p:
@@ -595,6 +606,7 @@ def _run_interactions(task, session_id: str, job_id: str, post_ids: list[int] | 
         db.rollback()
         if job:
             job.status = "failed"; job.error_msg = str(e); db.commit()
+            notify_sync_job(db, job)
         raise
     finally:
         db.close()
