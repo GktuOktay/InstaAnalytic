@@ -28,7 +28,7 @@ export interface BridgeTodo {
   taken_at: string | null
 }
 
-export interface QueuedAction { id: number; ig_user_id: number; username: string; action: 'follow' | 'unfollow'; attempts?: number; note?: string | null }
+export interface QueuedAction { id: number; ig_user_id: number; username: string; action: 'follow' | 'unfollow'; attempts?: number; note?: string | null; manual?: boolean }
 export interface ActionQueue {
   enabled: boolean
   blocked: 'off' | 'paused' | null

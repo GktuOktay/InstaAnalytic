@@ -498,6 +498,42 @@ describe('extension reload keeps the app page connected', () => {
 })
 
 
+describe('a dead direct-request job does not block the queue', () => {
+  const ME = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
+  const fromApp = { id: 'ext', tab: { url: 'http://localhost:3002/users' } }
+  const msg = (b: any, m: any, s: any) => new Promise<any>(res => { if (!b.listeners.message(m, s, res)) res(undefined) })
+
+  async function withStuckJob(beatAgoMs: number) {
+    const b = loadBackground('2.8.3', '2.8.3', { ...ME })
+    const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+    b.fetchStub.mockImplementation(async (url: string, init?: any) =>
+      String(url).includes('/bridge/actions/next')
+        ? new Response(JSON.stringify({ items: [{ id: 5, username: 'ali', action: 'unfollow', manual: true, ig_user_id: 123456 }], delay: [120, 240], api_delay: [3, 5], reason: null }), { status: 200 })
+        : base(url, init))
+    ;(b.chrome.tabs as any).sendMessage = vi.fn((id: number, m: any, cb?: Function) => cb?.(m.type === 'ia-api-ping' ? { ok: true, csrf: true, loginWall: false } : { ok: true }))
+    b.listeners.message({ type: 'ia-tab-hello' }, { id: 'ext', tab: { id: 41, url: 'https://www.instagram.com/' } }, () => {})
+    await new Promise(r => setTimeout(r, 5))
+    b.session.job = { id: 'eski', kind: 'actions', api: true, state: 'running', tabId: 41, queue: ['x'], items: [], total: 1, index: 0, results: [], errors: [],
+      startedAt: Date.now() - beatAgoMs, beat: Date.now() - beatAgoMs }
+    return b
+  }
+
+  it('a job whose loop went silent (tab refreshed) is stopped and a new run can start', async () => {
+    const b = await withStuckJob(90_000)
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r).toEqual({ ok: true, total: 1 })
+    expect(b.session.job.id).not.toBe('eski')
+    expect(b.session.job.state).toBe('running')
+  })
+
+  it('a job that is still alive (recent beat) is left alone', async () => {
+    const b = await withStuckJob(5_000)
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r).toMatchObject({ ok: false, code: 'running' })
+    expect(b.session.job.id).toBe('eski')
+  })
+})
+
 describe('follow / unfollow without opening a tab (direct requests from an open Instagram tab)', () => {
   const ME = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
   const fromApp = { id: 'ext', tab: { url: 'http://localhost:3002/users' } }

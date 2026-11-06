@@ -203,6 +203,7 @@ export default function UsersPage() {
   // manual: kullanıcı tek bir kişiye tıkladı. Insan hızı sayılır: kuyrukta öne alınır, kısa beklemeyle yapılır
   // ve eklenti hemen tetiklenir (zaten çalışıyorsa yeni kişiyi kendisi alır).
   const enqueueActions = async (action: 'follow' | 'unfollow', ids: number[], manual = false) => {
+    if (manual) autoBlocked.current = false          // kullanıcı yeniden tıkladı: otomatik başlatma yeniden denenebilir
     try {
       const r = await bridgeApi.enqueueActions(sid, action, ids, manual)
       showToast(r.added ? T.users.queue.added(r.added, r.duplicate, r.skipped) : T.users.queue.nothingAdded, r.added > 0)
@@ -233,10 +234,31 @@ export default function UsersPage() {
     }
   }
 
+  // "Sırada ama iş yapılmıyor" olmasın: kullanıcının tıkladığı bir kişi bekliyor, eklenti boşta ve işlem yapılabilir durumdaysa
+  // eklenti kendiliğinden yeniden başlatılır (yarış, ölü iş ya da kapanıp açılan sekme yüzünden kaçmış olabilir).
+  // Bir başlatma hata verirse aynı hatayla tekrar tekrar denenmez; kullanıcı yeniden tıklayınca ya da düğmeyle dener.
+  const lastAutoRun = useRef(0)
+  const autoBlocked = useRef(false)
+  useEffect(() => {
+    if (!viaExt || !queue || extRunning || !ext.available || runInFlight.current || autoBlocked.current) return
+    if (queue.blocked || queue.quiet_hours) return
+    if (!queue.pending.some(p => p.manual)) return
+    const t = setTimeout(async () => {
+      if (Date.now() - lastAutoRun.current < 20_000) return
+      lastAutoRun.current = Date.now()
+      const before = runError
+      await runQueue(true)
+      if (runErrorRef.current && runErrorRef.current !== before) autoBlocked.current = true
+    }, 6_000)
+    return () => clearTimeout(t)
+  }, [viaExt, queue, extRunning, ext.available])   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Art arda tıklamalar tek bir tetikleme olarak birleşir; "iş zaten çalışıyor" ve "kuyruk boş" (iş kişiyi çoktan aldı)
   // otomatik tetiklemede hata değildir: çalışan iş yeni tıklananları kendisi alır.
   const runInFlight = useRef(false)
-  const [runError, setRunError] = useState<string | null>(null)      // son başlatmanın hatası: toast kaybolsa da panelde kalır
+  const [runError, setRunErrorState] = useState<string | null>(null)      // son başlatmanın hatası: toast kaybolsa da panelde kalır
+  const runErrorRef = useRef<string | null>(null)
+  const setRunError = (m: string | null) => { runErrorRef.current = m; setRunErrorState(m) }
   const runQueue = async (silent = false) => {
     if (silent && runInFlight.current) return
     runInFlight.current = true

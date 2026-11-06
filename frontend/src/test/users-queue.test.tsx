@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp, makeSession } from './utils'
@@ -390,4 +390,54 @@ describe('UsersPage — several quick clicks in a row', () => {
     expect(post.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run').length).toBe(1)          // tek başlatma isteği
     post.mockRestore()
   })
+})
+
+
+describe('UsersPage — a clicked person that is left waiting is started automatically', () => {
+  const rows = [user(5, 'ali'), user(6, 'veli')]
+  const announce = () => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.8.3' }, origin: window.location.origin, source: window }))
+  const pendingManual = (manual: boolean) => queue({ pending_count: 1, pending: [{ id: 1, ig_user_id: 5, username: 'ali', action: 'unfollow', manual }] })
+  let post: ReturnType<typeof vi.spyOn>
+  const runs = () => post.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run').length
+  const answer = (reply: unknown) => vi.spyOn(window, 'postMessage').mockImplementation(((d: any) => {
+    if (d?.type === 'ia-run') setTimeout(() => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-reply', id: d.id, reply }, origin: window.location.origin, source: window })), 5)
+  }) as any)
+
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 2, items: rows } })
+  })
+  afterEach(() => { post?.mockRestore() })
+
+  it('someone clicked is waiting, the extension is idle: it is started by itself after a few seconds', async () => {
+    post = answer({ ok: true, total: 1 })
+    bridge.actions.mockResolvedValue(pendingManual(true))
+    renderApp(<UsersPage />)
+    await screen.findByText('@veli')
+    announce()
+    expect(runs()).toBe(0)
+    await waitFor(() => expect(runs()).toBe(1), { timeout: 9000 })
+  }, 15000)
+
+  it('bulk (not clicked) items are never started by themselves', async () => {
+    post = answer({ ok: true, total: 1 })
+    bridge.actions.mockResolvedValue(pendingManual(false))
+    renderApp(<UsersPage />)
+    await screen.findByText('@veli')
+    announce()
+    await new Promise(r => setTimeout(r, 7500))
+    expect(runs()).toBe(0)
+  }, 15000)
+
+  it('when the start fails it does not retry in a loop', async () => {
+    post = answer({ ok: false, code: 'nostab', error: "Açık bir Instagram sekmesi yok." })
+    bridge.actions.mockResolvedValue(pendingManual(true))
+    renderApp(<UsersPage />)
+    await screen.findByText('@veli')
+    announce()
+    await waitFor(() => expect(runs()).toBe(1), { timeout: 9000 })
+    expect(await screen.findByText(/Eklenti işi başlatamadı: Açık bir Instagram sekmesi yok/)).toBeInTheDocument()   // hata panelde kalır
+    await new Promise(r => setTimeout(r, 7500))
+    expect(runs()).toBe(1)
+  }, 25000)
 })

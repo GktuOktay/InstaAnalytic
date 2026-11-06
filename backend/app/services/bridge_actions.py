@@ -95,7 +95,7 @@ async def status(db: AsyncSession, session: Session, now: datetime | None = None
         "quiet_hours": in_quiet_hours(now),
         "pending_count": total_pending,
         "pending": [{"id": r.id, "ig_user_id": r.ig_user_id, "username": r.username, "action": r.action,
-                     "attempts": r.attempts or 0, "note": r.note if (r.attempts or 0) else None} for r in rows],
+                     "attempts": r.attempts or 0, "note": r.note if (r.attempts or 0) else None, "manual": bool(r.manual)} for r in rows],
         "max_attempts": MAX_ATTEMPTS,
         "done_hour": await _done_since(db, session, now - timedelta(hours=1)),
         "done_day": await _done_since(db, session, now - timedelta(days=1)),
