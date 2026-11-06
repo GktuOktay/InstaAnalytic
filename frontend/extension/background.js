@@ -801,12 +801,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
   else setStatus({ state: 'off', message: 'Kapalı.' });
 });
 
+async function reloadAppTabs() {
+  if (!chrome.tabs || !chrome.tabs.query) return;
+  const tabs = await chrome.tabs.query({ url: ['http://localhost:3002/*', 'http://127.0.0.1:3002/*'] });
+  for (const t of tabs) if (t && t.id != null) chrome.tabs.reload(t.id).catch(() => {});
+}
+
 chrome.runtime.onInstalled.addListener(async (details) => {
   const s = await chrome.storage.local.get(['enabled', 'appUrl', 'update']);
   const init = {};
   if (typeof s.enabled !== 'boolean') init.enabled = false; // kullanıcı açana kadar kapalı
   if (!normalizeAppUrl(s.appUrl)) init.appUrl = DEFAULT_APP;
   if (Object.keys(init).length) await chrome.storage.local.set(init);
+
+  // Eklenti yeniden yüklenince açık uygulama sekmelerindeki köprü betiği kopar ("Eklentiye ulaşılamadı"): sekmeyi yenile
+  reloadAppTabs().catch(() => {});
 
   const version = chrome.runtime.getManifest().version;
   const prev = s.update || {};

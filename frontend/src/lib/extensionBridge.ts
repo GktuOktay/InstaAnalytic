@@ -25,8 +25,16 @@ export interface RunReply { ok: boolean; error?: string; total?: number }
 
 interface Msg { __ia?: unknown; type?: unknown; [k: string]: unknown }
 
+const PENDING_KEY = 'ia-pending-run'
+const RELOAD_KEY = 'ia-last-reload'
+function canReload(): boolean {
+  try { return Date.now() - Number(sessionStorage.getItem(RELOAD_KEY) ?? 0) > 60_000 } catch { return false }
+}
+
 export function useExtension() {
   const [version, setVersion] = useState<string | null>(null)
+  const versionRef = useRef<string | null>(null)
+  versionRef.current = version
   const [job, setJob] = useState<ExtensionJob | null>(null)
   const pending = useRef(new Map<string, (r: any) => void>())
 
@@ -61,8 +69,26 @@ export function useExtension() {
     if (version) call('ia-job').then(j => { if (j && typeof j === 'object' && 'kind' in j) setJob(j as ExtensionJob) })
   }, [version, call])
 
-  const run = useCallback(async (kind: JobKind, opts: { shortcodes?: string[]; count?: number; scope?: 'missing' } = {}): Promise<RunReply> =>
-    (await call('ia-run', { cmd: { kind, ...opts } })) ?? { ok: false, error: 'timeout' }, [call])
+  // Eklenti yeniden yüklenince bu sayfadaki köprü kopar (yanıt gelmez ya da "Sayfayı yenileyin" gelir). Eklenti daha önce
+  // görüldüyse sayfa bir kez kendini yeniler ve komut yeni sayfada otomatik tekrarlanır; sonsuz döngüye girmez.
+  const run = useCallback(async (kind: JobKind, opts: { shortcodes?: string[]; count?: number; scope?: 'missing' } = {}): Promise<RunReply> => {
+    const reply = await call('ia-run', { cmd: { kind, ...opts } })
+    const stale = reply == null ? versionRef.current !== null : /Sayfayı yenileyin/.test(String(reply?.error ?? ''))
+    if (stale && canReload()) {
+      try { sessionStorage.setItem(PENDING_KEY, JSON.stringify({ kind, opts, at: Date.now() })); sessionStorage.setItem(RELOAD_KEY, String(Date.now())) } catch { /* özel pencere */ }
+      window.location.reload()
+      return { ok: false, error: 'reloading' }
+    }
+    return reply ?? { ok: false, error: 'timeout' }
+  }, [call])
+
+  // Yenilenen sayfada bekleyen komutu bir kez çalıştır
+  useEffect(() => {
+    if (!version) return
+    let pending: { kind: JobKind; opts: Record<string, unknown>; at: number } | null = null
+    try { pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) ?? 'null'); sessionStorage.removeItem(PENDING_KEY) } catch { pending = null }
+    if (pending && Date.now() - pending.at < 30_000) call('ia-run', { cmd: { kind: pending.kind, ...pending.opts } })
+  }, [version, call])
 
   const stop = useCallback(() => call('ia-stop'), [call])
 

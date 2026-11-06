@@ -453,3 +453,17 @@ describe('app side version check', () => {
     expect(extensionOutdated(null)).toBe(false)
   })
 })
+
+
+describe('extension reload keeps the app page connected', () => {
+  it('reloads the open app tabs (and only them) when the extension is installed or updated', async () => {
+    const b = loadBackground('2.6.5', '2.6.5', {})
+    const reload = vi.fn(async () => {})
+    const query = vi.fn(async () => [{ id: 5 }, { id: 9 }])
+    ;(b.chrome.tabs as any).query = query
+    ;(b.chrome.tabs as any).reload = reload
+    await b.listeners.installed({ reason: 'update', previousVersion: '2.6.4' })
+    expect(query).toHaveBeenCalledWith({ url: ['http://localhost:3002/*', 'http://127.0.0.1:3002/*'] })   // Instagram sekmelerine dokunmaz
+    expect(reload.mock.calls.map((c: any[]) => c[0])).toEqual([5, 9])
+  })
+})
