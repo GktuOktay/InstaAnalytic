@@ -5,7 +5,6 @@ import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { bridgeApi, ActionQueue } from '../api/bridge'
 import { useExtension } from '../lib/extensionBridge'
-import { sessionsApi } from '../api/sessions'
 import { Link } from 'react-router-dom'
 import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
@@ -81,7 +80,7 @@ export default function UsersPage() {
     hint:  key === 'oneWaySilent' ? T.users.oneWaySilentHint : key === 'mutualSilent' ? T.users.mutualSilentHint : key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
-  const { activeId, sessions, loading: sessionLoading, refresh: refreshSessions } = useSession()
+  const { activeId, sessions, loading: sessionLoading } = useSession()
   const sid = activeId
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
   const [total,         setTotal]         = useState(0)
@@ -197,16 +196,6 @@ export default function UsersPage() {
       showToast(errMsg(e), false)
       return false
     }
-  }
-
-  // İşlemler varsayılan kapalıdır; kullanıcı bilinçli olarak, burada tek tıkla açabilir
-  const enableActions = async () => {
-    if (!profile || !window.confirm(T.users.actionsOff.confirm)) return
-    try {
-      await sessionsApi.setAllowActions(profile.id, true)
-      await refreshSessions()
-      showToast(T.users.actionsOff.enabled)
-    } catch (e) { showToast(errMsg(e), false) }
   }
 
   const runQueue = async () => {
@@ -378,11 +367,7 @@ export default function UsersPage() {
       {blockedReason && (
         <p role="note" className="text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-xl px-3 py-2 mb-4">
           {blockedReason} {T.users.actionsOff.manual}{' '}
-          {profile && !profile.allow_actions && (
-            <button onClick={enableActions} className="ml-1 px-2 py-0.5 rounded-md bg-amber-700 hover:bg-amber-600 text-amber-50 font-semibold">
-              {T.users.actionsOff.enable}
-            </button>
-          )}
+          {profile && !profile.allow_actions && <Link to="/settings" className="underline">{T.users.actionsOff.turnOn}</Link>}
         </p>
       )}
 
@@ -412,9 +397,7 @@ export default function UsersPage() {
           {queue.blocked === 'off' && (
             <p className="text-xs text-amber-300 mt-1">
               {T.users.queue.offNote}{' '}
-              <button onClick={enableActions} className="ml-1 px-2 py-0.5 rounded-md bg-amber-700 hover:bg-amber-600 text-amber-50 font-semibold">
-                {T.users.actionsOff.enable}
-              </button>
+              <Link to="/settings" className="underline">{T.users.actionsOff.turnOn}</Link>
             </p>
           )}
           {queue.blocked === 'paused' && <p className="text-xs text-amber-300 mt-1">{T.users.queue.pausedNote}</p>}

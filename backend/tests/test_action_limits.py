@@ -203,6 +203,6 @@ def test_stale_browser_sessions_lose_cookies_and_become_read_only(worker, monkey
         db.add(f); db.commit(); fresh_id = str(f.id)
     assert action_tasks.expire_stale_sessions.run()["expired"] == 1
     s_old, s_fresh = _session(worker, old), _session(worker, fresh_id)
-    assert s_old.source == "zip" and s_old.allow_actions is False
+    assert s_old.source == "zip" and s_old.allow_actions is True        # ZIP: işlemler varsayılan açık (eklenti kuyruğu)
     assert json.loads(decrypt(s_old.session_data)) == {"cookies": {}}
     assert s_fresh.source == "browser" and s_fresh.allow_actions is True

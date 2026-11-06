@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp, makeSession } from './utils'
 
-vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn(), setAllowActions: vi.fn() } }))
+vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn() } }))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }))
 vi.mock('../api/actions', () => ({ actionsApi: { follow: vi.fn(), unfollow: vi.fn(), removeFollower: vi.fn(), bulkUnfollow: vi.fn() } }))
 vi.mock('../api/bridge', () => ({ bridgeApi: { actions: vi.fn(), enqueueActions: vi.fn(), clearActions: vi.fn() } }))
@@ -71,25 +71,18 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     expect(await screen.findByText(/Sessiz saatler \(01:00-08:00\)/)).toBeInTheDocument()
   })
 
-  it('actions off: requests are still queued (kept), the panel says they wait, and one button turns actions on', async () => {
+  it('actions turned off in Settings: requests are still queued (kept) and the panel links to Settings — no warning button', async () => {
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: false })])
-    sess.setAllowActions.mockResolvedValue(makeSession({ source: 'zip', allow_actions: true }))
     bridge.actions.mockResolvedValue(queue({ enabled: false, blocked: 'off', pending_count: 1 }))
     renderApp(<UsersPage />)
     const unfollow = (await screen.findAllByTitle('Takipten çık'))[0]
     expect(unfollow).not.toHaveAttribute('aria-disabled', 'true')               // kapalıyken de kuyruğa ekler
     await userEvent.click(unfollow)
     await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5]))
-    expect(await screen.findByText(/İşlemler kapalı\. İstekler kuyruğa eklenir ve silinmez/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Kuyruğu çalıştır' })).toBeDisabled()    // çalıştırmak için işlemler açık olmalı
-
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
-    expect(sess.setAllowActions).not.toHaveBeenCalled()                          // onaylanmazsa açılmaz
-    confirm.mockReturnValue(true)
-    await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
-    await waitFor(() => expect(sess.setAllowActions).toHaveBeenCalledWith('s1', true))
-    confirm.mockRestore()
+    expect(await screen.findByText(/İşlemler Ayarlar'dan kapatılmış\. İstekler kuyruğa eklenir ve silinmez/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ayarlar\'da aç' })).toHaveAttribute('href', '/settings')
+    expect(screen.queryByRole('button', { name: 'İşlemleri aç' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kuyruğu çalıştır' })).toBeDisabled()
   })
 
   it('paused: still queues, and explains that queued requests are kept', async () => {

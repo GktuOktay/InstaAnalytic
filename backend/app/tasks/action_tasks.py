@@ -425,7 +425,7 @@ def expire_stale_sessions():
             last = s.last_used_at or s.last_verified_at or s.created_at
             if last and last < cutoff:
                 s.session_data = encrypt(json.dumps({"cookies": {}}))
-                s.source, s.allow_actions, s.actions_enabled_at = "zip", False, None
+                s.source, s.allow_actions, s.actions_enabled_at = "zip", True, datetime.now(timezone.utc)   # ZIP: işlemleri eklenti yapar
                 s.paused_until, s.paused_reason = None, None
                 expired += 1
         db.commit()

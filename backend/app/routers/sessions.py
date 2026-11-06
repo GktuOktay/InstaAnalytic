@@ -254,6 +254,8 @@ async def create_zip_only_session(body: ZipOnlyCreate, db: AsyncSession = Depend
     session = Session(
         ig_user_id=fake_id, ig_username=username, source="zip",
         session_data=encrypt(json.dumps({"cookies": {}})),
+        # ZIP profilinde işlemleri yalnızca eklenti kuyruğu yapar (yavaş, sınırlı); varsayılan açık. Isınma süresi şimdi başlar.
+        allow_actions=True, actions_enabled_at=datetime.now(timezone.utc),
     )
     db.add(session)
     await db.commit()

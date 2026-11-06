@@ -24,7 +24,7 @@ async def test_zip_only_profile_lifecycle(client):
     r = await client.post("/api/sessions/zip-only", json={"ig_username": "@Test.User_1"})
     assert r.status_code == 201
     body = r.json()
-    assert body["source"] == "zip" and body["allow_actions"] is False and body["ig_user_id"] < 0
+    assert body["source"] == "zip" and body["allow_actions"] is True and body["ig_user_id"] < 0
     assert body["ig_username"] == "test.user_1"
     assert (await client.post("/api/sessions/zip-only", json={"ig_username": "test.user_1"})).status_code == 400
     for bad in ("a b", "", "x" * 31, "emoji😀"):
