@@ -222,7 +222,7 @@ describe('jobs started from the app', () => {
       expect(r).toEqual({ ok: true, total: 2 })
       expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/ali/', active: true })
       const cfg = await msg(b, { type: 'ia-config', viewer: '525' }, fromIg())
-      expect(cfg.job).toEqual({ kind: 'actions', shortcode: 'ali', item: items[0] })
+      expect(cfg.job).toEqual({ kind: 'actions', shortcode: 'ali', item: { ...items[0], manual: false } })
       expect(cfg.tools).toEqual({ posts: false, likers: false, comments: false })     // hiçbir şey kaydedilmez
 
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
@@ -301,6 +301,67 @@ describe('jobs started from the app', () => {
       await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
       await b.listeners.startup()
       expect(b.session.job.state).toBe('running')
+      vi.useRealTimers()
+    })
+
+    it('a person you clicked yourself is done at human pace (15-35 s), the rest keep the slow pace', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const two = [{ id: 11, username: 'ali', action: 'unfollow', manual: false }, { id: 12, username: 'veli', action: 'unfollow', manual: true }]
+      const { b } = withQueue(null, two as any)
+      const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+      b.fetchStub.mockImplementation(async (url: string, init?: any) =>
+        String(url).includes('/bridge/actions/next') ? new Response(JSON.stringify({ items: two, delay: [120, 240], manual_delay: [15, 35], reason: null }), { status: 200 }) : base(url, init))
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      const wait = b.session.job.nextAt - Date.now()
+      expect(wait).toBeGreaterThanOrEqual(14_000)
+      expect(wait).toBeLessThanOrEqual(36_000)                                // sıradaki veli tıklanmış: insan hızı
+      expect(b.session.job.message).toMatch(/~\d+ sn sonra/)
+      vi.useRealTimers()
+    })
+
+    it('a click made in the app while the extension is waiting is pulled to the front and shortens the wait', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b } = withQueue()
+      const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+      let extra: any[] = []
+      b.fetchStub.mockImplementation(async (url: string, init?: any) =>
+        String(url).includes('/bridge/actions/next') && extra.length
+          ? new Response(JSON.stringify({ items: [...items, ...extra], delay: [120, 240], manual_delay: [15, 35], reason: null }), { status: 200 })
+          : base(url, init))
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)                                  // ali yapıldı; veli için ~2-4 dk bekleme
+      expect(b.session.job.nextAt - Date.now()).toBeGreaterThan(100_000)
+      extra = [{ id: 99, username: 'yeni', action: 'unfollow', manual: true }]  // kullanıcı uygulamada 'yeni' kişiye tıkladı
+      b.listeners.message({ type: 'ia-job-tick' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      const job = b.session.job
+      expect(job.queue).toEqual(['ali', 'yeni', 'veli'])                      // tıklanan sıradakinden önce
+      expect(job.total).toBe(3)
+      expect(job.nextAt - Date.now()).toBeLessThanOrEqual(36_000)             // bekleme insan hızına indi
+      vi.useRealTimers()
+    })
+
+    it('when the queue runs out the extension asks the app again and continues with what was added meanwhile', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b } = withQueue(null, [items[0]])
+      const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+      let calls = 0
+      b.fetchStub.mockImplementation(async (url: string, init?: any) => {
+        if (String(url).includes('/bridge/actions/next')) {
+          calls += 1
+          return new Response(JSON.stringify({ items: calls === 1 ? [items[0]] : [items[0], { id: 50, username: 'sonradan', action: 'unfollow', manual: true }],
+            delay: [120, 240], manual_delay: [15, 35], reason: null }), { status: 200 })
+        }
+        return base(url, init)
+      })
+      expect((await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)).total).toBe(1)
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)
+      expect(b.session.job.state).toBe('running')                             // bitmedi: yeni gelen var
+      expect(b.session.job.queue).toEqual(['ali', 'sonradan'])
       vi.useRealTimers()
     })
 

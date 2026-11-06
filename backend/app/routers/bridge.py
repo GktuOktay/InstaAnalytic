@@ -153,6 +153,7 @@ async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
 class EnqueueActions(BaseModel):
     action: Literal["follow", "unfollow"]
     user_ids: list[int] = Field(min_length=1, max_length=200)
+    manual: bool = False        # kullanıcı tek bir kişiye tıkladı: insan hızında, öne alınarak yapılır
 
 
 class CancelActions(BaseModel):
@@ -173,7 +174,7 @@ async def actions_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
 async def actions_enqueue(session_id: uuid.UUID, body: EnqueueActions, db: AsyncSession = Depends(get_db)):
     # Kuyruğa ekleme her zaman kabul edilir ve kalıcıdır. İşlemlerin açık olması, saatlik/günlük sınır, sessiz saat ve
     # duraklatma yalnızca eklenti işlem isteyince (/actions/next) uygulanır: bekleyen işlem hiçbir zaman kaybolmaz.
-    return await bridge_actions.enqueue(db, await _session(db, session_id), body.action, body.user_ids)
+    return await bridge_actions.enqueue(db, await _session(db, session_id), body.action, body.user_ids, manual=body.manual and len(body.user_ids) <= 3)
 
 
 @router.get("/sessions/{session_id}/bridge/actions/next")

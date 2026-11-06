@@ -200,11 +200,14 @@ export default function UsersPage() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const enqueueActions = async (action: 'follow' | 'unfollow', ids: number[]) => {
+  // manual: kullanıcı tek bir kişiye tıkladı. Insan hızı sayılır: kuyrukta öne alınır, kısa beklemeyle yapılır
+  // ve eklenti hemen tetiklenir (zaten çalışıyorsa yeni kişiyi kendisi alır).
+  const enqueueActions = async (action: 'follow' | 'unfollow', ids: number[], manual = false) => {
     try {
-      const r = await bridgeApi.enqueueActions(sid, action, ids)
+      const r = await bridgeApi.enqueueActions(sid, action, ids, manual)
       showToast(r.added ? T.users.queue.added(r.added, r.duplicate, r.skipped) : T.users.queue.nothingAdded, r.added > 0)
       await loadQueue()
+      if (manual && ext.available && !extRunning) await runQueue(true)
       return true
     } catch (e) {
       showToast(errMsg(e), false)
@@ -230,9 +233,10 @@ export default function UsersPage() {
     }
   }
 
-  const runQueue = async () => {
+  const runQueue = async (silent = false) => {
     const r = await ext.run('actions')
     if (!r.ok) showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
+    else if (silent) showToast(T.users.queue.started)
   }
 
   const clearQueue = async () => {
@@ -245,7 +249,7 @@ export default function UsersPage() {
 
   const handleFollow = async (u: UserPoolItem) => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
-    if (viaExt) { await enqueueActions('follow', [u.id]); return }
+    if (viaExt) { await enqueueActions('follow', [u.id], true); return }
     setActionLoading(p => ({ ...p, [u.id]: 'follow' }))
     try {
       const r = await actionsApi.follow(sid, u.id)
@@ -261,7 +265,7 @@ export default function UsersPage() {
 
   const handleUnfollow = async (u: UserPoolItem) => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
-    if (viaExt) { await enqueueActions('unfollow', [u.id]); return }
+    if (viaExt) { await enqueueActions('unfollow', [u.id], true); return }
     setActionLoading(p => ({ ...p, [u.id]: 'unfollow' }))
     try {
       const r = await actionsApi.unfollow(sid, u.id)
@@ -415,7 +419,7 @@ export default function UsersPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={runQueue} disabled={!ext.available || extRunning || !queue.pending_count || queue.quiet_hours || !!queue.blocked}
+              <button onClick={() => runQueue()} disabled={!ext.available || extRunning || !queue.pending_count || queue.quiet_hours || !!queue.blocked}
                 className="px-3 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-40 text-xs font-medium">
                 {extRunning ? T.users.queue.running : T.users.queue.run}
               </button>

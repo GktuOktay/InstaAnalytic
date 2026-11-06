@@ -361,6 +361,7 @@ async function startJob(cmd) {
   let queue = [null];
   let items = null;
   let delay = null;
+  let manualDelay = null;
   if (kind === 'actions') {
     const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10`);
     if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
@@ -368,11 +369,12 @@ async function startJob(cmd) {
     const d = r.data || {};
     items = Array.isArray(d.items)
       ? d.items.filter((x) => x && Number.isInteger(x.id) && ACTION_USER_RE.test(String(x.username)) && (x.action === 'follow' || x.action === 'unfollow'))
-          .map((x) => ({ id: x.id, username: String(x.username), action: x.action }))
+          .map((x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true }))
       : [];
     if (!items.length) return { ok: false, error: ACTION_REASON[d.reason] || 'Yapılacak işlem yok.' };
     queue = items.map((x) => x.username);
     delay = Array.isArray(d.delay) && d.delay.length === 2 ? [Math.max(60, Number(d.delay[0]) || 120), Math.max(75, Number(d.delay[1]) || 240)] : [120, 240];
+    manualDelay = Array.isArray(d.manual_delay) && d.manual_delay.length === 2 ? [Math.max(10, Number(d.manual_delay[0]) || 15), Math.max(20, Number(d.manual_delay[1]) || 35)] : [15, 35];
   } else if (kind === 'posts') {
     if (!profile.username) return { ok: false, error: 'Profilin kullanıcı adı bilinmiyor; Ayarlar sekmesinden profili yeniden seçin.' };
   } else {
@@ -403,7 +405,7 @@ async function startJob(cmd) {
 
   const job = {
     id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
-    items, delay, profileId: profile.id,
+    items, delay, manualDelay, profileId: profile.id,
     username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0, resumed,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
@@ -553,6 +555,35 @@ async function jobStepDone(tabId, error, seen, detail, extra) {
 // süre dolunca tick bir sonraki profile geçirir.
 const ACTION_NOTE = { done: 'Yapıldı.', already: 'Zaten istenen durumdaydı.' };
 
+// Uygulamadan (Kullanıcı Havuzu) sonradan eklenen işleri çalışan işe katar.
+// onlyManual: bekleme sırasında yalnızca kullanıcının tek tek tıkladıkları öne alınır; iş bitince hepsi alınır.
+async function pullNewItems(job, onlyManual) {
+  const cfg = await getCfg();
+  const r = await callApp(cfg.appUrl, `/api/sessions/${job.profileId}/bridge/actions/next?limit=10`);
+  if (r.status !== 200 || !r.data || !Array.isArray(r.data.items)) return 0;
+  const known = new Set(job.items.map((x) => x.id));
+  const fresh = r.data.items
+    .filter((x) => x && Number.isInteger(x.id) && !known.has(x.id) && ACTION_USER_RE.test(String(x.username))
+      && (x.action === 'follow' || x.action === 'unfollow') && (!onlyManual || x.manual === true))
+    .map((x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true }));
+  if (!fresh.length) return 0;
+  // Kullanıcının tıkladıkları sıradakinden önce, diğerleri sona
+  const front = fresh.filter((x) => x.manual);
+  const back = fresh.filter((x) => !x.manual);
+  job.items.splice(job.index, 0, ...front);
+  job.queue.splice(job.index, 0, ...front.map((x) => x.username));
+  job.items.push(...back);
+  job.queue.push(...back.map((x) => x.username));
+  job.total += fresh.length;
+  return fresh.length;
+}
+
+function waitFor(job) {
+  const next = job.items[job.index];
+  const [lo, hi] = next && next.manual ? (job.manualDelay || [15, 35]) : (job.delay || [120, 240]);
+  return (lo + Math.random() * (hi - lo)) * 1000;
+}
+
 async function actionStepDone(job, error, extra) {
   const item = job.items[job.index];
   const outcome = error ? 'failed' : (['done', 'already', 'not_found', 'failed', 'blocked'].includes(extra.outcome) ? extra.outcome : 'failed');
@@ -581,13 +612,16 @@ async function actionStepDone(job, error, extra) {
   }
   job.index += 1;
   if (job.index >= job.total) {
-    await finishJob(job, 'done', summarize(job));
-    return;
+    await pullNewItems(job, false);             // iş sürerken uygulamada yeni eklenenler varsa devam et
+    if (job.index >= job.total) {
+      await finishJob(job, 'done', summarize(job));
+      return;
+    }
   }
-  const [lo, hi] = job.delay || [120, 240];
-  const waitMs = (lo + Math.random() * (hi - lo)) * 1000;
+  const waitMs = waitFor(job);
   job.nextAt = Date.now() + waitMs;
-  job.message = `${KIND_LABEL.actions}: ${job.index} / ${job.total} yapıldı. Sıradaki ~${Math.round(waitMs / 60000 * 10) / 10} dk sonra; Instagram sekmesini kapatmayın.`;
+  const secs = Math.round(waitMs / 1000);
+  job.message = `${KIND_LABEL.actions}: ${job.index} / ${job.total} yapıldı. Sıradaki ${secs >= 90 ? `~${Math.round(secs / 6) / 10} dk` : `~${secs} sn`} sonra; Instagram sekmesini kapatmayın.`;
   job.step = 0;
   await setJob(job);
 }
@@ -700,9 +734,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'ia-job-tick') {
     if (!fromInstagram) return false;
-    getJob().then((job) => {
+    getJob().then(async (job) => {
       if (!job || job.state !== 'running' || job.kind !== 'actions' || job.tabId !== sender.tab.id) return;
-      if (!job.nextAt || Date.now() < job.nextAt) return;
+      if (job.nextAt && Date.now() < job.nextAt) {
+        // Beklerken kullanıcı uygulamada bir kişiye tıkladıysa onu öne al ve bekleme süresini insan hızına indir
+        if (await pullNewItems(job, true).catch(() => 0)) {
+          const [lo, hi] = job.manualDelay || [15, 35];
+          job.nextAt = Math.min(job.nextAt, Date.now() + (lo + Math.random() * (hi - lo)) * 1000);
+          await setJob(job);
+        }
+        return;
+      }
+      if (!job.nextAt) return;
       job.nextAt = null;
       job.message = `${KIND_LABEL.actions}: ${job.index + 1} / ${job.total}`;
       setJob(job).then(() => chrome.tabs.update(job.tabId, { url: jobUrl(job, job.index) }).catch(() => {}));

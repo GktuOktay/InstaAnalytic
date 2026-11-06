@@ -542,11 +542,12 @@ const tr = {
       retryFailed:  'Başarısızları yeniden kuyruğa ekle',
       attempts:     (n: number) => `${n} deneme`,
       keptNote:     'Geçmiş kalıcıdır; uygulamayı kapatsan, yenilesen ya da eklentiyi yeniden başlatsan da silinmez.',
+      started:      'Eklenti başladı: Instagram sekmesi açılıyor.',
       undo:         'Kuyruktan geri al',
       undoShort:    'Geri al',
       undone:       (n: number) => n ? `${n} kişi kuyruktan geri alındı` : 'Geri alınacak bekleyen işlem yok (zaten yapılmış olabilir)',
       hiddenNote:   (n: number) => `${n} kişi kuyrukta; listelerden düşürüldü.`,
-      hint:         'Başarısız olan işlem en fazla 3 kez denenir. Takip / takipten çıkma istekleri kuyruğa alınır; eklenti Instagram sekmenizde, işlemler arasında birkaç dakika bekleyerek tek tek yapar. Bir çalıştırmada en fazla 10 işlem yapılır.',
+      hint:         'Bir kişiye tek tek tıkladığında eklenti hemen başlar ve insan hızında (birkaç saniye arayla) yapar. Toplu seçimler ve ek kuyruk yavaş (birkaç dakika arayla) yapılır. Başarısız olan en fazla 3 kez denenir. Saatlik / günlük sınırlar her zaman geçerlidir.',
       pending:      (n: number) => `${n} işlem sırada`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>
                       `Bu saat ${h}/${hl} · bugün ${d}/${dl} · işlemler arası ~${a}-${b} sn`,

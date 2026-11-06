@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.action_log import ActionLog
@@ -22,6 +22,7 @@ from app.services.risk_profiles import effective_action_limits, get_profile, in_
 ACTIONS = ("follow", "unfollow")
 MAX_BATCH = 10            # eklentinin tek çalıştırmada alabileceği en fazla işlem
 MAX_ENQUEUE = 200
+MANUAL_DELAY = (15, 35)   # sn: kullanıcının kendi tıkladığı işlemler arasında (profil açıp bakmak + tıklamak kadar)
 MAX_ATTEMPTS = 3          # başarısız bir işlem toplam bu kadar denenir (hesap bulunamadı / engel hariç)
 BLOCK_PAUSE = timedelta(hours=24)
 
@@ -48,7 +49,7 @@ def gate(session: Session, now: datetime) -> str | None:
     return None
 
 
-async def enqueue(db: AsyncSession, session: Session, action: str, user_ids: list[int]) -> dict:
+async def enqueue(db: AsyncSession, session: Session, action: str, user_ids: list[int], manual: bool = False) -> dict:
     if action not in ACTIONS:
         raise ValueError("action")
     ids = list(dict.fromkeys(user_ids))[:MAX_ENQUEUE]
@@ -65,11 +66,14 @@ async def enqueue(db: AsyncSession, session: Session, action: str, user_ids: lis
             continue
         if (uid, action) in pending:
             dup += 1
+            if manual:                                       # sıradaki bir kişiye tek tek tıklandı: öne al, insan hızına geç
+                await db.execute(update(BridgeAction).where(BridgeAction.session_id == session.id, BridgeAction.ig_user_id == uid,
+                                                             BridgeAction.action == action, BridgeAction.status == "pending").values(manual=True))
             continue
         if rel is not None and bool(rel.we_follow) == (action == "follow"):
             skipped += 1                                  # zaten istenen durumda
             continue
-        db.add(BridgeAction(session_id=session.id, ig_user_id=uid, username=u.username, action=action))
+        db.add(BridgeAction(session_id=session.id, ig_user_id=uid, username=u.username, action=action, manual=manual))
         added += 1
     await db.commit()
     return {"added": added, "duplicate": dup, "skipped": skipped}
@@ -80,7 +84,7 @@ async def status(db: AsyncSession, session: Session, now: datetime | None = None
     hourly, daily, dmin, dmax = limits(session, now)
     rows = (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
-    ).order_by(BridgeAction.attempts, BridgeAction.id).limit(1000))).scalars().all()
+    ).order_by(BridgeAction.manual.desc(), BridgeAction.attempts, BridgeAction.id).limit(1000))).scalars().all()
     total_pending = (await db.execute(select(func.count(BridgeAction.id)).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"))).scalar() or 0
     return {
@@ -102,7 +106,7 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
     """Eklentiye verilecek sıradaki işlemler. Bütçe, sessiz saat ve duraklatma burada uygulanır."""
     now = now or _now()
     hourly, daily, dmin, dmax = limits(session, now)
-    out = {"items": [], "delay": [dmin, dmax], "reason": None}
+    out = {"items": [], "delay": [dmin, dmax], "manual_delay": list(MANUAL_DELAY), "reason": None}
     why = gate(session, now)
     if why:
         out["reason"] = why
@@ -117,8 +121,9 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
         return out
     rows = (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
-    ).order_by(BridgeAction.attempts, BridgeAction.id).limit(max(1, min(limit, MAX_BATCH, room))))).scalars().all()
-    out["items"] = [{"id": r.id, "username": r.username, "action": r.action, "attempts": r.attempts or 0} for r in rows]
+    ).order_by(BridgeAction.manual.desc(), BridgeAction.attempts, BridgeAction.id).limit(max(1, min(limit, MAX_BATCH, room))))).scalars().all()
+    out["items"] = [{"id": r.id, "username": r.username, "action": r.action, "attempts": r.attempts or 0,
+                       "manual": bool(r.manual)} for r in rows]
     if not rows:
         out["reason"] = "empty"
     return out

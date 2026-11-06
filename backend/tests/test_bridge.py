@@ -614,3 +614,30 @@ async def test_queue_history_is_kept_and_lists_everything_that_finished(client, 
     # Hiçbir kayıt kendiliğinden silinmez: bekleyenleri temizlemek geçmişe dokunmaz
     await client.delete(f"/api/sessions/{s.id}/bridge/actions")
     assert (await client.get(f"/api/sessions/{s.id}/bridge/actions/history")).json()["counts"] == {"pending": 0, "done": 1, "skipped": 1, "failed": 1}
+
+
+@pytest.mark.asyncio
+async def test_a_users_own_click_is_done_first_and_at_human_pace(client, make_session, db):
+    s = await make_session(source="zip", allow_actions=True)
+    for i, n in ((811, "toplu1"), (812, "toplu2"), (813, "tikladim")):
+        await _pool_user(db, s, i, n)
+    await bridge_actions.enqueue(db, s, "unfollow", [811, 812])                       # toplu: yavaş
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [813], "manual": True})
+    assert r.json()["added"] == 1
+    nxt = await bridge_actions.next_batch(db, s, 10, DAY)
+    assert [i["username"] for i in nxt["items"]] == ["tikladim", "toplu1", "toplu2"]      # tıklanan önce
+    assert [i["manual"] for i in nxt["items"]] == [True, False, False]
+    assert nxt["manual_delay"] == [15, 35] and nxt["delay"][0] >= 60                      # toplu hız aynı kalır
+    # sıradaki bir kişiye sonradan tek tek tıklayınca öne alınır
+    await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [812], "manual": True})
+    items = (await bridge_actions.next_batch(db, s, 10, DAY))["items"]
+    assert [(i["username"], i["manual"]) for i in items] == [("toplu2", True), ("tikladim", True), ("toplu1", False)]
+
+
+@pytest.mark.asyncio
+async def test_bulk_selections_are_never_manual_so_they_stay_slow(client, make_session, db):
+    s = await make_session(source="zip", allow_actions=True)
+    for i in range(821, 826):
+        await _pool_user(db, s, i, f"k{i}")
+    await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": list(range(821, 826)), "manual": True})
+    assert not any(i["manual"] for i in (await bridge_actions.next_batch(db, s, 10, DAY))["items"])   # 4+ kişi = toplu, insan hızı sayılmaz

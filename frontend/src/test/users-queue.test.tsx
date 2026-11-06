@@ -42,7 +42,7 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     renderApp(<UsersPage />)
     const btn = await screen.findAllByTitle('Takipten çık')
     await userEvent.click(btn[0])
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5]))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
     expect(actionsApi.unfollow).not.toHaveBeenCalled()          // sunucunun anında-işlem yolu kullanılmaz
     expect(await screen.findByText('1 işlem kuyruğa eklendi')).toBeInTheDocument()
   })
@@ -81,7 +81,7 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     const unfollow = (await screen.findAllByTitle('Takipten çık'))[0]
     expect(unfollow).not.toHaveAttribute('aria-disabled', 'true')               // kapalıyken de kuyruğa ekler
     await userEvent.click(unfollow)
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5]))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
     expect(await screen.findByText(/İşlemler Ayarlar'dan kapatılmış\. İstekler kuyruğa eklenir ve silinmez/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ayarlar\'da aç' })).toHaveAttribute('href', '/settings')
     expect(screen.queryByRole('button', { name: 'İşlemleri aç' })).not.toBeInTheDocument()
@@ -270,7 +270,7 @@ describe('UsersPage — permanent queue history', () => {
     bridge.actionHistory.mockResolvedValue(hist([row(2, 'zaten', 'skipped', null), row(3, 'bozuk', 'failed', 'x', 3)], { skipped: 1, failed: 1 }))
     renderApp(<UsersPage />)
     await userEvent.click(await screen.findByRole('button', { name: 'Başarısızları yeniden kuyruğa ekle' }))
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [3]))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [3], false))
   })
 
   it('filter buttons ask the server for that state; nothing is shown when there is no history', async () => {
@@ -284,5 +284,49 @@ describe('UsersPage — permanent queue history', () => {
     renderApp(<UsersPage />)
     await screen.findByText('@ali')
     expect(screen.queryByText(/Kuyruk geçmişi/)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('UsersPage — clicking a person starts the extension at human pace', () => {
+  function extReady() {
+    window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.6.3' }, origin: window.location.origin, source: window }))
+  }
+  const runCalls = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run')
+
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 4, items: [user(5, 'ali'), user(6, 'veli'), user(7, 'ayse'), user(8, 'can')] } })
+  })
+
+  it('a single click queues the person as manual and triggers the extension right away', async () => {
+    const post = vi.spyOn(window, 'postMessage').mockImplementation((() => {}) as any)
+    renderApp(<UsersPage />)
+    await screen.findAllByTitle('Takipten çık')
+    extReady()
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
+    await waitFor(() => expect(runCalls(post).length).toBe(1))
+    expect((runCalls(post)[0][0] as any).cmd).toEqual({ kind: 'actions' })
+    post.mockRestore()
+  })
+
+  it('a bulk selection is queued slowly and does NOT start the extension by itself', async () => {
+    const post = vi.spyOn(window, 'postMessage').mockImplementation((() => {}) as any)
+    renderApp(<UsersPage />)
+    await screen.findAllByTitle('Takipten çık')
+    extReady()
+    const boxes = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-square'))
+    await userEvent.click(boxes[0])                                            // tümünü seç
+    await userEvent.click(await screen.findByRole('button', { name: /Toplu Çıkar/ }))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', expect.arrayContaining([5, 6, 7, 8]), false))
+    expect(runCalls(post).length).toBe(0)
+    post.mockRestore()
+  })
+
+  it('without the extension the click still queues and says nothing is lost', async () => {
+    renderApp(<UsersPage />)                                                   // eklenti sinyali yok
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
   })
 })
