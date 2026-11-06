@@ -465,6 +465,7 @@ const tr = {
       all:          'Tümü',
       following:    'Takip Ettiklerim',
       followers:    'Takipçilerim',
+      queued:       'Kuyrukta',
       notBack:      'Beni Takip Etmeyenler',
       oneWaySilent: 'Takip etmiyor, ilgisi yok',
       mutualSilent: 'Karşılıklı ama sessiz',
@@ -520,6 +521,10 @@ const tr = {
     },
     queue: {
       title:        'Eklenti kuyruğu',
+      undo:         'Kuyruktan geri al',
+      undoShort:    'Geri al',
+      undone:       (n: number) => n ? `${n} kişi kuyruktan geri alındı` : 'Geri alınacak bekleyen işlem yok (zaten yapılmış olabilir)',
+      hiddenNote:   (n: number) => `${n} kişi kuyrukta; listelerden düşürüldü.`,
       hint:         'Takip / takipten çıkma istekleri kuyruğa alınır; eklenti Instagram sekmenizde, işlemler arasında birkaç dakika bekleyerek tek tek yapar. Bir çalıştırmada en fazla 10 işlem yapılır.',
       pending:      (n: number) => `${n} işlem sırada`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>

@@ -11,13 +11,13 @@ import api from '../api/client'
 import { apiErrorMessage } from '../lib/problems'
 import {
   BadgeCheck, Lock, Download, RefreshCw, Heart, MessageSquare,
-  TrendingUp, UserPlus, UserMinus, UserX, ChevronLeft, ChevronRight, CheckSquare, Square
+  TrendingUp, Undo2, UserPlus, UserMinus, UserX, ChevronLeft, ChevronRight, CheckSquare, Square
 } from 'lucide-react'
 
 type SortCol = 'username' | 'like_count' | 'comment_count' | 'engagement_score' | 'they_follow' | 'we_follow'
 type SortDir = 'asc' | 'desc'
 // ghosts: silinmiş/dondurulmuş hesap (hayalet). silent: takip/takipçi ama hiç etkileşim yok (etkileşimsiz).
-type FilterTab = 'all' | 'following' | 'followers' | 'notBack' | 'oneWaySilent' | 'mutualSilent' | 'silent' | 'ghosts'
+type FilterTab = 'all' | 'queued' | 'following' | 'followers' | 'notBack' | 'oneWaySilent' | 'mutualSilent' | 'silent' | 'ghosts'
 
 interface UserPoolItem {
   id: number
@@ -37,7 +37,7 @@ interface UserPoolItem {
   first_seen_at: string | null
 }
 
-const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'notBack', 'oneWaySilent', 'mutualSilent', 'silent', 'ghosts']
+const FILTER_KEYS: FilterTab[] = ['all', 'queued', 'following', 'followers', 'notBack', 'oneWaySilent', 'mutualSilent', 'silent', 'ghosts']
 
 const isGhost  = (u: UserPoolItem) => u.reach_status === 'unreachable'
 const noTouch = (u: UserPoolItem) => u.like_count === 0 && u.comment_count === 0 && !isGhost(u)   // beğeni ve yorum yok, hesap duruyor
@@ -176,7 +176,12 @@ export default function UsersPage() {
   }
 
   // Filtrelenmiş + sayfalanmış liste
-  const filtered = applyFilter(sortedItems, tab, withGhosts)
+  // Kuyruğa eklenenler normal listelerden düşer; "Kuyrukta" sekmesinde görünür ve oradan geri alınır
+  const queuedIds = new Set(queuedById.keys())
+  const baseFor = (items: UserPoolItem[], key: FilterTab) =>
+    key === 'queued' ? items.filter(u => queuedIds.has(u.id)) : items.filter(u => !queuedIds.has(u.id))
+  const filtered = applyFilter(baseFor(sortedItems, tab), tab, withGhosts)
+  const queuedHere = allItems.filter(u => queuedIds.has(u.id)).length
   const totalPages = Math.ceil(filtered.length / LIMIT)
   const pageItems  = filtered.slice((page - 1) * LIMIT, page * LIMIT)
 
@@ -196,6 +201,16 @@ export default function UsersPage() {
       showToast(errMsg(e), false)
       return false
     }
+  }
+
+  const undoQueued = async (ids: number[]) => {
+    try {
+      const r = await bridgeApi.cancelActions(sid, ids)
+      showToast(T.users.queue.undone(r.removed))
+      setSelected(new Set())
+      await loadQueue()
+      if (tab === 'queued' && queuedHere <= ids.length) setTab('all')       // son kişi de geri alındıysa boş sekmede kalma
+    } catch (e) { showToast(errMsg(e), false) }
   }
 
   const runQueue = async () => {
@@ -394,6 +409,12 @@ export default function UsersPage() {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">{T.users.queue.hint}</p>
+          {queuedHere > 0 && (
+            <p className="text-xs text-gray-400 mt-1">
+              {T.users.queue.hiddenNote(queuedHere)}{' '}
+              <button onClick={() => { setTab('queued'); setPage(1); setSelected(new Set()) }} className="underline">{T.users.tabs.queued}</button>
+            </p>
+          )}
           {queue.blocked === 'off' && (
             <p className="text-xs text-amber-300 mt-1">
               {T.users.queue.offNote}{' '}
@@ -409,7 +430,7 @@ export default function UsersPage() {
 
       {/* Filter tabs */}
       <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
-        {FILTER_TABS.map(f => (
+        {FILTER_TABS.filter(f => f.key !== 'queued' || (viaExt && (queuedHere > 0 || tab === 'queued'))).map(f => (
           <button key={f.key} title={f.hint}
             onClick={() => { setTab(f.key); setPage(1); setSelected(new Set()) }}
             className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -419,7 +440,7 @@ export default function UsersPage() {
             }`}>
             {f.label}
             <span className="ml-1.5 opacity-60">
-              {applyFilter(allItems, f.key, withGhosts).length}
+              {applyFilter(baseFor(allItems, f.key), f.key, withGhosts).length}
             </span>
           </button>
         ))}
@@ -442,6 +463,12 @@ export default function UsersPage() {
         {selected.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs text-gray-400">{T.users.selectedN(selected.size)}</span>
+            {tab === 'queued' ? (
+              <button onClick={() => undoQueued([...selected])}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-900 hover:bg-purple-800 rounded-lg text-xs text-purple-200">
+                <Undo2 size={12} /> {T.users.queue.undo}
+              </button>
+            ) : (<>
             <button onClick={handleBulkFollow} disabled={bulkLoading} aria-disabled={!canAct} title={blockedReason ?? undefined}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900 hover:bg-green-800 disabled:opacity-50 rounded-lg text-xs text-green-300">
               <UserPlus size={12} /> {T.users.action.bulkFollow}
@@ -450,6 +477,7 @@ export default function UsersPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 rounded-lg text-xs text-red-300">
               <UserMinus size={12} /> {T.users.action.bulkUnfollow}
             </button>
+            </>)}
           </div>
         )}
       </div>
@@ -571,7 +599,13 @@ export default function UsersPage() {
 
                   {/* Aksiyon */}
                   <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                    {u.we_follow ? (
+                    {queuedIds.has(u.id) ? (
+                      <button onClick={() => undoQueued([u.id])} title={T.users.queue.undo} aria-label={`${T.users.queue.undo}: @${u.username}`}
+                        style={{ height: 28, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, cursor: 'pointer', fontSize: 11,
+                          background: 'rgba(155,143,224,0.15)', border: '1px solid rgba(155,143,224,0.35)', color: '#b9aef0' }}>
+                        <Undo2 size={11} /> {T.users.queue.undoShort}
+                      </button>
+                    ) : u.we_follow ? (
                       <button onClick={() => handleUnfollow(u)} disabled={!!actLoad} aria-disabled={!canAct}
                         title={blockedReason ?? T.users.action.unfollow}
                         style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(224,112,112,0.15)', border: '1px solid rgba(224,112,112,0.3)', color: '#e07070', opacity: actLoad || !canAct ? 0.4 : 1 }}>

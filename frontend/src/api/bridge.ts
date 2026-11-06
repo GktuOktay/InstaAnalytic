@@ -47,6 +47,7 @@ export const bridgeApi = {
   actions: (id: string) => api.get<ActionQueue>(`/sessions/${id}/bridge/actions`).then(r => r.data),
   enqueueActions: (id: string, action: 'follow' | 'unfollow', user_ids: number[]) =>
     api.post<{ added: number; duplicate: number; skipped: number }>(`/sessions/${id}/bridge/actions`, { action, user_ids }).then(r => r.data),
+  cancelActions: (id: string, user_ids: number[]) => api.post<{ removed: number }>(`/sessions/${id}/bridge/actions/cancel`, { user_ids }).then(r => r.data),
   clearActions: (id: string) => api.delete<{ removed: number }>(`/sessions/${id}/bridge/actions`).then(r => r.data),
   status: (id: string) => api.get<BridgeStatus>(`/sessions/${id}/bridge/status`).then(r => r.data),
   todo: (id: string, limit = 8, kind: 'likers' | 'comments' = 'likers') =>

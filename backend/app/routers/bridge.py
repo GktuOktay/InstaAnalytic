@@ -155,6 +155,10 @@ class EnqueueActions(BaseModel):
     user_ids: list[int] = Field(min_length=1, max_length=200)
 
 
+class CancelActions(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=200)
+
+
 class ActionResult(BaseModel):
     outcome: Literal["done", "already", "not_found", "failed", "blocked"]
     note: str | None = Field(default=None, max_length=300)
@@ -180,6 +184,12 @@ async def actions_next(session_id: uuid.UUID, limit: int = 10, db: AsyncSession 
 @router.post("/sessions/{session_id}/bridge/actions/{action_id}/result")
 async def actions_result(session_id: uuid.UUID, action_id: int, body: ActionResult, db: AsyncSession = Depends(get_db)):
     return await bridge_actions.report(db, await _session(db, session_id), action_id, body.outcome, body.note)
+
+
+@router.post("/sessions/{session_id}/bridge/actions/cancel")
+async def actions_cancel(session_id: uuid.UUID, body: CancelActions, db: AsyncSession = Depends(get_db)):
+    """Kuyruğa eklenen kişileri geri al: yalnızca bekleyenler silinir."""
+    return {"removed": await bridge_actions.cancel(db, await _session(db, session_id), body.user_ids)}
 
 
 @router.delete("/sessions/{session_id}/bridge/actions")

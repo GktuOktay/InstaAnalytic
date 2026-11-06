@@ -532,3 +532,27 @@ async def test_queueing_is_always_accepted_and_nothing_is_lost_while_actions_are
     assert [i["username"] for i in nxt["items"]] == ["x"]                      # açılınca aynı kayıt gelir
     assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 1
     assert (await client.delete(f"/api/sessions/{s.id}/bridge/actions")).json() == {"removed": 1}
+
+
+@pytest.mark.asyncio
+async def test_queued_people_can_be_taken_back_without_touching_done_ones(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    for i, n in ((751, "a"), (752, "b"), (753, "c")):
+        await _pool_user(db, s, i, n)
+    await bridge_actions.enqueue(db, s, "unfollow", [751, 752, 753])
+    [first] = (await bridge_actions.next_batch(db, s, 1, DAY))["items"]
+    await bridge_actions.report(db, s, first["id"], "done", None, DAY)            # a yapıldı
+    assert await bridge_actions.cancel(db, s, [751, 752]) == 1                    # yalnızca bekleyen b geri alındı
+    st = await bridge_actions.status(db, s, DAY)
+    assert [p["username"] for p in st["pending"]] == ["c"] and st["done_day"] == 1
+    assert await bridge_actions.cancel(db, s, []) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancel_endpoint(client, make_session, db):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 761, "z")
+    await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [761]})
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions/cancel", json={"user_ids": [761]})
+    assert r.json() == {"removed": 1}
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 0

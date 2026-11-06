@@ -79,7 +79,7 @@ async def status(db: AsyncSession, session: Session, now: datetime | None = None
     hourly, daily, dmin, dmax = limits(session, now)
     rows = (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
-    ).order_by(BridgeAction.id).limit(200))).scalars().all()
+    ).order_by(BridgeAction.id).limit(1000))).scalars().all()
     total_pending = (await db.execute(select(func.count(BridgeAction.id)).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"))).scalar() or 0
     return {
@@ -159,6 +159,16 @@ async def report(db: AsyncSession, session: Session, action_id: int, outcome: st
                      status={"done": "success", "already": "skipped"}.get(outcome, "failed"), error_msg=note, executed_at=now))
     await db.commit()
     return {"ok": True, "status": row.status}
+
+
+async def cancel(db: AsyncSession, session: Session, user_ids: list[int]) -> int:
+    """Seçili kişilerin bekleyen işlemlerini kuyruktan geri alır (yapılmış olanlara dokunulmaz)."""
+    if not user_ids:
+        return 0
+    res = await db.execute(delete(BridgeAction).where(
+        BridgeAction.session_id == session.id, BridgeAction.status == "pending", BridgeAction.ig_user_id.in_(user_ids[:MAX_ENQUEUE])))
+    await db.commit()
+    return res.rowcount or 0
 
 
 async def clear(db: AsyncSession, session: Session) -> int:

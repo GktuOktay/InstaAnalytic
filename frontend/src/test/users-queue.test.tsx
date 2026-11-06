@@ -52,7 +52,9 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     renderApp(<UsersPage />)
     expect(await screen.findByText(/3 işlem sırada/)).toBeInTheDocument()
     expect(screen.getByText(/Bu saat 1\/8 · bugün 3\/30 · işlemler arası ~120-240 sn/)).toBeInTheDocument()
-    expect(await screen.findByText(/⏳/)).toBeInTheDocument()                                 // satırdaki rozet
+    expect(await screen.findByText(/1 kişi kuyrukta; listelerden düşürüldü\./)).toBeInTheDocument()
+    expect(screen.queryByText('@ali')).not.toBeInTheDocument()                                  // kuyruktaki kişi normal listeden düştü
+    expect(screen.getByText('@veli')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Kuyruğu temizle' })).toBeEnabled()
   })
 
@@ -184,5 +186,56 @@ describe('UsersPage — "Not following me back" with a ghost switch', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: /Not Following Me Back/ }))
     expect(screen.getByRole('checkbox', { name: /Include ghost accounts/ })).toBeInTheDocument()
+  })
+})
+
+
+describe('UsersPage — queued people leave the lists and can be taken back', () => {
+  const rows = [user(5, 'ali'), user(6, 'veli', { we_follow: true }), user(7, 'ayse', { we_follow: true })]
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 3, items: rows } })
+    bridge.cancelActions = vi.fn().mockResolvedValue({ removed: 1 })
+    ;(bridgeApi as any).cancelActions = bridge.cancelActions
+    bridge.actions.mockResolvedValue(queue({ pending_count: 1, pending: [{ id: 1, ig_user_id: 5, username: 'ali', action: 'unfollow' }] }))
+  })
+
+  it('a queued person is gone from "All" and its count, and shows up under "Queued" with an Undo button', async () => {
+    renderApp(<UsersPage />)
+    expect(await screen.findByText('@veli')).toBeInTheDocument()
+    expect(screen.queryByText('@ali')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Tümü\s*2$/ })).toBeInTheDocument()            // sayı kuyruktakini içermez
+    await userEvent.click(screen.getByRole('button', { name: /^Kuyrukta\s*1$/ }))
+    expect(screen.getByText('@ali')).toBeInTheDocument()
+    expect(screen.queryByText('@veli')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kuyruktan geri al: @ali' })).toBeInTheDocument()
+  })
+
+  it('"Undo" takes the person back from the queue (nothing else is touched)', async () => {
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Kuyrukta\s*1$/ }))
+    bridge.actions.mockResolvedValue(queue())                                                   // geri alınca kuyruk boşalır
+    await userEvent.click(screen.getByRole('button', { name: 'Kuyruktan geri al: @ali' }))
+    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', [5]))
+    expect(await screen.findByText('1 kişi kuyruktan geri alındı')).toBeInTheDocument()
+    expect(await screen.findByText('@ali')).toBeInTheDocument()                                 // ana listeye döndü
+    expect(screen.queryByRole('button', { name: /^Kuyrukta/ })).not.toBeInTheDocument()         // boş sekme kaybolur
+  })
+
+  it('bulk undo from the Queued tab', async () => {
+    bridge.actions.mockResolvedValue(queue({ pending_count: 2, pending: [
+      { id: 1, ig_user_id: 5, username: 'ali', action: 'unfollow' }, { id: 2, ig_user_id: 6, username: 'veli', action: 'unfollow' }] }))
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Kuyrukta\s*2$/ }))
+    const boxes = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-square'))
+    await userEvent.click(boxes[0])                                                              // üstteki "tümünü seç"
+    await userEvent.click(await screen.findByRole('button', { name: 'Kuyruktan geri al' }))
+    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', expect.arrayContaining([5, 6])))
+  })
+
+  it('English mode', async () => {
+    renderApp(<UsersPage />, { lang: 'en' })
+    expect(await screen.findByRole('button', { name: /^Queued\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByText(/1 people are queued; hidden from the lists\./)).toBeInTheDocument()
   })
 })
