@@ -17,7 +17,7 @@ import {
 type SortCol = 'username' | 'like_count' | 'comment_count' | 'engagement_score' | 'they_follow' | 'we_follow'
 type SortDir = 'asc' | 'desc'
 // ghosts: silinmiş/dondurulmuş hesap (hayalet). silent: takip/takipçi ama hiç etkileşim yok (etkileşimsiz).
-type FilterTab = 'all' | 'following' | 'followers' | 'notBack' | 'silent' | 'ghosts'
+type FilterTab = 'all' | 'following' | 'followers' | 'notBack' | 'oneWaySilent' | 'mutualSilent' | 'silent' | 'ghosts'
 
 interface UserPoolItem {
   id: number
@@ -37,9 +37,10 @@ interface UserPoolItem {
   first_seen_at: string | null
 }
 
-const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'notBack', 'silent', 'ghosts']
+const FILTER_KEYS: FilterTab[] = ['all', 'following', 'followers', 'notBack', 'oneWaySilent', 'mutualSilent', 'silent', 'ghosts']
 
 const isGhost  = (u: UserPoolItem) => u.reach_status === 'unreachable'
+const noTouch = (u: UserPoolItem) => u.like_count === 0 && u.comment_count === 0 && !isGhost(u)   // beğeni ve yorum yok, hesap duruyor
 const isSilent = (u: UserPoolItem) => u.engagement_score === 0 && !isGhost(u) && !!(u.we_follow || u.they_follow)
 
 function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
@@ -47,6 +48,8 @@ function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
     case 'following': return items.filter(u => u.we_follow)
     case 'followers': return items.filter(u => u.they_follow)
     case 'notBack':   return items.filter(u => u.we_follow && !u.they_follow)   // ben takip ediyorum, o etmiyor
+    case 'oneWaySilent':  return items.filter(u => u.we_follow && !u.they_follow && noTouch(u))   // ben takip ediyorum, o etmiyor, hiç etkileşimi yok
+    case 'mutualSilent':  return items.filter(u => u.we_follow && u.they_follow && noTouch(u))    // karşılıklı ama sessiz
     case 'silent':    return items.filter(isSilent)
     case 'ghosts':    return items.filter(isGhost)
     default:          return items
@@ -74,7 +77,7 @@ export default function UsersPage() {
   const FILTER_TABS = FILTER_KEYS.map(key => ({
     key,
     label: T.users.tabs[key],
-    hint:  key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
+    hint:  key === 'oneWaySilent' ? T.users.oneWaySilentHint : key === 'mutualSilent' ? T.users.mutualSilentHint : key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
   const { sessions, loading: sessionLoading } = useSession()

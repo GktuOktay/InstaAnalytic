@@ -377,7 +377,7 @@ const tr: GuideContent = {
       },
       {
         title: 'Sonuçlara bak',
-        text: 'Takipçi Analizi, ZIP yüklendiği anda hazırdır. Gözden çıkar ve Takipçi Skoru için en az 10 gönderinin beğenenleri okunmuş olmalı.',
+        text: 'Takipçi Analizi, ZIP yüklendiği anda hazırdır. Kullanıcı Havuzundaki etkileşim filtreleri ve Takipçi Skoru için en az 10 gönderinin beğenenleri okunmuş olmalı.',
         link: { to: '/followers', label: 'Takipçi Analizi' },
       },
     ],
@@ -535,7 +535,7 @@ const tr: GuideContent = {
       {
         art: 'connected',
         title: 'Bağlandığını kontrol et',
-        text: 'Uygulamada Ayarlar ya da Gözden çıkar sayfasını aç. "Tarayıcı köprüsü" kartında yeşil bir nokta ve "Dinliyor" yazısını görürsen kurulum tamamdır.',
+        text: 'Uygulamada Ayarlar ya da Gönderiler sayfasını aç. "Tarayıcı köprüsü" kartında yeşil bir nokta ve "Dinliyor" yazısını görürsen kurulum tamamdır.',
         tip: 'Görmezsen Instagram sekmesini bir kez yenile, sonra uygulama sayfasını da yenile. Uygulama sayfası eklentiyle doğrudan konuşur; eklentiyi kurduktan ya da güncelledikten sonra uygulama sayfasını bir kez yenilemen gerekir.',
         link: { to: '/settings', label: 'Ayarlar' },
         alt: 'Uygulamanın Ayarlar sayfasında Tarayıcı köprüsü kartı. Yeşil nokta ve "Dinliyor" yazısı işaretli.',
@@ -820,9 +820,9 @@ const tr: GuideContent = {
         link: { to: '/fans', label: 'Aç' },
       },
       {
-        term: 'Gözden çıkar',
-        text: 'Takip ettiklerini ve takipçilerini etkileşime göre gruplara ayırır. Gruplar aşağıda.',
-        link: { to: '/cleanup', label: 'Aç' },
+        term: 'Kullanıcı Havuzu',
+        text: 'Tüm kişilerin tablosu; her sütun sıralanır. Filtrelerle takip ilişkisini ve etkileşimi birleştirip takipten çıkma adaylarını bulursun. Gruplar aşağıda.',
+        link: { to: '/users', label: 'Aç' },
       },
       {
         term: 'Kuyruk monitörü',
@@ -835,7 +835,7 @@ const tr: GuideContent = {
         link: { to: '/actions', label: 'Aç' },
       },
     ],
-    groupsTitle: 'Gözden çıkar grupları',
+    groupsTitle: 'Kullanıcı Havuzu grupları (filtreler)',
     groupsNote: 'Bu sayfa, beğenenleri okunan son gönderilerde kimin beğeni ya da yorum bıraktığına bakar. Sonucun doğru olması için en az 10 gönderinin beğenenleri okunmuş ve takipçi listesi eksiksiz olmalı (ZIP\'te "Tüm zamanlar").',
     groups: [
       { term: 'Hayaletler', text: 'Silinmiş ya da dondurulmuş hesaplar. Takip etmenin bir anlamı kalmamış. Bırakması en kolay grup.' },
@@ -896,7 +896,7 @@ const tr: GuideContent = {
       { term: '"JSON olarak okunamadı" hatası', text: 'Biçim HTML seçilmiş. Tekrar iste ve JSON seç.' },
       { term: '"Geçerli bir ZIP dosyası değil" hatası', text: 'Dosya yarım inmiş ya da açılıp yeniden sıkıştırılmış. İndirdiğin dosyayı olduğu gibi yükle.' },
       {
-        term: 'Gözden çıkar sayfası "yeterli veri yok" diyor.',
+        term: 'Kullanıcı Havuzu\'ndaki "ilgisi yok" listeleri boş ya da yanlış görünüyor.',
         text: 'En az 10 gönderinin beğenenleri okunmuş olmalı. Köprü eklentisini kur, Gönderiler sayfasında önce "Gönderileri çek", sonra "Beğenenleri çek"e bas.',
         link: { to: '#kullanim', label: 'Nasıl' },
       },
@@ -1013,7 +1013,7 @@ const tr: GuideContent = {
         items: [
           'En az 10 gönderinin beğenenleri okundu',
           'Takipçi listesi eksiksiz ("Tüm zamanlar")',
-          'Gözden çıkar listesini kendi gözünle gözden geçirdim',
+          "Kullanıcı Havuzu'ndaki listeyi kendi gözümle gözden geçirdim",
           "Takipten çıkmayı Instagram'dan elle, günde birkaç düzineyi geçmeden yapacağım",
         ],
       },
@@ -1077,7 +1077,7 @@ const en: GuideContent = {
       },
       {
         title: 'Look at the results',
-        text: 'Follower Analysis is ready as soon as the ZIP is in. Cleanup and Follower Score need the likers of at least 10 posts.',
+        text: 'Follower Analysis is ready as soon as the ZIP is in. The User Pool engagement filters and Follower Score need the likers of at least 10 posts.',
         link: { to: '/followers', label: 'Follower Analysis' },
       },
     ],
@@ -1235,7 +1235,7 @@ const en: GuideContent = {
       {
         art: 'connected',
         title: 'Check that it is connected',
-        text: 'In the app, open Settings or Cleanup. If the "Browser bridge" card shows a green dot and "Listening", you are done.',
+        text: 'In the app, open Settings or Posts. If the "Browser bridge" card shows a green dot and "Listening", you are done.',
         tip: 'If you do not see it, reload the Instagram tab once, then reload the app page too. The app page talks to the extension directly; after installing or updating the extension, reload the app page once.',
         link: { to: '/settings', label: 'Settings' },
         alt: 'The Browser bridge card on the Settings page of the app. The green dot and "Listening" are marked.',
@@ -1510,11 +1510,11 @@ const en: GuideContent = {
         text: 'A 0–100 score for each follower, based on how much they liked and commented on your recent posts. Also shows who is warming up or cooling down.',
         link: { to: '/fans', label: 'Open' },
       },
-      { term: 'Cleanup', text: 'Groups the people you follow and your followers by engagement. The groups are explained below.', link: { to: '/cleanup', label: 'Open' } },
+      { term: 'User Pool', text: 'A table of everyone; every column sorts. Filters combine the follow relationship with engagement so you can find unfollow candidates. The groups are explained below.', link: { to: '/users', label: 'Open' } },
       { term: 'Queue Monitor', text: 'Jobs that are waiting or running. Shows why a job is waiting.', link: { to: '/monitor', label: 'Open' } },
       { term: 'Action History', text: 'Every follow and unfollow the app made, with dates.', link: { to: '/actions', label: 'Open' } },
     ],
-    groupsTitle: 'Cleanup groups',
+    groupsTitle: 'User Pool groups (filters)',
     groupsNote: 'This page looks at who liked or commented on your most recently read posts. For the result to be right, the likers of at least 10 posts must be read and the follower list must be complete ("All time" in the ZIP).',
     groups: [
       { term: 'Ghosts', text: 'Deleted or frozen accounts. Following them no longer means anything. The easiest group to drop.' },
@@ -1575,7 +1575,7 @@ const en: GuideContent = {
       { term: '"Could not be read as JSON" error', text: 'The format was HTML. Request it again and pick JSON.' },
       { term: '"Not a valid ZIP file" error', text: 'The download was cut off, or the file was unzipped and zipped again. Upload the file exactly as downloaded.' },
       {
-        term: 'Cleanup says there is not enough data.',
+        term: 'The User Pool "no engagement" lists look empty or wrong.',
         text: 'The likers of at least 10 posts must be read. Install the bridge extension, then on the Posts page press "Fetch posts" first and "Fetch likers" after.',
         link: { to: '#kullanim', label: 'How' },
       },
@@ -1692,7 +1692,7 @@ const en: GuideContent = {
         items: [
           'The likers of at least 10 posts are read',
           'The follower list is complete ("All time")',
-          'I went through the Cleanup list myself',
+          'I went through the User Pool list myself',
           'I will unfollow by hand in Instagram, no more than a few dozen a day',
         ],
       },

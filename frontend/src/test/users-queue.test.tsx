@@ -104,3 +104,39 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     expect(await screen.findByText('Follow / unfollow actions are turned off. You can deliberately turn them on in Settings.')).toBeInTheDocument()
   })
 })
+
+describe('UsersPage — filters that replaced the Cleanup page', () => {
+  const rows = [
+    user(1, 'tek_yonlu_sessiz', { we_follow: true, they_follow: false }),                         // ben takip ediyorum, o etmiyor, hiç etkileşim yok
+    user(2, 'karsilikli_sessiz', { we_follow: true, they_follow: true }),
+    user(3, 'tek_yonlu_ama_begenir', { we_follow: true, they_follow: false, like_count: 4 }),
+    user(4, 'kapali_hesap', { we_follow: true, they_follow: false, reach_status: 'unreachable' }), // hayalet: sessiz sayılmaz
+    user(5, 'sadik', { we_follow: true, they_follow: true, like_count: 9, comment_count: 2, engagement_score: 60 }),
+  ]
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: rows.length, items: rows } })
+  })
+
+  it('"Takip etmiyor, ilgisi yok" lists only people you follow who do not follow back and never touched a post', async () => {
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /Takip etmiyor, ilgisi yok/ }))
+    expect(screen.getByText('@tek_yonlu_sessiz')).toBeInTheDocument()
+    for (const n of ['karsilikli_sessiz', 'tek_yonlu_ama_begenir', 'kapali_hesap', 'sadik']) expect(screen.queryByText(`@${n}`)).not.toBeInTheDocument()
+  })
+
+  it('"Karşılıklı ama sessiz" lists only mutual follows without any engagement', async () => {
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /Karşılıklı ama sessiz/ }))
+    expect(screen.getByText('@karsilikli_sessiz')).toBeInTheDocument()
+    expect(screen.queryByText('@sadik')).not.toBeInTheDocument()
+    expect(screen.queryByText('@tek_yonlu_sessiz')).not.toBeInTheDocument()
+  })
+
+  it('a closed account is a ghost, never "inactive"', async () => {
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /Hayaletler/ }))
+    expect(screen.getByText('@kapali_hesap')).toBeInTheDocument()
+    expect(screen.queryByText('@tek_yonlu_sessiz')).not.toBeInTheDocument()
+  })
+})

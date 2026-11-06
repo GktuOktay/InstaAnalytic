@@ -10,7 +10,7 @@ vi.mock('../api/bridge', () => ({ bridgeApi: { status: vi.fn(), todo: vi.fn(), s
 import { sessionsApi } from '../api/sessions'
 import { insightsApi } from '../api/insights'
 import { bridgeApi } from '../api/bridge'
-import CleanupPage from '../pages/CleanupPage'
+import BridgeStatusCard from '../components/BridgeStatusCard'
 import BridgeWarningBanner from '../components/BridgeWarningBanner'
 
 const counts = { ghost: 2, one_way_silent: 1, mutual_silent: 0, silent_follower: 0, one_way_engaged: 0, occasional: 0, loyal: 1 }
@@ -33,35 +33,6 @@ beforeEach(() => {
   ;(bridgeApi.todo as any).mockResolvedValue([
     { id: '77', shortcode: 'NEW1', thumbnail_url: null, like_count: 5, comment_count: 0, taken_at: null },
   ])
-})
-
-describe('CleanupPage', () => {
-  it('lists the default group and switches groups', async () => {
-    ;(insightsApi.cleanup as any).mockResolvedValueOnce(res())
-      .mockResolvedValueOnce(res({ rows: [row('kapali', 'ghost')], total_rows: 2 }))
-    renderApp(<CleanupPage />)
-    expect(await screen.findByText('@sessiz')).toBeInTheDocument()
-    expect(screen.getByText('12 / 50 gönderinin beğenenleri okundu')).toBeInTheDocument()
-    expect(await screen.findByText('Dinliyor')).toBeInTheDocument()
-    expect(screen.getByText('Bugün 3 gönderi, 214 kişi')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Instagram'da aç: 5 beğeni/ })).toHaveAttribute('href', 'https://www.instagram.com/p/NEW1/')
-    await userEvent.click(screen.getByRole('tab', { name: /Hayalet/ }))
-    expect(await screen.findByText('@kapali')).toBeInTheDocument()
-    expect((insightsApi.cleanup as any).mock.calls[1][1]).toMatchObject({ group: 'ghost', page: 1 })
-    expect(screen.getByRole('button', { name: /Daha fazla/ })).toBeInTheDocument()
-  })
-
-  it('points to the guide when nothing has been read yet', async () => {
-    ;(insightsApi.cleanup as any).mockResolvedValue(res({ scanned_posts: 0, rows: [], total_rows: 0 }))
-    renderApp(<CleanupPage />)
-    expect(await screen.findByRole('link', { name: /Nasıl kurulur/ })).toHaveAttribute('href', '/guide#kopru')
-  })
-
-  it('warns when too few posts were read', async () => {
-    ;(insightsApi.cleanup as any).mockResolvedValue(res({ scanned_posts: 4, enough_data: false }))
-    renderApp(<CleanupPage />)
-    await waitFor(() => expect(screen.getByText(/en az 10 gönderi bekle/)).toBeInTheDocument())
-  })
 })
 
 describe('BridgeWarningBanner', () => {
@@ -87,12 +58,11 @@ describe('BridgeWarningBanner', () => {
 
 describe('BridgeStatusCard version check', () => {
   it('tells the user when the extension is older than the app', async () => {
-    ;(insightsApi.cleanup as any).mockResolvedValue(res())
     ;(bridgeApi.status as any).mockResolvedValue({
       posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
       connected: true, stopped: false, warning_until: null, warning_reason: null, extension_version: '1.0.0',
     })
-    renderApp(<CleanupPage />)
+    renderApp(<BridgeStatusCard sessionId="s1" />)
     expect(await screen.findByText(/Eklentin güncel değil \(1\.0\.0 →/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Nasıl güncellenir?' })).toHaveAttribute('href', '/guide#guncelle')
   })
