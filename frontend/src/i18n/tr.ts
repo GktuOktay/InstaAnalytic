@@ -525,7 +525,7 @@ const tr = {
       undoShort:    'Geri al',
       undone:       (n: number) => n ? `${n} kişi kuyruktan geri alındı` : 'Geri alınacak bekleyen işlem yok (zaten yapılmış olabilir)',
       hiddenNote:   (n: number) => `${n} kişi kuyrukta; listelerden düşürüldü.`,
-      hint:         'Takip / takipten çıkma istekleri kuyruğa alınır; eklenti Instagram sekmenizde, işlemler arasında birkaç dakika bekleyerek tek tek yapar. Bir çalıştırmada en fazla 10 işlem yapılır.',
+      hint:         'Başarısız olan işlem en fazla 3 kez denenir. Takip / takipten çıkma istekleri kuyruğa alınır; eklenti Instagram sekmenizde, işlemler arasında birkaç dakika bekleyerek tek tek yapar. Bir çalıştırmada en fazla 10 işlem yapılır.',
       pending:      (n: number) => `${n} işlem sırada`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>
                       `Bu saat ${h}/${hl} · bugün ${d}/${dl} · işlemler arası ~${a}-${b} sn`,
@@ -533,6 +533,7 @@ const tr = {
       running:      'Çalışıyor…',
       clear:        'Kuyruğu temizle',
       queuedBadge:  'sırada',
+      retryBadge:   (n: number, max: number) => `${n}/${max}. deneme`,
       added:        (n: number, dup: number, skipped: number) =>
                       `${n} işlem kuyruğa eklendi${dup ? `, ${dup} zaten sıradaydı` : ''}${skipped ? `, ${skipped} zaten istenen durumda` : ''}`,
       nothingAdded: 'Kuyruğa eklenecek işlem yok: zaten sırada ya da istenen durumda.',

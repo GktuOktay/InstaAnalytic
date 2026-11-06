@@ -556,3 +556,42 @@ async def test_cancel_endpoint(client, make_session, db):
     r = await client.post(f"/api/sessions/{s.id}/bridge/actions/cancel", json={"user_ids": [761]})
     assert r.json() == {"removed": 1}
     assert (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()["pending_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_failed_actions_are_retried_up_to_three_times_then_given_up(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 771, "ali")
+    await _pool_user(db, s, 772, "veli")
+    await bridge_actions.enqueue(db, s, "unfollow", [771, 772])
+    first = (await bridge_actions.next_batch(db, s, 10, DAY))["items"]
+    ali = next(i for i in first if i["username"] == "ali")
+    r = await bridge_actions.report(db, s, ali["id"], "failed", "düğme yok", DAY)
+    assert r == {"ok": True, "status": "pending", "attempts": 1, "retry": True}          # 1. başarısızlık: kuyrukta kalır
+    nxt = (await bridge_actions.next_batch(db, s, 10, DAY))["items"]
+    assert [i["username"] for i in nxt] == ["veli", "ali"]                              # yeni işler önce, tekrar deneme sonda
+    assert (await bridge_actions.report(db, s, ali["id"], "failed", "düğme yok", DAY))["attempts"] == 2
+    last = await bridge_actions.report(db, s, ali["id"], "failed", "düğme yok", DAY)
+    assert last == {"ok": True, "status": "failed"}                                     # 3. başarısızlıktan sonra vazgeçilir
+    st = await bridge_actions.status(db, s, DAY)
+    assert [p["username"] for p in st["pending"]] == ["veli"] and st["done_day"] == 0
+
+
+@pytest.mark.asyncio
+async def test_missing_account_is_not_retried(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 781, "yok")
+    await bridge_actions.enqueue(db, s, "unfollow", [781])
+    [it] = (await bridge_actions.next_batch(db, s, 1, DAY))["items"]
+    assert (await bridge_actions.report(db, s, it["id"], "not_found", "silinmiş", DAY))["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_succeeds_counts_as_done(db, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await _pool_user(db, s, 791, "ali")
+    await bridge_actions.enqueue(db, s, "unfollow", [791])
+    [it] = (await bridge_actions.next_batch(db, s, 1, DAY))["items"]
+    await bridge_actions.report(db, s, it["id"], "failed", "geçici", DAY)
+    assert (await bridge_actions.report(db, s, it["id"], "done", None, DAY))["status"] == "done"
+    assert (await bridge_actions.status(db, s, DAY))["done_day"] == 1

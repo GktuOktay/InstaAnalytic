@@ -111,6 +111,7 @@ export default function UsersPage() {
   const ext = useExtension()
   const [queue, setQueue] = useState<ActionQueue | null>(null)
   const queuedById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.action]))
+  const attemptsById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.attempts ?? 0]))
   const extRunning = ext.job?.kind === 'actions' && ext.job.state === 'running'
 
   const loadQueue = useCallback(async () => {
@@ -564,7 +565,7 @@ export default function UsersPage() {
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
                       {ghost && <span title={T.users.ghost.hint} style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
                       {silent && <span title={T.users.silent.hint} style={{ fontSize: 9, background: 'rgba(224,149,53,0.15)', color: '#e09535', padding: '1px 6px', borderRadius: 20 }}>{T.users.silent.badge}</span>}
-                      {queuedById.has(u.id) && <span style={{ fontSize: 9, background: 'rgba(155,143,224,0.18)', color: '#b9aef0', padding: '1px 6px', borderRadius: 20 }}>⏳ {T.users.queue.queuedBadge}</span>}
+                      {queuedById.has(u.id) && <span style={{ fontSize: 9, background: 'rgba(155,143,224,0.18)', color: '#b9aef0', padding: '1px 6px', borderRadius: 20 }}>⏳ {T.users.queue.queuedBadge}{(attemptsById.get(u.id) ?? 0) > 0 && ` · ${T.users.queue.retryBadge((attemptsById.get(u.id) ?? 0) + 1, queue?.max_attempts ?? 3)}`}</span>}
                       {u.we_follow   && <span style={{ fontSize: 9, background: 'rgba(78,202,138,0.15)', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
                       {u.they_follow && <span style={{ fontSize: 9, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>

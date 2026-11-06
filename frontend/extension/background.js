@@ -493,9 +493,10 @@ function stepResult(job, error, seen, detail) {
 }
 
 function summarizeActions(job) {
-  const res = job.results || [];
+  const res = (job.results || []).filter((x) => !x.retried);          // tekrar denenecek ara başarısızlıklar özeti kirletmez
+  const total = job.total - ((job.results || []).length - res.length);
   const okCount = res.filter((x) => x.ok).length;
-  const lines = [`${KIND_LABEL.actions}: ${res.length} / ${job.total} işlendi, ${okCount} tanesi tamam.`];
+  const lines = [`${KIND_LABEL.actions}: ${res.length} / ${total} işlendi, ${okCount} tanesi tamam.`];
   for (const x of res.filter((r) => !r.ok).slice(0, 5)) lines.push(`• @${x.shortcode}: ${x.note || 'yapılamadı'}`);
   return lines.join('\n');
 }
@@ -559,9 +560,17 @@ async function actionStepDone(job, error, extra) {
   const cfg = await getCfg();
   const rep = await callApp(cfg.appUrl, `/api/sessions/${job.profileId}/bridge/actions/${item.id}/result`, { outcome, note }, 30000);
   const ok = outcome === 'done' || outcome === 'already';
+  // Uygulama "tekrar dene" derse (en fazla 3 deneme) aynı kişi bu işin sonuna yeniden eklenir
+  const retry = !ok && rep.status === 200 && !!(rep.data && rep.data.retry === true);
   job.results = job.results || [];
-  job.results.push({ shortcode: item.username, saved: ok ? 1 : 0, seen: 0, ok, note });
-  if (!ok) job.errors.push({ shortcode: item.username, error: note || outcome });
+  job.results.push({ shortcode: item.username, saved: ok ? 1 : 0, seen: 0, ok, retried: retry || undefined,
+    note: retry ? `${note || 'Başarısız'} (deneme ${Number(rep.data.attempts) || 1}/3, işin sonunda tekrar denenecek)` : note });
+  if (!ok && !retry) job.errors.push({ shortcode: item.username, error: note || outcome });
+  if (retry) {
+    job.items.push(item);
+    job.queue.push(item.username);
+    job.total += 1;
+  }
   if (rep.status === 0) {
     await finishJob(job, 'stopped', `Uygulamaya ulaşılamadı; yapılan işlem kaydedilemedi, iş durduruldu.\n${summarize(job)}`);
     return;

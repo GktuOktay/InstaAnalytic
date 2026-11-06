@@ -22,6 +22,7 @@ from app.services.risk_profiles import effective_action_limits, get_profile, in_
 ACTIONS = ("follow", "unfollow")
 MAX_BATCH = 10            # eklentinin tek çalıştırmada alabileceği en fazla işlem
 MAX_ENQUEUE = 200
+MAX_ATTEMPTS = 3          # başarısız bir işlem toplam bu kadar denenir (hesap bulunamadı / engel hariç)
 BLOCK_PAUSE = timedelta(hours=24)
 
 
@@ -79,7 +80,7 @@ async def status(db: AsyncSession, session: Session, now: datetime | None = None
     hourly, daily, dmin, dmax = limits(session, now)
     rows = (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
-    ).order_by(BridgeAction.id).limit(1000))).scalars().all()
+    ).order_by(BridgeAction.attempts, BridgeAction.id).limit(1000))).scalars().all()
     total_pending = (await db.execute(select(func.count(BridgeAction.id)).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"))).scalar() or 0
     return {
@@ -87,7 +88,9 @@ async def status(db: AsyncSession, session: Session, now: datetime | None = None
         "blocked": gate(session, now),
         "quiet_hours": in_quiet_hours(now),
         "pending_count": total_pending,
-        "pending": [{"id": r.id, "ig_user_id": r.ig_user_id, "username": r.username, "action": r.action} for r in rows],
+        "pending": [{"id": r.id, "ig_user_id": r.ig_user_id, "username": r.username, "action": r.action,
+                     "attempts": r.attempts or 0, "note": r.note if (r.attempts or 0) else None} for r in rows],
+        "max_attempts": MAX_ATTEMPTS,
         "done_hour": await _done_since(db, session, now - timedelta(hours=1)),
         "done_day": await _done_since(db, session, now - timedelta(days=1)),
         "hourly_limit": hourly, "daily_limit": daily, "delay": [dmin, dmax],
@@ -114,8 +117,8 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
         return out
     rows = (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
-    ).order_by(BridgeAction.id).limit(max(1, min(limit, MAX_BATCH, room))))).scalars().all()
-    out["items"] = [{"id": r.id, "username": r.username, "action": r.action} for r in rows]
+    ).order_by(BridgeAction.attempts, BridgeAction.id).limit(max(1, min(limit, MAX_BATCH, room))))).scalars().all()
+    out["items"] = [{"id": r.id, "username": r.username, "action": r.action, "attempts": r.attempts or 0} for r in rows]
     if not rows:
         out["reason"] = "empty"
     return out
@@ -152,6 +155,12 @@ async def report(db: AsyncSession, session: Session, action_id: int, outcome: st
             rel.we_follow = want
             rel.we_follow_since = now if want else None
     else:
+        row.attempts = (row.attempts or 0) + 1
+        # Geçici başarısızlık (düğme/sayfa) 3 kez denenir; hesap bulunamadıysa tekrar denemenin anlamı yok
+        if outcome == "failed" and row.attempts < MAX_ATTEMPTS:
+            row.note = note
+            await db.commit()
+            return {"ok": True, "status": "pending", "attempts": row.attempts, "retry": True}
         row.status = "failed"
     row.note = note
     row.done_at = now

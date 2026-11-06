@@ -247,6 +247,44 @@ describe('jobs started from the app', () => {
       vi.useRealTimers()
     })
 
+    it('retries a failed profile at the end of the same run (up to 3 attempts), then gives up', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b, results } = withQueue()
+      // uygulama: 1. ve 2. başarısızlıkta "tekrar dene", ali için 3. başarısızlıkta vazgeç
+      const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+      let aliFails = 0
+      b.fetchStub.mockImplementation(async (url: string, init?: any) => {
+        if (String(url).includes('/bridge/actions/11/result') && JSON.parse(init.body).outcome === 'failed') {
+          aliFails += 1
+          results.push({ url: String(url), body: JSON.parse(init.body) })
+          return new Response(JSON.stringify(aliFails < 3 ? { ok: true, status: 'pending', attempts: aliFails, retry: true } : { ok: true, status: 'failed' }), { status: 200 })
+        }
+        return base(url, init)
+      })
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      const step = async (m: any) => {
+        b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, ...m }, fromIg(), () => {})
+        await vi.advanceTimersByTimeAsync(300)
+        await vi.advanceTimersByTimeAsync(5 * 60_000)
+        b.listeners.message({ type: 'ia-job-tick' }, fromIg(), () => {})
+        await vi.advanceTimersByTimeAsync(100)
+      }
+      await step({ outcome: 'failed', note: 'düğme yok' })                    // ali (1. deneme) → sona eklenir
+      expect(b.session.job.total).toBe(3)
+      expect(b.session.job.queue).toEqual(['ali', 'veli', 'ali'])
+      await step({ outcome: 'done' })                                         // veli tamam
+      await step({ outcome: 'failed', note: 'düğme yok' })                    // ali (2. deneme) → yine sona
+      expect(b.session.job.queue).toEqual(['ali', 'veli', 'ali', 'ali'])
+      b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'failed', note: 'düğme yok' }, fromIg(), () => {})
+      await vi.advanceTimersByTimeAsync(500)                                  // ali (3. deneme): uygulama vazgeçti
+      const job = b.session.job
+      expect(job.state).toBe('done')
+      expect(results.filter((r: any) => r.url.includes('/actions/11/')).length).toBe(3)    // tam 3 deneme
+      expect(job.message).toContain('2 / 2 işlendi, 1 tanesi tamam')          // ara denemeler özeti kirletmez
+      expect(job.message).toContain('@ali: düğme yok')
+      vi.useRealTimers()
+    })
+
     it('stops at once when Instagram blocks the action', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { b, results } = withQueue()

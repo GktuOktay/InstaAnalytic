@@ -525,7 +525,7 @@ const en: Translations = {
       undoShort:    'Undo',
       undone:       (n: number) => n ? `${n} people taken back from the queue` : 'Nothing pending to take back (it may already be done)',
       hiddenNote:   (n: number) => `${n} people are queued; hidden from the lists.`,
-      hint:         'Follow / unfollow requests are queued. The extension does them one by one in your Instagram tab, waiting a few minutes between actions. At most 10 actions per run.',
+      hint:         'A failed action is tried up to 3 times. Follow / unfollow requests are queued. The extension does them one by one in your Instagram tab, waiting a few minutes between actions. At most 10 actions per run.',
       pending:      (n: number) => `${n} actions queued`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>
                       `This hour ${h}/${hl} · today ${d}/${dl} · ~${a}-${b} s between actions`,
@@ -533,6 +533,7 @@ const en: Translations = {
       running:      'Running…',
       clear:        'Clear queue',
       queuedBadge:  'queued',
+      retryBadge:   (n: number, max: number) => `attempt ${n}/${max}`,
       added:        (n: number, dup: number, skipped: number) =>
                       `${n} actions queued${dup ? `, ${dup} already queued` : ''}${skipped ? `, ${skipped} already in the wanted state` : ''}`,
       nothingAdded: 'Nothing to queue: already queued or already in the wanted state.',
