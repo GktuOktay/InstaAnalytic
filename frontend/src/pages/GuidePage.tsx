@@ -47,7 +47,7 @@ export default function GuidePage() {
   }, [])
 
   return (
-    <div className="max-w-4xl">
+    <div>
       <header className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2"><BookOpen size={22} className="text-purple-400" /> {C.title}</h1>
         <p className="text-sm text-gray-500">{C.subtitle}</p>

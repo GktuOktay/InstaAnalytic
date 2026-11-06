@@ -50,7 +50,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div>
       <h1 className="text-2xl font-bold mb-1">{ST.title}</h1>
       <p className="text-sm text-gray-500 mb-6">
         {ST.subtitle} <Link to="/start" className="text-purple-400 hover:underline">{T.wizard.openWizard}</Link>

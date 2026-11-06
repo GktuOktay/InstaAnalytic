@@ -29,7 +29,7 @@ export default function StartPage() {
   }, [loading, profile, sessions, step]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <h1 className="text-2xl font-bold mb-1">{W.title}</h1>
       <ol className="flex flex-wrap gap-x-5 gap-y-1 text-sm mb-8" aria-label={W.title}>
         {W.stepNames.map((n: string, i: number) => (

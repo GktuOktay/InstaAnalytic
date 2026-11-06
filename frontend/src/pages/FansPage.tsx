@@ -45,7 +45,7 @@ export default function FansPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div>
       <div className="flex items-start justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold">{L.title}</h1>
