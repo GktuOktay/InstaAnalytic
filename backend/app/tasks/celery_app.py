@@ -16,6 +16,7 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True,    # Celery 6'da zorunlu olacak; uyarıyı da susturur
 )
 
 celery_app.conf.beat_schedule = {
