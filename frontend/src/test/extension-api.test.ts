@@ -47,6 +47,20 @@ async function runDirect(items: Item[], route: Route, { cookie = 'csrftoken=TOKE
   return { results, calls, ping }
 }
 
+/** Instagram gibi davranır: show, destroy/create sonrası değişen gerçek durumu döner; POST yanıtının gövdesi serbest. */
+function account(startFollowing: boolean, post: (kind: 'destroy' | 'create') => { status: number; body?: unknown } = () => ({ status: 200, body: { status: 'ok' } })): Route {
+  let following = startFollowing
+  return (url) => {
+    if (url.includes('/friendships/show/')) return { status: 200, body: { following, outgoing_request: false } }
+    const kind = url.includes('/destroy/') ? 'destroy' : url.includes('/create/') ? 'create' : null
+    if (kind) {
+      const r = post(kind)
+      if (r.status === 200) following = kind === 'create'
+      return r
+    }
+  }
+}
+
 const ali: Item = { id: 11, username: 'ali', action: 'unfollow', igUserId: 28088623519 }
 
 beforeEach(() => { vi.useFakeTimers(); history.replaceState({}, '', '/') })
@@ -58,11 +72,8 @@ describe('extension: direct follow / unfollow requests (no tab, token from the s
     expect(ping).toEqual({ ok: true, csrf: true, loginWall: false })
   })
 
-  it('unfollow: checks the real state, posts destroy with the token headers, accepts the confirmed result', async () => {
-    const { results, calls } = await runDirect([ali], (url, init) => {
-      if (url.includes('/friendships/show/')) return { status: 200, body: { following: true, outgoing_request: false } }
-      if (url.includes('/friendships/destroy/')) return { status: 200, body: { status: 'ok', friendship_status: { following: false, outgoing_request: false } } }
-    })
+  it('unfollow: checks the real state, posts destroy with the token headers, then re-reads the state to confirm', async () => {
+    const { results, calls } = await runDirect([ali], account(true))
     expect(results).toEqual([{ outcome: 'done' }])
     const post = calls.find(c => c.method === 'POST')!
     expect(post.url).toBe('/api/v1/friendships/destroy/28088623519/')
@@ -70,7 +81,15 @@ describe('extension: direct follow / unfollow requests (no tab, token from the s
     expect(post.headers['X-IG-App-ID']).toBe('936619743392459')
     expect(post.headers['X-IG-WWW-Claim']).toBe('hmac.CLAIM')
     expect(post.body).toContain('user_id=28088623519')
+    expect(calls.filter(c => c.url.includes('/friendships/show/')).length).toBe(2)       // önce ve sonra
     expect(JSON.stringify(results)).not.toContain('TOKEN123abc')                       // token sonuca / nota sızmaz
+  })
+
+  it('whatever the destroy response body looks like, the real state decides (the case that was wrongly reported as failed)', async () => {
+    for (const body of [{ status: 'ok' }, { weird: true }, undefined, { status: 'ok', friendship_status: { following: true } }]) {
+      const { results } = await runDirect([ali], account(true, () => ({ status: 200, body })))
+      expect(results[0]).toEqual({ outcome: 'done' })
+    }
   })
 
   it('already not following: no destroy request is sent', async () => {
@@ -80,19 +99,18 @@ describe('extension: direct follow / unfollow requests (no tab, token from the s
   })
 
   it('follow: creates, and a private account that answers "outgoing request" counts as done with a note', async () => {
+    let requested = false
     const { results } = await runDirect([{ id: 2, username: 'gizli', action: 'follow', igUserId: 555555 }], url => {
-      if (url.includes('/friendships/show/')) return { status: 200, body: { following: false, outgoing_request: false } }
-      if (url.includes('/friendships/create/')) return { status: 200, body: { status: 'ok', friendship_status: { following: false, outgoing_request: true } } }
+      if (url.includes('/friendships/show/')) return { status: 200, body: { following: false, outgoing_request: requested } }
+      if (url.includes('/friendships/create/')) { requested = true; return { status: 200, body: { status: 'ok' } } }
     })
     expect(results[0]).toMatchObject({ outcome: 'done', note: expect.stringContaining('takip isteği') })
   })
 
   it('a placeholder id is resolved from the profile page data (no extra tab)', async () => {
-    const { results, calls } = await runDirect([{ ...ali, igUserId: -44079261470305000 }], url => {
-      if (url === '/ali/') return { status: 200, text: '<script type="application/json">{"profile_id":"28088623519"}</script>' }
-      if (url.includes('/friendships/show/28088623519/')) return { status: 200, body: { following: true } }
-      if (url.includes('/friendships/destroy/28088623519/')) return { status: 200, body: { status: 'ok', friendship_status: { following: false } } }
-    })
+    const acc = account(true)
+    const { results, calls } = await runDirect([{ ...ali, igUserId: -44079261470305000 }], (url, init) =>
+      url === '/ali/' ? { status: 200, text: '<script type="application/json">{"profile_id":"28088623519"}</script>' } : acc(url, init))
     expect(results[0]).toMatchObject({ outcome: 'done' })
     expect(calls[0].url).toBe('/ali/')
   })
@@ -113,13 +131,17 @@ describe('extension: direct follow / unfollow requests (no tab, token from the s
     expect(b.results[0]).toMatchObject({ outcome: 'blocked' })
   })
 
-  it('an unconfirmed result is a failure, never a fake success', async () => {
-    const { results } = await runDirect([ali], url => {
-      if (url.includes('/friendships/show/')) return { status: 200, body: { following: true } }
-      return { status: 200, body: { status: 'ok', friendship_status: { following: true } } }       // hâlâ takipte
-    })
+  it('a destroy that Instagram accepted but that changed nothing is a failure, never a fake success; the note says which fields it answered with', async () => {
+    const { results } = await runDirect([ali], url => url.includes('/friendships/show/') ? { status: 200, body: { following: true } } : { status: 200, body: { status: 'ok' } })
     expect(results[0].outcome).toBe('failed')
-    expect(results[0].note).toContain('doğrulanamadı')
+    expect(results[0].note).toContain('takipten çıkılamadı')
+    expect(results[0].note).toContain('yanıt alanları: status')
+    expect(results[0].note).not.toContain('TOKEN123abc')
+  })
+
+  it('a non-200 answer to the action is reported with its HTTP code', async () => {
+    const { results } = await runDirect([ali], url => url.includes('/friendships/show/') ? { status: 200, body: { following: true } } : { status: 500, body: {} })
+    expect(results[0]).toEqual({ outcome: 'failed', note: 'Instagram isteği başarısız (HTTP 500).' })
   })
 
   it('no token (signed out): nothing is requested and the reason is given', async () => {

@@ -305,7 +305,16 @@
     return m ? { id: m[1] } : { unknown: true };
   }
 
-  const fromFriendship = (j) => (j && (j.friendship_status || (typeof j.following === 'boolean' ? j : null))) || null;
+  // İşlemden sonra gerçek durumu yeniden oku (kısa bir an bekleyip)
+  async function currentState(id) {
+    await sleep(rand(900, 1500));
+    const s = await igFetch(`/api/v1/friendships/show/${id}/`);
+    if (s.status !== 200 || !s.json) return null;
+    return { following: s.json.following === true, requested: s.json.outgoing_request === true };
+  }
+
+  // Hata ayıklama için yanıtın yalnızca alan ADLARI (değerler değil: token / kişisel veri sızmasın)
+  const shape = (j) => (j && typeof j === 'object' ? ` (yanıt alanları: ${Object.keys(j).slice(0, 6).join(', ')})` : ' (yanıt JSON değil)');
 
   async function apiAct(item) {
     if (!csrfToken() || loginWall()) return { error: 'Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor.' };
@@ -328,19 +337,22 @@
         if (!following && !requested) return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
         const r = await igFetch(`/api/v1/friendships/destroy/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
         if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
-        const fs = fromFriendship(r.json);
-        if (r.status === 200 && r.json && r.json.status === 'ok' && (!fs || (fs.following !== true && fs.outgoing_request !== true))) return { outcome: 'done' };
-        return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}); sonuç doğrulanamadı.` };
+        if (r.status !== 200) return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}).` };
+        // Sonuç, yanıt gövdesinin şekline değil Instagram'ın gerçek durumuna bakılarak doğrulanır
+        const after = await currentState(who.id);
+        if (after && !after.following && !after.requested) return { outcome: 'done' };
+        return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP 200); takipten çıkılamadı, durum hâlâ takipte${shape(r.json)}.` };
       }
       if (following) return { outcome: 'already', note: 'Zaten takip ediyorsunuz.' };
       if (requested) return { outcome: 'already', note: 'Takip isteği zaten gönderilmiş.' };
       const r = await igFetch(`/api/v1/friendships/create/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
       if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
-      const fs = fromFriendship(r.json);
-      if (r.status === 200 && r.json && r.json.status === 'ok' && fs && (fs.following === true || fs.outgoing_request === true)) {
-        return { outcome: 'done', note: fs.outgoing_request === true && fs.following !== true ? 'Gizli hesap: takip isteği gönderildi.' : undefined };
+      if (r.status !== 200) return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}).` };
+      const after = await currentState(who.id);
+      if (after && (after.following || after.requested)) {
+        return { outcome: 'done', note: after.requested && !after.following ? 'Gizli hesap: takip isteği gönderildi.' : undefined };
       }
-      return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}); sonuç doğrulanamadı.` };
+      return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP 200); takip edilemedi${shape(r.json)}.` };
     } catch (e) {
       return { outcome: 'failed', note: `Instagram isteği başarısız (ağ hatası).` };
     }
