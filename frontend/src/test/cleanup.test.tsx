@@ -11,6 +11,7 @@ import { sessionsApi } from '../api/sessions'
 import { insightsApi } from '../api/insights'
 import { bridgeApi } from '../api/bridge'
 import BridgeStatusCard from '../components/BridgeStatusCard'
+import { LATEST_EXTENSION_VERSION as LATEST } from '../lib/extension'
 import BridgeWarningBanner from '../components/BridgeWarningBanner'
 
 const counts = { ghost: 2, one_way_silent: 1, mutual_silent: 0, silent_follower: 0, one_way_engaged: 0, occasional: 0, loyal: 1 }
@@ -65,5 +66,39 @@ describe('BridgeStatusCard version check', () => {
     renderApp(<BridgeStatusCard sessionId="s1" />)
     expect(await screen.findByText(/Eklentin güncel değil \(1\.0\.0 →/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Nasıl güncellenir?' })).toHaveAttribute('href', '/guide#guncelle')
+  })
+})
+
+describe('BridgeStatusCard version check uses the live extension version', () => {
+  const status = (v: string | null) => ({
+    posts: 50, likers_done: 12, comments_done: 12, today_posts: 0, today_people: 0, last_seen: null, last_saved: null,
+    connected: true, stopped: false, warning_until: null, warning_reason: null, extension_version: v,
+  })
+  const announce = (version: string) =>
+    window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version }, origin: window.location.origin, source: window }))
+
+  it('a current extension is not called out of date just because the server last heard an old version', async () => {
+    ;(bridgeApi.status as any).mockResolvedValue(status('2.5.7'))                         // sunucudaki eski kayıt
+    ;(bridgeApi.todo as any).mockResolvedValue([])
+    renderApp(<BridgeStatusCard sessionId="s1" />)
+    expect(await screen.findByText(/Eklentin güncel değil \(2\.5\.7 →/)).toBeInTheDocument()   // eklenti sayfada görünmeden: sunucu kaydı
+    announce(LATEST)                                                                      // eklentinin kendi bildirdiği güncel sürüm
+    await waitFor(() => expect(screen.queryByText(/Eklentin güncel değil/)).not.toBeInTheDocument())
+  })
+
+  it('an outdated live extension is still reported, with the live version', async () => {
+    ;(bridgeApi.status as any).mockResolvedValue(status(null))
+    ;(bridgeApi.todo as any).mockResolvedValue([])
+    renderApp(<BridgeStatusCard sessionId="s1" />)
+    await waitFor(() => expect(bridgeApi.status).toHaveBeenCalled())
+    announce('1.2.0')
+    expect(await screen.findByText(/Eklentin güncel değil \(1\.2\.0 →/)).toBeInTheDocument()
+  })
+
+  it('without the extension on the page the server-reported version is used', async () => {
+    ;(bridgeApi.status as any).mockResolvedValue(status('1.0.0'))
+    ;(bridgeApi.todo as any).mockResolvedValue([])
+    renderApp(<BridgeStatusCard sessionId="s1" />)
+    expect(await screen.findByText(/Eklentin güncel değil \(1\.0\.0 →/)).toBeInTheDocument()
   })
 })

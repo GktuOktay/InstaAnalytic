@@ -454,7 +454,7 @@ async function startJob(cmd) {
   let apiTab = null;
   let apiOwnTab = false;
   if (kind === 'actions') {
-    const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10`);
+    const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10&ext_version=${encodeURIComponent(chrome.runtime.getManifest().version)}`);
     if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
     if (r.status === 404) return { ok: false, error: 'Seçili profil uygulamada bulunamadı. Eklentinin Ayarlar sekmesinden profili yeniden seçin.' };
     const d = r.data || {};
@@ -679,7 +679,7 @@ const ACTION_NOTE = { done: 'Yapıldı.', already: 'Zaten istenen durumdaydı.' 
 // onlyManual: bekleme sırasında yalnızca kullanıcının tek tek tıkladıkları öne alınır; iş bitince hepsi alınır.
 async function pullNewItems(job, onlyManual) {
   const cfg = await getCfg();
-  const r = await callApp(cfg.appUrl, `/api/sessions/${job.profileId}/bridge/actions/next?limit=10`);
+  const r = await callApp(cfg.appUrl, `/api/sessions/${job.profileId}/bridge/actions/next?limit=10&ext_version=${encodeURIComponent(chrome.runtime.getManifest().version)}`);
   if (r.status !== 200 || !r.data || !Array.isArray(r.data.items)) return 0;
   const known = new Set(job.items.map((x) => x.id));
   const fresh = r.data.items

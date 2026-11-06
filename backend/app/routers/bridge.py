@@ -2,7 +2,7 @@
 import uuid
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -186,8 +186,12 @@ async def actions_enqueue(session_id: uuid.UUID, body: EnqueueActions, db: Async
 
 
 @router.get("/sessions/{session_id}/bridge/actions/next")
-async def actions_next(session_id: uuid.UUID, limit: int = 10, db: AsyncSession = Depends(get_db)):
-    return await bridge_actions.next_batch(db, await _session(db, session_id), limit)
+async def actions_next(session_id: uuid.UUID, limit: int = 10, ext_version: str | None = Query(default=None, max_length=20, pattern=r"^\d+(\.\d+){0,3}$"),
+                       db: AsyncSession = Depends(get_db), kv=Depends(get_kv)):
+    s = await _session(db, session_id)
+    if ext_version:
+        await bridge.remember_extension(kv, s.id, ext_version)      # doğrudan istek modunda sayfa gözlemi olmaz: sürüm buradan güncellenir
+    return await bridge_actions.next_batch(db, s, limit)
 
 
 @router.post("/sessions/{session_id}/bridge/actions/{action_id}/result")

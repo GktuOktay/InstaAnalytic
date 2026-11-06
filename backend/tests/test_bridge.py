@@ -671,3 +671,11 @@ async def test_a_username_from_another_profiles_pool_is_not_queued(client, make_
     await _pool_user(db, s2, 99100, "sadece_digerinde")
     r = await client.post(f"/api/sessions/{s1.id}/bridge/actions", json={"action": "unfollow", "usernames": ["sadece_digerinde"]})
     assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_extension_version_is_recorded_when_it_asks_for_work(client, make_session):
+    s = await make_session(source="zip", allow_actions=True)
+    await client.get(f"/api/sessions/{s.id}/bridge/actions/next?limit=10&ext_version=2.8.5")
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/status")).json()["extension_version"] == "2.8.5"
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions/next?ext_version=<x>")).status_code == 422     # biçim denetimi

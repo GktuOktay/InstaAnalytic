@@ -7,6 +7,7 @@ import { useToast } from '../contexts/ToastContext'
 import { fill } from '../lib/text'
 import ProblemNote from './ProblemNote'
 import { LATEST_EXTENSION_VERSION, extensionOutdated } from '../lib/extension'
+import { useExtension } from '../lib/extensionBridge'
 
 const POLL_MS = 20_000
 
@@ -19,6 +20,9 @@ export default function BridgeStatusCard({ sessionId }: { sessionId: string }) {
   const [todo, setTodo] = useState<BridgeTodo[]>([])
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
+  const ext = useExtension()
+  // Sürümü eklentinin kendisi bildirir (canlı). Sunucunun bildirdiği sürüm yalnızca eklenti bu sayfada görünmüyorsa kullanılır:
+  // o, eklenti en son sayfa gözlemlediğinde yazılır ve doğrudan istek modunda uzun süre eski kalabilir.
 
   const load = useCallback(() => {
     Promise.all([bridgeApi.status(sessionId), bridgeApi.todo(sessionId, 6)])
@@ -71,9 +75,9 @@ export default function BridgeStatusCard({ sessionId }: { sessionId: string }) {
             </div>
           )}
           {st.stopped && <p className="text-xs text-gray-400 mt-2">{L.stopped}</p>}
-          {extensionOutdated(st.extension_version) && (
+          {extensionOutdated(ext.version ?? st.extension_version) && (
             <p role="status" className="text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-lg px-3 py-2 mt-2">
-              {fill(L.outdated, { from: st.extension_version!, to: LATEST_EXTENSION_VERSION })}{' '}
+              {fill(L.outdated, { from: (ext.version ?? st.extension_version)!, to: LATEST_EXTENSION_VERSION })}{' '}
               <Link to="/guide#guncelle" className="underline font-medium">{L.outdatedHow}</Link>
             </p>
           )}
