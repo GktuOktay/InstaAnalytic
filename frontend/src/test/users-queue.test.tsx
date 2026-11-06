@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp, makeSession } from './utils'
 
-vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn() } }))
+vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn(), setAllowActions: vi.fn() } }))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }))
 vi.mock('../api/actions', () => ({ actionsApi: { follow: vi.fn(), unfollow: vi.fn(), removeFollower: vi.fn(), bulkUnfollow: vi.fn() } }))
 vi.mock('../api/bridge', () => ({ bridgeApi: { actions: vi.fn(), enqueueActions: vi.fn(), clearActions: vi.fn() } }))
@@ -71,13 +71,26 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     expect(await screen.findByText(/Sessiz saatler \(01:00-08:00\)/)).toBeInTheDocument()
   })
 
-  it('actions turned off: buttons are inactive and the page points to Settings', async () => {
+  it('actions turned off: a click explains why, and one button turns actions on after a confirmation', async () => {
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: false })])
+    sess.setAllowActions.mockResolvedValue(makeSession({ source: 'zip', allow_actions: true }))
     renderApp(<UsersPage />)
-    expect(await screen.findByRole('link', { name: 'Ayarlar\'da aç' })).toHaveAttribute('href', '/settings')
     const btn = (await screen.findAllByTitle(/Takip \/ takipten çıkarma işlemlerini eklenti yapar/))[0]
-    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(btn)                                                   // sessiz kalmaz: nedeni söyler
+    expect(await screen.findByText(/Takip \/ takipten çıkarma işlemlerini eklenti yapar\.$/, { selector: 'div' })).toBeInTheDocument()
+    expect(bridge.enqueueActions).not.toHaveBeenCalled()
     expect(screen.queryByRole('region', { name: 'Eklenti kuyruğu' })).not.toBeInTheDocument()
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
+    expect(sess.setAllowActions).not.toHaveBeenCalled()                          // onaylanmazsa açılmaz
+    confirm.mockReturnValue(true)
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    await userEvent.click(screen.getByRole('button', { name: 'İşlemleri aç' }))
+    await waitFor(() => expect(sess.setAllowActions).toHaveBeenCalledWith('s1', true))
+    expect(await screen.findByRole('region', { name: 'Eklenti kuyruğu' })).toBeInTheDocument()
+    confirm.mockRestore()
   })
 
   it('removing a follower is not offered for ZIP profiles', async () => {

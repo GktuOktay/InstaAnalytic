@@ -517,6 +517,9 @@ const en: Translations = {
       paused:     'Actions are temporarily paused for safety.',
       manual:     'Click a username to do it by hand on Instagram.',
       turnOn:     'Turn on in Settings',
+      enable:     'Turn on actions',
+      enabled:    'Actions are on. Follow / unfollow requests now go to the queue.',
+      confirm:    'Turn on follow / unfollow actions?\n\nRequests are queued and the extension applies them slowly in your Instagram tab, within daily limits. It makes real changes to your account. You can turn it off any time in Settings.',
     },
     queue: {
       title:        'Extension queue',

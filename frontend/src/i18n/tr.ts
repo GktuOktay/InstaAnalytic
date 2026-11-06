@@ -517,6 +517,9 @@ const tr = {
       paused:     'İşlemler güvenlik için geçici olarak durduruldu.',
       manual:     'Kullanıcı adına tıklayıp Instagram\'da elle yapabilirsin.',
       turnOn:     'Ayarlar\'da aç',
+      enable:     'İşlemleri aç',
+      enabled:    'İşlemler açıldı. Takip / takipten çıkarma istekleri artık kuyruğa alınır.',
+      confirm:    'Takip / takipten çıkarma işlemleri açılsın mı?\n\nİstekler kuyruğa alınır ve eklenti Instagram sekmenizde yavaş yavaş, günlük sınırlarla uygular. Hesabınızda gerçek değişiklik yapar. İstediğiniz zaman Ayarlar\'dan kapatabilirsiniz.',
     },
     queue: {
       title:        'Eklenti kuyruğu',

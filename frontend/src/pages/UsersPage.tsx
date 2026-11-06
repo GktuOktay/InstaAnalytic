@@ -5,6 +5,7 @@ import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
 import { bridgeApi, ActionQueue } from '../api/bridge'
 import { useExtension } from '../lib/extensionBridge'
+import { sessionsApi } from '../api/sessions'
 import { Link } from 'react-router-dom'
 import { useLang } from '../contexts/LangContext'
 import api from '../api/client'
@@ -80,7 +81,7 @@ export default function UsersPage() {
     hint:  key === 'oneWaySilent' ? T.users.oneWaySilentHint : key === 'mutualSilent' ? T.users.mutualSilentHint : key === 'notBack' ? T.users.notBackHint : key === 'silent' ? T.users.silent.hint : key === 'ghosts' ? T.users.ghost.hint : undefined,
   }))
 
-  const { activeId, sessions, loading: sessionLoading } = useSession()
+  const { activeId, sessions, loading: sessionLoading, refresh: refreshSessions } = useSession()
   const sid = activeId
   const [allItems,      setAllItems]      = useState<UserPoolItem[]>([])   // tüm veri (client-side filter)
   const [total,         setTotal]         = useState(0)
@@ -197,6 +198,16 @@ export default function UsersPage() {
     }
   }
 
+  // İşlemler varsayılan kapalıdır; kullanıcı bilinçli olarak, burada tek tıkla açabilir
+  const enableActions = async () => {
+    if (!profile || !window.confirm(T.users.actionsOff.confirm)) return
+    try {
+      await sessionsApi.setAllowActions(profile.id, true)
+      await refreshSessions()
+      showToast(T.users.actionsOff.enabled)
+    } catch (e) { showToast(errMsg(e), false) }
+  }
+
   const runQueue = async () => {
     const r = await ext.run('actions')
     if (!r.ok) showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
@@ -211,6 +222,7 @@ export default function UsersPage() {
   }
 
   const handleFollow = async (u: UserPoolItem) => {
+    if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     if (viaExt) { await enqueueActions('follow', [u.id]); return }
     setActionLoading(p => ({ ...p, [u.id]: 'follow' }))
     try {
@@ -226,6 +238,7 @@ export default function UsersPage() {
   }
 
   const handleUnfollow = async (u: UserPoolItem) => {
+    if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     if (viaExt) { await enqueueActions('unfollow', [u.id]); return }
     setActionLoading(p => ({ ...p, [u.id]: 'unfollow' }))
     try {
@@ -263,6 +276,7 @@ export default function UsersPage() {
   }
 
   const handleBulkUnfollow = async () => {
+    if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     const ids = [...selected]
     if (viaExt) { if (await enqueueActions('unfollow', ids)) setSelected(new Set()); return }
     setBulkLoading(true)
@@ -276,6 +290,7 @@ export default function UsersPage() {
   }
 
   const handleBulkFollow = async () => {
+    if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     const ids = [...selected]
     if (viaExt) { if (await enqueueActions('follow', ids)) setSelected(new Set()); return }
     setBulkLoading(true)
@@ -362,7 +377,11 @@ export default function UsersPage() {
       {blockedReason && (
         <p role="note" className="text-xs text-amber-200 bg-amber-950/40 border border-amber-800 rounded-xl px-3 py-2 mb-4">
           {blockedReason} {T.users.actionsOff.manual}{' '}
-          {profile && !profile.allow_actions && <Link to="/settings" className="underline">{T.users.actionsOff.turnOn}</Link>}
+          {profile && !profile.allow_actions && (
+            <button onClick={enableActions} className="ml-1 px-2 py-0.5 rounded-md bg-amber-700 hover:bg-amber-600 text-amber-50 font-semibold">
+              {T.users.actionsOff.enable}
+            </button>
+          )}
         </p>
       )}
 
@@ -430,11 +449,11 @@ export default function UsersPage() {
         {selected.size > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs text-gray-400">{T.users.selectedN(selected.size)}</span>
-            <button onClick={handleBulkFollow} disabled={bulkLoading || !canAct} title={blockedReason ?? undefined}
+            <button onClick={handleBulkFollow} disabled={bulkLoading} aria-disabled={!canAct} title={blockedReason ?? undefined}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-green-900 hover:bg-green-800 disabled:opacity-50 rounded-lg text-xs text-green-300">
               <UserPlus size={12} /> {T.users.action.bulkFollow}
             </button>
-            <button onClick={handleBulkUnfollow} disabled={bulkLoading || !canAct} title={blockedReason ?? undefined}
+            <button onClick={handleBulkUnfollow} disabled={bulkLoading} aria-disabled={!canAct} title={blockedReason ?? undefined}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 rounded-lg text-xs text-red-300">
               <UserMinus size={12} /> {T.users.action.bulkUnfollow}
             </button>
@@ -560,13 +579,13 @@ export default function UsersPage() {
                   {/* Aksiyon */}
                   <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
                     {u.we_follow ? (
-                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad || !canAct}
+                      <button onClick={() => handleUnfollow(u)} disabled={!!actLoad} aria-disabled={!canAct}
                         title={blockedReason ?? T.users.action.unfollow}
                         style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(224,112,112,0.15)', border: '1px solid rgba(224,112,112,0.3)', color: '#e07070', opacity: actLoad || !canAct ? 0.4 : 1 }}>
                         {actLoad === 'unfollow' ? <RefreshCw size={11} className="animate-spin" /> : <UserMinus size={11} />}
                       </button>
                     ) : (
-                      <button onClick={() => handleFollow(u)} disabled={!!actLoad || !canAct}
+                      <button onClick={() => handleFollow(u)} disabled={!!actLoad} aria-disabled={!canAct}
                         title={blockedReason ?? T.users.action.follow}
                         style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, cursor: 'pointer', background: 'rgba(78,202,138,0.15)', border: '1px solid rgba(78,202,138,0.3)', color: '#4eca8a', opacity: actLoad || !canAct ? 0.4 : 1 }}>
                         {actLoad === 'follow' ? <RefreshCw size={11} className="animate-spin" /> : <UserPlus size={11} />}
