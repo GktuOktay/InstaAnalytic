@@ -537,6 +537,11 @@ const en: Translations = {
     },
     queue: {
       title:        'Extension queue',
+      history:       (d: number, s: number, f: number) => `Queue history · ${d} done, ${s} skipped, ${f} failed`,
+      histStates:   { all: 'All', done: 'Done', skipped: 'Skipped', failed: 'Failed' } as Record<string, string>,
+      retryFailed:  'Queue the failed ones again',
+      attempts:     (n: number) => `${n} attempts`,
+      keptNote:     'History is permanent; it is not lost when you close or refresh the app or restart the extension.',
       undo:         'Take back from queue',
       undoShort:    'Undo',
       undone:       (n: number) => n ? `${n} people taken back from the queue` : 'Nothing pending to take back (it may already be done)',

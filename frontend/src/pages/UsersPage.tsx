@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi } from '../api/actions'
-import { bridgeApi, ActionQueue } from '../api/bridge'
+import { bridgeApi, ActionQueue, QueueHistory } from '../api/bridge'
+import { describeActionNote } from '../lib/actionNotes'
 import { useExtension } from '../lib/extensionBridge'
 import { Link } from 'react-router-dom'
 import { useLang } from '../contexts/LangContext'
@@ -110,14 +111,21 @@ export default function UsersPage() {
   const canAct = !blockedReason
   const ext = useExtension()
   const [queue, setQueue] = useState<ActionQueue | null>(null)
+  const [history, setHistory] = useState<QueueHistory | null>(null)
+  const [histState, setHistState] = useState<'all' | 'done' | 'skipped' | 'failed'>('all')
   const queuedById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.action]))
   const attemptsById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.attempts ?? 0]))
   const extRunning = ext.job?.kind === 'actions' && ext.job.state === 'running'
 
   const loadQueue = useCallback(async () => {
-    if (!sid || !viaExt) { setQueue(null); return }
-    setQueue(await bridgeApi.actions(sid).catch(() => null))
-  }, [sid, viaExt])
+    if (!sid || !viaExt) { setQueue(null); setHistory(null); return }
+    const [q, h] = await Promise.all([
+      bridgeApi.actions(sid).catch(() => null),
+      bridgeApi.actionHistory(sid, 50, histState === 'all' ? undefined : histState).catch(() => null),
+    ])
+    setQueue(q)
+    setHistory(h)
+  }, [sid, viaExt, histState])
 
   // Sunucu iletileri yalnızca Türkçe: nedenini durum koduna göre seçili dilde göster
   const errMsg = (e: unknown) => {
@@ -212,6 +220,14 @@ export default function UsersPage() {
       await loadQueue()
       if (tab === 'queued' && queuedHere <= ids.length) setTab('all')       // son kişi de geri alındıysa boş sekmede kalma
     } catch (e) { showToast(errMsg(e), false) }
+  }
+
+  // Başarısız olanları yeniden kuyruğa ekle (geçmiş kayıtları silinmez, yeni bekleyen kayıt açılır)
+  const retryFailed = async (items: QueueHistory['items']) => {
+    for (const action of ['unfollow', 'follow'] as const) {
+      const ids = [...new Set(items.filter(i => i.status === 'failed' && i.action === action).map(i => i.ig_user_id))]
+      if (ids.length) await enqueueActions(action, ids)
+    }
   }
 
   const runQueue = async () => {
@@ -426,6 +442,47 @@ export default function UsersPage() {
           {queue.quiet_hours && <p className="text-xs text-amber-300 mt-1">{T.users.queue.quiet}</p>}
           {!ext.available && <p className="text-xs text-amber-300 mt-1">{T.users.queue.needExt}</p>}
           {extRunning && ext.job && <p className="text-xs text-purple-300 mt-1 whitespace-pre-line">{ext.job.message}</p>}
+
+          {history && (history.counts.done + history.counts.skipped + history.counts.failed) > 0 && (
+            <details className="mt-3 border-t border-gray-800 pt-2">
+              <summary className="text-xs text-gray-300 cursor-pointer select-none">
+                {T.users.queue.history(history.counts.done, history.counts.skipped, history.counts.failed)}
+              </summary>
+              <div className="flex items-center gap-1.5 my-2 flex-wrap">
+                {(['all', 'done', 'skipped', 'failed'] as const).map(k => (
+                  <button key={k} onClick={() => setHistState(k)} aria-pressed={histState === k}
+                    className={`px-2 py-0.5 rounded-md text-[11px] ${histState === k ? 'bg-purple-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-gray-200'}`}>
+                    {T.users.queue.histStates[k]}
+                  </button>
+                ))}
+                {history.counts.failed > 0 && (
+                  <button onClick={() => retryFailed(history.items)} disabled={!history.items.some(i => i.status === 'failed')}
+                    className="ml-auto px-2 py-0.5 rounded-md text-[11px] bg-amber-800 hover:bg-amber-700 text-amber-50 disabled:opacity-40">
+                    {T.users.queue.retryFailed}
+                  </button>
+                )}
+              </div>
+              <ul className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                {history.items.map(h => {
+                  const n = describeActionNote(h.note, T)
+                  const tone = h.status === 'done' ? 'bg-green-400' : h.status === 'skipped' ? 'bg-gray-500' : 'bg-red-400'
+                  return (
+                    <li key={h.id} className="flex items-start gap-2 text-xs">
+                      <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${tone}`} aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <a href={`https://www.instagram.com/${h.username}/`} target="_blank" rel="noreferrer" className="text-gray-200 hover:underline">@{h.username}</a>
+                        <span className="text-gray-500"> · {h.action === 'unfollow' ? T.actionLog.unfollow : T.actionLog.follow} · {T.users.queue.histStates[h.status]}
+                          {h.attempts > 0 && ` · ${T.users.queue.attempts(h.attempts)}`}</span>
+                        {h.note && h.status !== 'done' && <span className={`block ${h.status === 'failed' ? 'text-red-400' : 'text-gray-400'}`} title={n.detail}>{n.title}</span>}
+                      </span>
+                      <span className="text-gray-600 shrink-0">{(h.done_at ?? h.created_at) ? new Date((h.done_at ?? h.created_at)!).toLocaleString(lang === 'en' ? 'en-US' : 'tr-TR') : ''}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="text-[11px] text-gray-600 mt-2">{T.users.queue.keptNote}</p>
+            </details>
+          )}
         </div>
       )}
 

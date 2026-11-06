@@ -186,6 +186,12 @@ async def actions_result(session_id: uuid.UUID, action_id: int, body: ActionResu
     return await bridge_actions.report(db, await _session(db, session_id), action_id, body.outcome, body.note)
 
 
+@router.get("/sessions/{session_id}/bridge/actions/history")
+async def actions_history(session_id: uuid.UUID, limit: int = 50, offset: int = 0, state: Literal["done", "skipped", "failed"] | None = None,
+                          db: AsyncSession = Depends(get_db)):
+    return await bridge_actions.history(db, await _session(db, session_id), limit, offset, state)
+
+
 @router.post("/sessions/{session_id}/bridge/actions/cancel")
 async def actions_cancel(session_id: uuid.UUID, body: CancelActions, db: AsyncSession = Depends(get_db)):
     """Kuyruğa eklenen kişileri geri al: yalnızca bekleyenler silinir."""

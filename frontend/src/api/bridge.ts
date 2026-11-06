@@ -44,7 +44,15 @@ export interface ActionQueue {
   paused_reason: string | null
 }
 
+export interface QueueHistoryItem {
+  id: number; ig_user_id: number; username: string; action: 'follow' | 'unfollow'
+  status: 'done' | 'skipped' | 'failed'; attempts: number; note: string | null; created_at: string | null; done_at: string | null
+}
+export interface QueueHistory { counts: { pending: number; done: number; skipped: number; failed: number }; items: QueueHistoryItem[] }
+
 export const bridgeApi = {
+  actionHistory: (id: string, limit = 50, state?: 'done' | 'skipped' | 'failed') =>
+    api.get<QueueHistory>(`/sessions/${id}/bridge/actions/history`, { params: { limit, ...(state ? { state } : {}) } }).then(r => r.data),
   actions: (id: string) => api.get<ActionQueue>(`/sessions/${id}/bridge/actions`).then(r => r.data),
   enqueueActions: (id: string, action: 'follow' | 'unfollow', user_ids: number[]) =>
     api.post<{ added: number; duplicate: number; skipped: number }>(`/sessions/${id}/bridge/actions`, { action, user_ids }).then(r => r.data),

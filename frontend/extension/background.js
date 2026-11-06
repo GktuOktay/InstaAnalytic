@@ -778,7 +778,20 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   checkUpdate(true).catch(() => {});
 });
 
+// Tarayıcı kapanınca oturum belleği (chrome.storage.session) silinir; "çalışıyor" görünen iş takılı kalmasın.
+// Kuyruk uygulamada durur, hiçbir şey kaybolmaz: kaldığın yerden "Kuyruğu çalıştır" ile devam edilir.
+async function closeStaleJob() {
+  const { jobView } = await chrome.storage.local.get('jobView');
+  if (!jobView || jobView.state !== 'running') return;
+  if (await getJob()) return;                                   // oturum belleğinde hâlâ var: iş sürüyor
+  const stopped = { ...jobView, state: 'stopped', outcome: 'stopped', finishedAt: Date.now(),
+    message: `Tarayıcı kapatıldığı için iş durdu. ${(jobView.results || []).length} / ${jobView.total} işlendi. Kalan işler uygulamadaki kuyrukta bekliyor; devam etmek için "Kuyruğu çalıştır"a bas.` };
+  await chrome.storage.local.set({ jobView: stopped });
+  notify('warning', `${KIND_LABEL[jobView.kind] || 'İş'} durdu`, stopped.message);
+}
+
 chrome.runtime.onStartup.addListener(async () => {
+  await closeStaleJob().catch(() => {});
   const { status } = await chrome.storage.local.get('status');
   await updateBadge(status);
   checkUpdate().catch(() => {});

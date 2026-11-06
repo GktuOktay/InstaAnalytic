@@ -6,7 +6,7 @@ import { renderApp, makeSession } from './utils'
 vi.mock('../api/sessions', () => ({ sessionsApi: { list: vi.fn() } }))
 vi.mock('../api/client', () => ({ default: { get: vi.fn(), post: vi.fn(), delete: vi.fn() } }))
 vi.mock('../api/actions', () => ({ actionsApi: { follow: vi.fn(), unfollow: vi.fn(), removeFollower: vi.fn(), bulkUnfollow: vi.fn() } }))
-vi.mock('../api/bridge', () => ({ bridgeApi: { actions: vi.fn(), enqueueActions: vi.fn(), clearActions: vi.fn() } }))
+vi.mock('../api/bridge', () => ({ bridgeApi: { actions: vi.fn(), actionHistory: vi.fn(), enqueueActions: vi.fn(), clearActions: vi.fn(), cancelActions: vi.fn() } }))
 
 import { sessionsApi } from '../api/sessions'
 import api from '../api/client'
@@ -32,6 +32,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   http.get.mockResolvedValue({ data: { total: 2, items: [user(5, 'ali'), user(6, 'veli', { we_follow: false })] } })
   bridge.actions.mockResolvedValue(queue())
+  bridge.actionHistory.mockResolvedValue({ counts: { pending: 0, done: 0, skipped: 0, failed: 0 }, items: [] })
   bridge.enqueueActions.mockResolvedValue({ added: 1, duplicate: 0, skipped: 0 })
 })
 
@@ -237,5 +238,51 @@ describe('UsersPage — queued people leave the lists and can be taken back', ()
     renderApp(<UsersPage />, { lang: 'en' })
     expect(await screen.findByRole('button', { name: /^Queued\s*1$/ })).toBeInTheDocument()
     expect(screen.getByText(/1 people are queued; hidden from the lists\./)).toBeInTheDocument()
+  })
+})
+
+
+describe('UsersPage — permanent queue history', () => {
+  const hist = (items: any[], counts: Record<string, number>) => ({ counts: { pending: 0, done: 0, skipped: 0, failed: 0, ...counts }, items })
+  const row = (id: number, username: string, status: string, note: string | null, attempts = 0) => ({
+    id, ig_user_id: id, username, action: 'unfollow', status, attempts, note, created_at: '2026-11-06T09:00:00Z', done_at: '2026-11-06T09:05:00Z',
+  })
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 1, items: [user(5, 'ali')] } })
+  })
+
+  it('lists finished, skipped and failed actions with the reason, and says the history is permanent', async () => {
+    bridge.actionHistory.mockResolvedValue(hist([
+      row(1, 'yapilan', 'done', 'Yapıldı.'),
+      row(2, 'zaten', 'skipped', 'Zaten takip etmiyorsunuz.'),
+      row(3, 'bozuk', 'failed', 'Profil düğmeleri bulunamadı; sayfa yüklenmedi.', 3),
+    ], { done: 1, skipped: 1, failed: 1 }))
+    renderApp(<UsersPage />)
+    expect(await screen.findByText('Kuyruk geçmişi · 1 yapıldı, 1 atlandı, 1 başarısız')).toBeInTheDocument()
+    expect(screen.getByText('@yapilan')).toBeInTheDocument()
+    expect(screen.getByText(/takip düğmesi tanınamadı/)).toBeInTheDocument()            // "bulunamadı" 404 diye değil, anlamıyla
+    expect(screen.getByText(/3 deneme/)).toBeInTheDocument()
+    expect(screen.getByText(/Geçmiş kalıcıdır/)).toBeInTheDocument()
+  })
+
+  it('"queue the failed ones again" adds only the failed people back', async () => {
+    bridge.actionHistory.mockResolvedValue(hist([row(2, 'zaten', 'skipped', null), row(3, 'bozuk', 'failed', 'x', 3)], { skipped: 1, failed: 1 }))
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Başarısızları yeniden kuyruğa ekle' }))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [3]))
+  })
+
+  it('filter buttons ask the server for that state; nothing is shown when there is no history', async () => {
+    bridge.actionHistory.mockResolvedValue(hist([row(3, 'bozuk', 'failed', 'x', 3)], { failed: 1 }))
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Başarısız' }))
+    await waitFor(() => expect(bridge.actionHistory).toHaveBeenCalledWith('s1', 50, 'failed'))
+  })
+
+  it('no history section when nothing has finished yet, English otherwise', async () => {
+    renderApp(<UsersPage />)
+    await screen.findByText('@ali')
+    expect(screen.queryByText(/Kuyruk geçmişi/)).not.toBeInTheDocument()
   })
 })

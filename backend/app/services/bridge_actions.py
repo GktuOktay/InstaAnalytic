@@ -170,6 +170,24 @@ async def report(db: AsyncSession, session: Session, action_id: int, outcome: st
     return {"ok": True, "status": row.status}
 
 
+async def history(db: AsyncSession, session: Session, limit: int = 50, offset: int = 0, state: str | None = None) -> dict:
+    """Kalıcı kuyruk geçmişi: biten, atlanan ve başarısız işlemler (hiçbir kayıt kendiliğinden silinmez)."""
+    q = select(BridgeAction).where(BridgeAction.session_id == session.id, BridgeAction.status != "pending")
+    if state in ("done", "skipped", "failed"):
+        q = q.where(BridgeAction.status == state)
+    rows = (await db.execute(q.order_by(func.coalesce(BridgeAction.done_at, BridgeAction.created_at).desc(), BridgeAction.id.desc())
+                             .offset(max(0, offset)).limit(max(1, min(limit, 200))))).scalars().all()
+    counts = dict((await db.execute(select(BridgeAction.status, func.count(BridgeAction.id)).where(
+        BridgeAction.session_id == session.id).group_by(BridgeAction.status))).all())
+    return {
+        "counts": {k: int(counts.get(k, 0)) for k in ("pending", "done", "skipped", "failed")},
+        "items": [{"id": r.id, "ig_user_id": r.ig_user_id, "username": r.username, "action": r.action, "status": r.status,
+                   "attempts": r.attempts or 0, "note": r.note,
+                   "created_at": r.created_at.isoformat() if r.created_at else None,
+                   "done_at": r.done_at.isoformat() if r.done_at else None} for r in rows],
+    }
+
+
 async def cancel(db: AsyncSession, session: Session, user_ids: list[int]) -> int:
     """Seçili kişilerin bekleyen işlemlerini kuyruktan geri alır (yapılmış olanlara dokunulmaz)."""
     if not user_ids:

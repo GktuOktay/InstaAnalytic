@@ -285,6 +285,25 @@ describe('jobs started from the app', () => {
       vi.useRealTimers()
     })
 
+    it('a job left "running" by a closed browser is closed on startup; the queue stays in the app', async () => {
+      const store: Record<string, any> = { ...ME, jobView: { id: '1', kind: 'actions', state: 'running', index: 2, total: 5, results: [{}, {}], message: 'x' } }
+      const b = loadBackground('2.6.2', '2.6.2', store)          // oturum belleği boş = tarayıcı yeniden açıldı
+      await b.listeners.startup()
+      expect(store.jobView.state).toBe('stopped')
+      expect(store.jobView.message).toContain('Tarayıcı kapatıldığı için iş durdu')
+      expect(store.jobView.message).toContain('2 / 5 işlendi')
+      expect(b.chrome.notifications.create).toHaveBeenCalled()
+    })
+
+    it('a job that is really running (session memory intact) is not touched on startup', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { b } = withQueue()
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await b.listeners.startup()
+      expect(b.session.job.state).toBe('running')
+      vi.useRealTimers()
+    })
+
     it('stops at once when Instagram blocks the action', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { b, results } = withQueue()

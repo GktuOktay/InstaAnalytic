@@ -595,3 +595,22 @@ async def test_a_retry_that_succeeds_counts_as_done(db, make_session):
     await bridge_actions.report(db, s, it["id"], "failed", "geçici", DAY)
     assert (await bridge_actions.report(db, s, it["id"], "done", None, DAY))["status"] == "done"
     assert (await bridge_actions.status(db, s, DAY))["done_day"] == 1
+
+
+@pytest.mark.asyncio
+async def test_queue_history_is_kept_and_lists_everything_that_finished(client, make_session, db):
+    s = await make_session(source="zip", allow_actions=True)
+    for i, n in ((801, "a"), (802, "b"), (803, "c"), (804, "d")):
+        await _pool_user(db, s, i, n)
+    await bridge_actions.enqueue(db, s, "unfollow", [801, 802, 803, 804])
+    items = {i["username"]: i["id"] for i in (await bridge_actions.next_batch(db, s, 10, DAY))["items"]}
+    await bridge_actions.report(db, s, items["a"], "done", None, DAY)
+    await bridge_actions.report(db, s, items["b"], "already", "Zaten takip etmiyorsunuz.", DAY)
+    await bridge_actions.report(db, s, items["c"], "not_found", "Hesap bulunamadı", DAY)
+    h = (await client.get(f"/api/sessions/{s.id}/bridge/actions/history")).json()
+    assert h["counts"] == {"pending": 1, "done": 1, "skipped": 1, "failed": 1}
+    assert {i["username"]: i["status"] for i in h["items"]} == {"a": "done", "b": "skipped", "c": "failed"}   # bekleyen d burada yok
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions/history?state=failed")).json()["items"][0]["note"] == "Hesap bulunamadı"
+    # Hiçbir kayıt kendiliğinden silinmez: bekleyenleri temizlemek geçmişe dokunmaz
+    await client.delete(f"/api/sessions/{s.id}/bridge/actions")
+    assert (await client.get(f"/api/sessions/{s.id}/bridge/actions/history")).json()["counts"] == {"pending": 0, "done": 1, "skipped": 1, "failed": 1}

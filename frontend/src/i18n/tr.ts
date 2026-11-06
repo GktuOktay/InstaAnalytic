@@ -537,6 +537,11 @@ const tr = {
     },
     queue: {
       title:        'Eklenti kuyruğu',
+      history:       (d: number, s: number, f: number) => `Kuyruk geçmişi · ${d} yapıldı, ${s} atlandı, ${f} başarısız`,
+      histStates:   { all: 'Hepsi', done: 'Yapıldı', skipped: 'Atlandı', failed: 'Başarısız' } as Record<string, string>,
+      retryFailed:  'Başarısızları yeniden kuyruğa ekle',
+      attempts:     (n: number) => `${n} deneme`,
+      keptNote:     'Geçmiş kalıcıdır; uygulamayı kapatsan, yenilesen ya da eklentiyi yeniden başlatsan da silinmez.',
       undo:         'Kuyruktan geri al',
       undoShort:    'Geri al',
       undone:       (n: number) => n ? `${n} kişi kuyruktan geri alındı` : 'Geri alınacak bekleyen işlem yok (zaten yapılmış olabilir)',
