@@ -90,7 +90,7 @@ eklenti bunu fark eder. Simgede kırmızı **!** çıkar, uygulama her sayfada k
 ## Güncelleme
 
 Normalde yapmanız gereken bir şey yok. Eklenti uygulamanın klasöründen yüklendiyse, uygulama
-güncellendiğinde dosyaları da güncellenir. Eklenti birkaç saatte bir (ve açılır pencere açıldığında,
+güncellendiğinde dosyaları da güncellenir. Eklenti her açıldığında (tarayıcı başlarken, açılır pencere açıldığında,
 Instagram sayfası yüklendiğinde) uygulamadaki sürümü denetler; daha yeniyse kendini yeniden yükler ve
 "güncellendi" der. Ardından açık Instagram sekmesini bir kez yenileyin.
 

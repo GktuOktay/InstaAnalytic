@@ -61,7 +61,7 @@ function selectTab(name, focus = false) {
     if (on && focus) tab.focus();
   }
   try { sessionStorage.setItem('ia-tab', name); } catch { /* yoksay */ }
-  if (name === 'update') loadUpdate(false);
+  if (name === 'update') loadUpdate(true);
 }
 
 for (const t of TABS) {
@@ -291,7 +291,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 let startTab = 'tools';
 try { startTab = sessionStorage.getItem('ia-tab') || 'tools'; } catch { /* yoksay */ }
 selectTab(TABS.includes(startTab) ? startTab : 'tools');
-loadUpdate(false);
+loadUpdate(true);
 });
 
 // ── Araçlar ──────────────────────────────────────────────────────────────────
@@ -380,6 +380,6 @@ loadSummary();
 let startTab = 'tools';
 try { startTab = sessionStorage.getItem('ia-tab') || 'tools'; } catch { /* yoksay */ }
 selectTab(TABS.includes(startTab) ? startTab : 'tools');
-loadUpdate(false);
+loadUpdate(true);
 // Uygulamada bekleyen bir Instagram uyarısı varsa pencere açılınca hemen yansısın
 send({ type: 'ia-refresh' }).then(refresh);

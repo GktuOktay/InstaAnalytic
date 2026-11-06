@@ -10,7 +10,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const VIEWER_RE = /^\d{1,20}$/;
 const MAX_BODY_CHARS = 8 * 1024 * 1024;
 const MAX_QUEUE = 20;            // uygulama yavaşsa bekleyen yanıt birikmesin; fazlası atılır
-const UPDATE_EVERY_MS = 6 * 3600 * 1000;
+const UPDATE_MIN_GAP_MS = 30 * 1000;      // eklenti her açıldığında sürüm denetlenir; yalnızca art arda tekrarları engellemek için kısa bir aralık
 const VERSION_RE = /^\d+(\.\d+){0,3}$/;
 const DEFAULT_TOOLS = { posts: true, likers: true, comments: true };
 const TOOL_KEYS = Object.keys(DEFAULT_TOOLS);
@@ -87,7 +87,7 @@ function cmpVersion(a, b) {
 async function checkUpdate(force = false) {
   const { update } = await chrome.storage.local.get('update');
   const prev = update && typeof update === 'object' ? update : {};
-  if (!force && prev.checkedAt && Date.now() - prev.checkedAt < UPDATE_EVERY_MS) return prev;
+  if (!force && prev.checkedAt && Date.now() - prev.checkedAt < UPDATE_MIN_GAP_MS) return prev;
   const current = chrome.runtime.getManifest().version;
   const cfg = await getCfg();
   // Önbellekten eski sürüm gelmesin: her denetimde farklı adres
@@ -101,6 +101,10 @@ async function checkUpdate(force = false) {
     next.state = 'current';
   } else if (prev.reloadedFor === latest) {
     next.state = 'manual';                      // yeniden yükleme yeni dosya getirmedi: kopyadan kurulmuş
+  } else if ((await getJob())?.state === 'running') {
+    // Çalışan bir iş varken yeniden yükleme işi keserdi: iş bitince (finishJob) tekrar denetlenir
+    next.state = 'current';
+    next.pendingReload = latest;
   } else {
     next.state = 'reloading';
     next.reloadedFor = latest;
@@ -185,7 +189,7 @@ async function resolveProfile(cfg, viewerId) {
 // ── İçerik betiği için ayar ──────────────────────────────────────────────────
 
 async function configFor(viewer, tabId) {
-  checkUpdate().catch(() => {});                // en çok 6 saatte bir; Instagram sayfası açıldıkça
+  checkUpdate().catch(() => {});                // Instagram sayfası her açıldığında (30 sn'den sık değil)
   const cfg = await getCfg();
   if (!VIEWER_RE.test(String(viewer || ''))) return { on: false };
   // Hangi hesabın açık olduğu, eklenti kapalıyken de hatırlanır: profil seçimi buna dayanır
@@ -519,6 +523,7 @@ async function finishJob(job, state, message) {
     : job.outcome === 'partial' ? `${KIND_LABEL[job.kind]} bitti, bazı gönderilerde sorun var` : `${KIND_LABEL[job.kind]} sonuç vermedi`;
   notify(job.outcome === 'ok' ? 'ok' : 'warning', title, message);
   reportJob(job).catch(() => {});
+  checkUpdate(true).catch(() => {});            // iş sürerken ertelenen güncelleme varsa şimdi uygula
 }
 
 // Masaüstü bildirimi: uygulama açık olmasa da işin bittiği görülsün
@@ -976,5 +981,5 @@ chrome.runtime.onStartup.addListener(async () => {
   await closeStaleJob().catch(() => {});
   const { status } = await chrome.storage.local.get('status');
   await updateBadge(status);
-  checkUpdate().catch(() => {});
+  checkUpdate(true).catch(() => {});            // tarayıcı her açıldığında yeni sürüm var mı diye bak
 });

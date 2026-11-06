@@ -75,10 +75,39 @@ describe('extension self-update', () => {
     expect(b.chrome.action.setBadgeText).toHaveBeenLastCalledWith({ text: '↑' })
   })
 
-  it('does not hammer the app: checks at most every few hours unless forced', async () => {
+  it('does not hammer the app: repeated checks within 30 s are skipped unless forced', async () => {
     const b = loadBackground('2.2.0', '2.2.0', { update: { checkedAt: Date.now(), state: 'current' } })
     await b.ask({ type: 'ia-update', force: false })
     expect(b.fetchStub).not.toHaveBeenCalled()
+  })
+
+  it('every time the extension is opened it checks for a new version (older checks no longer count)', async () => {
+    const b = loadBackground('2.2.0', '2.3.0', { update: { checkedAt: Date.now() - 60_000, state: 'current' } })
+    const u: any = await b.ask({ type: 'ia-update', force: false })                     // 1 dk önceki denetim: yeniden bakılır
+    expect(u.state).toBe('reloading')
+    expect(b.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('browser start checks at once, even if it checked a moment ago', async () => {
+    const b = loadBackground('2.2.0', '2.3.0', { update: { checkedAt: Date.now() - 1000, state: 'current' } })
+    await b.listeners.startup()
+    await new Promise(r => setTimeout(r, 20))
+    expect(b.reload).toHaveBeenCalledTimes(1)
+  })
+
+  it('a running job is never cut by the update: it waits until the job is finished', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const me = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
+    const b = loadBackground('2.2.0', '2.3.0', me, [{ shortcode: 'AAAAA' }])
+    await b.ask({ type: 'ia-run', cmd: { kind: 'likers' } })
+    const u: any = await b.ask({ type: 'ia-update', force: true })
+    expect(u.state).toBe('current')
+    expect(u.pendingReload).toBe('2.3.0')
+    expect(b.reload).not.toHaveBeenCalled()                                               // iş sürüyor
+    b.listeners.message({ type: 'ia-job-done', error: null, seen: 0 }, { id: 'ext', tab: { id: 77, url: 'https://www.instagram.com/p/AAAAA/' } }, () => {})
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(b.reload).toHaveBeenCalledTimes(1)                                             // iş bitince uygulanır
+    vi.useRealTimers()
   })
 
   it('says so when the app cannot be reached', async () => {

@@ -644,7 +644,7 @@ const tr: GuideContent = {
       intro: 'Normalde yapman gereken bir şey yok. Eklenti uygulamanın klasöründen yüklendiği için uygulamayla birlikte güncellenir.',
       steps: [
         { text: 'Uygulama güncellenince eklentinin dosyaları da güncellenir. Dosya indirmen ya da kopyalaman gerekmez.' },
-        { text: 'Eklenti birkaç saatte bir uygulamada yeni sürüm var mı diye bakar. Penceresini açtığında ve bir Instagram sayfası yüklendiğinde de bakar.' },
+        { text: 'Eklenti her açıldığında uygulamada yeni sürüm var mı diye bakar: tarayıcı açıldığında, penceresini açtığında ve bir Instagram sayfası yüklendiğinde. Çalışan bir iş varsa yeniden yükleme işin bitmesini bekler.' },
         { text: 'Yeni sürüm varsa eklenti kendini yeniden yükler ve "Eklenti X sürümüne güncellendi. Açık Instagram sekmesini bir kez yenileyin." der.' },
         { text: 'Açık Instagram sekmesini ve uygulama sayfasını bir kez yenile. Bu kadar.' },
       ],
@@ -917,7 +917,7 @@ const tr: GuideContent = {
       },
       {
         term: 'Eklentinin yeni sürümü gelmedi.',
-        text: 'Eklenti birkaç saatte bir bakar. Hemen bakmak için eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. "Elle kurulum gerekiyor" yazıyorsa eklentiyi bir kez uygulama klasöründen yeniden yükle.',
+        text: 'Eklenti her açıldığında bakar. Hemen bakmak için eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. "Elle kurulum gerekiyor" yazıyorsa eklentiyi bir kez uygulama klasöründen yeniden yükle.',
         link: { to: '#guncelle', label: 'Güncelleme' },
       },
       {
@@ -1596,7 +1596,7 @@ const en: GuideContent = {
       },
       {
         term: 'The new version of the extension has not arrived.',
-        text: 'The extension checks every few hours. To check now, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, load the extension once from the app folder.',
+        text: 'The extension checks every time it is opened. To check now, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, load the extension once from the app folder.',
         link: { to: '#guncelle', label: 'Updating' },
       },
       {
