@@ -193,7 +193,7 @@ async function configFor(viewer, tabId) {
 
   // Bu sekme bir işin sekmesiyse: anahtarlardan bağımsız, işin türü kaydedilir ve iş adımı verilir
   const job = await getJob();
-  if (job && job.state === 'running' && job.tabId === tabId) {
+  if (job && job.state === 'running' && job.tabId === tabId && !job.api) {      // doğrudan istek işi kullanıcının sekmesini sürmez
     const profile = await resolveProfile(cfg, String(viewer));
     if (!profile) return { on: false };
     return { on: true, username: profile.username || null, tools: jobTools(job), job: { kind: job.kind, shortcode: job.queue[job.index] || null, ...(job.items ? { item: job.items[job.index] || null } : {}) } };
@@ -213,7 +213,7 @@ let pending = 0;
 async function handleObserved(msg, tabId) {
   const cfg = await getCfg();
   const job = await getJob();
-  const jobTab = !!(job && job.state === 'running' && job.tabId === tabId);
+  const jobTab = !!(job && job.state === 'running' && job.tabId === tabId && !job.api);
   if ((!cfg.enabled && !jobTab) || !VIEWER_RE.test(String(msg.viewer || ''))) return;
   const allowed = jobTab ? jobTools(job) : cfg.tools;
   const viewerId = String(msg.viewer);
@@ -348,6 +348,50 @@ function jobUrl(job, i) {
 
 const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar', actions: 'Takip işlemleri' };
 
+const toItem = (x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true,
+  igUserId: Number.isSafeInteger(Number(x.ig_user_id)) ? Number(x.ig_user_id) : 0 });
+
+// Açık Instagram sekmeleri: içerik betiği yüklenince kendini bildirir (sekme izni gerekmez). Doğrudan istek, kullanıcının
+// zaten açık olan sekmesinin içinden, tarayıcının oturum çerezleriyle yapılır; eklenti sekme AÇMAZ.
+async function rememberIgTab(tabId) {
+  const { igTabs } = await chrome.storage.session.get('igTabs').catch(() => ({}));
+  const map = igTabs && typeof igTabs === 'object' ? igTabs : {};
+  map[tabId] = Date.now();
+  await chrome.storage.session.set({ igTabs: map });
+}
+
+async function forgetIgTab(tabId) {
+  const { igTabs } = await chrome.storage.session.get('igTabs').catch(() => ({}));
+  if (igTabs && igTabs[tabId] != null) { delete igTabs[tabId]; await chrome.storage.session.set({ igTabs }); }
+}
+
+function pingTab(tabId) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 2500);
+    try {
+      chrome.tabs.sendMessage(tabId, { type: 'ia-api-ping' }, (res) => {
+        clearTimeout(timer);
+        void (chrome.runtime.lastError);
+        resolve(res && res.ok === true ? res : null);
+      });
+    } catch { clearTimeout(timer); resolve(null); }
+  });
+}
+
+// En son kullanılan, yanıt veren, oturumu açık Instagram sekmesi
+async function findIgTab() {
+  const { igTabs } = await chrome.storage.session.get('igTabs').catch(() => ({}));
+  const ids = Object.entries(igTabs || {}).sort((a, b) => b[1] - a[1]).map(([id]) => Number(id));
+  let loggedOut = false;
+  for (const id of ids) {
+    const res = await pingTab(id);
+    if (!res) { await forgetIgTab(id); continue; }
+    if (res.csrf && !res.loginWall) return { id };
+    loggedOut = true;
+  }
+  return { id: null, loggedOut };
+}
+
 async function startJob(cmd) {
   const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
   if (!kind) return { ok: false, error: 'Bilinmeyen iş.' };
@@ -362,6 +406,8 @@ async function startJob(cmd) {
   let items = null;
   let delay = null;
   let manualDelay = null;
+  let apiDelay = null;
+  let apiTab = null;
   if (kind === 'actions') {
     const r = await callApp(cfg.appUrl, `/api/sessions/${profile.id}/bridge/actions/next?limit=10`);
     if (r.status === 0) return { ok: false, error: 'Uygulamaya ulaşılamadı.' };
@@ -369,11 +415,12 @@ async function startJob(cmd) {
     const d = r.data || {};
     items = Array.isArray(d.items)
       ? d.items.filter((x) => x && Number.isInteger(x.id) && ACTION_USER_RE.test(String(x.username)) && (x.action === 'follow' || x.action === 'unfollow'))
-          .map((x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true }))
+          .map(toItem)
       : [];
     if (!items.length) return { ok: false, error: ACTION_REASON[d.reason] || 'Yapılacak işlem yok.' };
     queue = items.map((x) => x.username);
     delay = Array.isArray(d.delay) && d.delay.length === 2 ? [Math.max(60, Number(d.delay[0]) || 120), Math.max(75, Number(d.delay[1]) || 240)] : [120, 240];
+    apiDelay = Array.isArray(d.api_delay) && d.api_delay.length === 2 ? [Math.max(2, Number(d.api_delay[0]) || 3), Math.max(3, Number(d.api_delay[1]) || 5)] : [3, 5];
     manualDelay = Array.isArray(d.manual_delay) && d.manual_delay.length === 2 ? [Math.max(10, Number(d.manual_delay[0]) || 15), Math.max(20, Number(d.manual_delay[1]) || 35)] : [15, 35];
   } else if (kind === 'posts') {
     if (!profile.username) return { ok: false, error: 'Profilin kullanıcı adı bilinmiyor; Ayarlar sekmesinden profili yeniden seçin.' };
@@ -403,12 +450,30 @@ async function startJob(cmd) {
     resumed = true;
   }
 
+  const useApi = kind === 'actions' && cmd.mode !== 'tab';
+  if (useApi) {
+    const found = await findIgTab();
+    if (found.id == null) {
+      return { ok: false, error: found.loggedOut
+        ? 'Açık Instagram sekmesinde oturum görünmüyor. Instagram\'a giriş yapıp tekrar dene.'
+        : "Açık bir Instagram sekmesi yok. Instagram'ı herhangi bir sayfada aç (eklenti yeni sekme açmaz); eklentiyi yenilediysen o sekmeyi bir kez yenile ve tekrar dene." };
+    }
+    apiTab = found.id;
+  }
+
   const job = {
     id: `${Date.now()}`, kind, queue, index: 0, total: queue.length, errors: [], results: [], cur: { posts: 0, likers: 0, comments: 0 },
-    items, delay, manualDelay, profileId: profile.id,
+    items, delay, manualDelay, apiDelay, api: useApi || undefined, profileId: profile.id,
     username: profile.username || null, state: 'running', startedAt: Date.now(), step: 0, resumed,
     message: `${KIND_LABEL[kind]}: 1 / ${queue.length}`,
   };
+  if (useApi) {
+    job.tabId = apiTab;
+    job.message = `${KIND_LABEL.actions}: 1 / ${job.total}`;
+    await setJob(job);
+    chrome.tabs.sendMessage(apiTab, { type: 'ia-api-run', jobId: job.id }, () => { void (chrome.runtime.lastError); });
+    return { ok: true, total: job.total };
+  }
   const tab = await chrome.tabs.create({ url: jobUrl(job, 0), active: true });
   job.tabId = tab.id;
   await setJob(job);
@@ -423,7 +488,7 @@ async function finishJob(job, state, message) {
     : (job.results || []).every((x) => x.ok) ? 'ok'
     : (job.results || []).some((x) => x.ok) ? 'partial' : 'failed';
   await setJob(job);
-  if (state === 'done' && job.tabId != null) {
+  if (state === 'done' && job.tabId != null && !job.api) {
     setTimeout(() => { chrome.tabs.remove(job.tabId).catch(() => {}); }, 1500);
   }
   const title = state !== 'done' ? `${KIND_LABEL[job.kind]} durdu`
@@ -565,7 +630,7 @@ async function pullNewItems(job, onlyManual) {
   const fresh = r.data.items
     .filter((x) => x && Number.isInteger(x.id) && !known.has(x.id) && ACTION_USER_RE.test(String(x.username))
       && (x.action === 'follow' || x.action === 'unfollow') && (!onlyManual || x.manual === true))
-    .map((x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true }));
+    .map(toItem);
   if (!fresh.length) return 0;
   // Kullanıcının tıkladıkları sıradakinden önce, diğerleri sona
   const front = fresh.filter((x) => x.manual);
@@ -584,7 +649,9 @@ function waitFor(job) {
   return (lo + Math.random() * (hi - lo)) * 1000;
 }
 
-async function actionStepDone(job, error, extra) {
+// Bir işlemin sonucunu uygulamaya yazar, tekrar deneme / engel / uygulama kapalı durumlarını yönetir.
+// 'continue': sıradaki kişiye geçilebilir (index ilerledi). 'stopped': iş durduruldu/bitirildi.
+async function recordActionResult(job, error, extra) {
   const item = job.items[job.index];
   const outcome = error ? 'failed' : (['done', 'already', 'not_found', 'failed', 'blocked'].includes(extra.outcome) ? extra.outcome : 'failed');
   const note = String(error || extra.note || ACTION_NOTE[outcome] || '').slice(0, 300) || null;
@@ -604,13 +671,18 @@ async function actionStepDone(job, error, extra) {
   }
   if (rep.status === 0) {
     await finishJob(job, 'stopped', `Uygulamaya ulaşılamadı; yapılan işlem kaydedilemedi, iş durduruldu.\n${summarize(job)}`);
-    return;
+    return 'stopped';
   }
   if (outcome === 'blocked') {
     await finishJob(job, 'stopped', `Instagram işlemi engelledi, iş durduruldu. Uygulama işlemleri 24 saat duraklattı; bir süre ara verin.\n${summarize(job)}`);
-    return;
+    return 'stopped';
   }
   job.index += 1;
+  return 'continue';
+}
+
+async function actionStepDone(job, error, extra) {
+  if ((await recordActionResult(job, error, extra)) === 'stopped') return;
   if (job.index >= job.total) {
     await pullNewItems(job, false);             // iş sürerken uygulamada yeni eklenenler varsa devam et
     if (job.index >= job.total) {
@@ -626,15 +698,40 @@ async function actionStepDone(job, error, extra) {
   await setJob(job);
 }
 
+// Doğrudan istek modu: Instagram sekmesindeki içerik betiği döngüyü yürütür, her adımda buraya sorar.
+// { item, waitMs } ya da { item: null } (iş bitti / durdu) döner. Sonuç varsa önce kaydedilir.
+async function apiNext(tabId, msg) {
+  const job = await getJob();
+  if (!job || !job.api || job.state !== 'running' || job.tabId !== tabId || job.id !== msg.jobId) return { item: null };
+  const hadResult = !!(msg.result && typeof msg.result === 'object');
+  if (hadResult) {
+    const r = msg.result;
+    if ((await recordActionResult(job, r.error || null, { outcome: r.outcome, note: r.note })) === 'stopped') return { item: null };
+  }
+  if (job.index >= job.total) {
+    await pullNewItems(job, false);             // iş sürerken uygulamada yeni eklenenler varsa devam et
+    if (job.index >= job.total) {
+      await finishJob(job, 'done', summarize(job));
+      return { item: null };
+    }
+  }
+  const [lo, hi] = job.apiDelay || [3, 5];
+  const waitMs = hadResult ? Math.round((lo + Math.random() * (hi - lo)) * 1000) : 0;       // ilk işlem hemen
+  job.message = `${KIND_LABEL.actions}: ${job.index + 1} / ${job.total} · doğrudan istek, işlemler arası ${lo}-${hi} sn`;
+  await setJob(job);
+  return { item: job.items[job.index], waitMs };
+}
+
 async function stopJob() {
   const job = await getJob();
   if (!job || job.state !== 'running') return { ok: true };
   await finishJob(job, 'stopped', `Durduruldu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
-  if (job.tabId != null) chrome.tabs.remove(job.tabId).catch(() => {});
+  if (job.tabId != null && !job.api) chrome.tabs.remove(job.tabId).catch(() => {});     // kullanıcının kendi sekmesi kapatılmaz
   return { ok: true };
 }
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  forgetIgTab(tabId).catch(() => {});
   const job = await getJob();
   if (job && job.state === 'running' && job.tabId === tabId) {
     await finishJob(job, 'stopped', `Sekme kapatıldı, iş durdu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
@@ -731,6 +828,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (typeof msg.text !== 'string' || msg.text.length > MAX_BODY_CHARS) return false;
     enqueue(msg, sender.tab.id);
     return false;
+  }
+  if (msg.type === 'ia-tab-hello') {
+    if (!fromInstagram) return false;
+    rememberIgTab(sender.tab.id).catch(() => {});
+    return false;
+  }
+  if (msg.type === 'ia-api-next') {
+    if (!fromInstagram) return false;
+    apiNext(sender.tab.id, msg).then(sendResponse, () => sendResponse({ item: null }));
+    return true;
   }
   if (msg.type === 'ia-job-tick') {
     if (!fromInstagram) return false;

@@ -461,6 +461,8 @@ const en: Translations = {
       alreadyFollowing: 'You were already following them; nothing to do',
       alreadyRequested: 'A follow request was already sent',
       requestSent:      'Private account: follow request sent',
+      apiFailed:        'The Instagram request failed or its result could not be verified',
+      noId:             'The account id could not be read (the Instagram page layout may have changed)',
       noButton:         'The follow button was not recognised on the Instagram profile (page did not load or the layout changed)',
       buttonGone:       'The follow button disappeared; the page changed during the action',
       accountGone:      'Account not found: deleted, suspended or the username changed',
@@ -547,7 +549,7 @@ const en: Translations = {
       undoShort:    'Undo',
       undone:       (n: number) => n ? `${n} people taken back from the queue` : 'Nothing pending to take back (it may already be done)',
       hiddenNote:   (n: number) => `${n} people are queued; hidden from the lists.`,
-      hint:         'When you click a single person, the extension starts right away and acts at a human pace (a few seconds apart). Bulk selections and the rest of the queue are done slowly (a few minutes apart). A failed action is tried up to 3 times. The hourly / daily limits always apply.',
+      hint:         'The extension does the actions from an open Instagram tab (without opening a new one) with your session, waiting 3-5 s between actions. When you click a single person it starts right away. A failed action is tried up to 3 times. The hourly / daily limits always apply.',
       pending:      (n: number) => `${n} actions queued`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>
                       `This hour ${h}/${hl} · today ${d}/${dl} · ~${a}-${b} s between actions`,
@@ -649,7 +651,7 @@ const en: Translations = {
   },
   bridge: {
     title:        'Browser bridge',
-    desc:         'When you open the likes list on your own post, it saves the list Instagram\'s page already downloaded. It never sends requests to Instagram itself.',
+    desc:         'When you open the likes list on your own post, it saves the list Instagram\'s page already downloaded; for reading it never sends requests to Instagram itself. Only for follow / unfollow actions it makes requests from your open Instagram tab with your session.',
     neverSeen:    'The extension hasn\'t sent anything yet.',
     connected:    'Listening',
     lastSeen:     'Last seen',

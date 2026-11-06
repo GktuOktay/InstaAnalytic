@@ -628,6 +628,8 @@ async def test_a_users_own_click_is_done_first_and_at_human_pace(client, make_se
     assert [i["username"] for i in nxt["items"]] == ["tikladim", "toplu1", "toplu2"]      # tıklanan önce
     assert [i["manual"] for i in nxt["items"]] == [True, False, False]
     assert nxt["manual_delay"] == [15, 35] and nxt["delay"][0] >= 60                      # toplu hız aynı kalır
+    assert nxt["api_delay"] == [3, 5]                                                     # doğrudan API: 3-5 sn
+    assert all(isinstance(i["ig_user_id"], int) for i in nxt["items"])                    # eklenti kimliği buradan alır
     # sıradaki bir kişiye sonradan tek tek tıklayınca öne alınır
     await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": [812], "manual": True})
     items = (await bridge_actions.next_batch(db, s, 10, DAY))["items"]

@@ -8,6 +8,8 @@ async function runAction(item: { id: number; username: string; action: 'follow' 
   const sent: any[] = []
   const chrome = {
     runtime: {
+      id: 'ext',
+      onMessage: { addListener: () => {} },
       sendMessage: vi.fn(async (m: any) => {
         if (m.type === 'ia-config') return { on: true, username: 'gktuoktay', tools: {}, job: { kind: 'actions', shortcode: item.username, item } }
         sent.push(m)

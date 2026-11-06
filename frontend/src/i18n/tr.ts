@@ -459,6 +459,8 @@ const tr = {
       alreadyFollowing: 'Zaten takip ediyordun, işlem gerekmedi',
       alreadyRequested: 'Takip isteği zaten gönderilmişti',
       requestSent:      'Gizli hesap: takip isteği gönderildi',
+      apiFailed:        'Instagram isteği başarısız oldu ya da sonucu doğrulanamadı',
+      noId:             'Hesabın kimliği okunamadı (Instagram sayfa düzeni değişmiş olabilir)',
       noButton:         'Instagram profilinde takip düğmesi tanınamadı (sayfa yüklenmedi ya da düzen değişti)',
       buttonGone:       'Profilde takip düğmesi kayboldu; sayfa işlem sırasında değişti',
       accountGone:      'Hesap bulunamadı: silinmiş, dondurulmuş ya da kullanıcı adı değişmiş olabilir',
@@ -547,7 +549,7 @@ const tr = {
       undoShort:    'Geri al',
       undone:       (n: number) => n ? `${n} kişi kuyruktan geri alındı` : 'Geri alınacak bekleyen işlem yok (zaten yapılmış olabilir)',
       hiddenNote:   (n: number) => `${n} kişi kuyrukta; listelerden düşürüldü.`,
-      hint:         'Bir kişiye tek tek tıkladığında eklenti hemen başlar ve insan hızında (birkaç saniye arayla) yapar. Toplu seçimler ve ek kuyruk yavaş (birkaç dakika arayla) yapılır. Başarısız olan en fazla 3 kez denenir. Saatlik / günlük sınırlar her zaman geçerlidir.',
+      hint:         'Eklenti, açık bir Instagram sekmesinden (yeni sekme açmadan) senin oturumunla işlemleri yapar; işlemler arası 3-5 sn bekler. Bir kişiye tek tek tıkladığında hemen başlar. Başarısız olan en fazla 3 kez denenir. Saatlik / günlük sınırlar her zaman geçerlidir.',
       pending:      (n: number) => `${n} işlem sırada`,
       limits:       (h: number, hl: number, d: number, dl: number, a: number, b: number) =>
                       `Bu saat ${h}/${hl} · bugün ${d}/${dl} · işlemler arası ~${a}-${b} sn`,
@@ -647,7 +649,7 @@ const tr = {
   },
   bridge: {
     title:        'Tarayıcı köprüsü',
-    desc:         'Sen kendi gönderinin beğenenlerini açtığında, Instagram sayfasının indirdiği listeyi kaydeder. Instagram\'a kendisi istek göndermez.',
+    desc:         'Sen kendi gönderinin beğenenlerini açtığında, Instagram sayfasının indirdiği listeyi kaydeder; okuma için Instagram\'a kendisi istek göndermez. Yalnızca takip / takipten çıkma işlemlerinde, açık Instagram sekmesinden senin oturumunla istek yapar.',
     neverSeen:    'Eklenti henüz bir şey iletmedi.',
     connected:    'Dinliyor',
     lastSeen:     'Son görülme',

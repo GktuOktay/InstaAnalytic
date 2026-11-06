@@ -22,6 +22,8 @@ from app.services.risk_profiles import effective_action_limits, get_profile, in_
 ACTIONS = ("follow", "unfollow")
 MAX_BATCH = 10            # eklentinin tek çalıştırmada alabileceği en fazla işlem
 MAX_ENQUEUE = 200
+API_DELAY = (3, 5)        # sn: eklenti doğrudan Instagram web isteği yaparken işlemler arası (kullanıcı kararı)
+API_DELAY = (3, 5)        # sn: eklenti doğrudan Instagram web isteği yaparken işlemler arası (kullanıcı kararı)
 MANUAL_DELAY = (15, 35)   # sn: kullanıcının kendi tıkladığı işlemler arasında (profil açıp bakmak + tıklamak kadar)
 MAX_ATTEMPTS = 3          # başarısız bir işlem toplam bu kadar denenir (hesap bulunamadı / engel hariç)
 BLOCK_PAUSE = timedelta(hours=24)
@@ -106,7 +108,7 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
     """Eklentiye verilecek sıradaki işlemler. Bütçe, sessiz saat ve duraklatma burada uygulanır."""
     now = now or _now()
     hourly, daily, dmin, dmax = limits(session, now)
-    out = {"items": [], "delay": [dmin, dmax], "manual_delay": list(MANUAL_DELAY), "reason": None}
+    out = {"items": [], "delay": [dmin, dmax], "manual_delay": list(MANUAL_DELAY), "api_delay": list(API_DELAY), "reason": None}
     why = gate(session, now)
     if why:
         out["reason"] = why
@@ -123,7 +125,7 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"
     ).order_by(BridgeAction.manual.desc(), BridgeAction.attempts, BridgeAction.id).limit(max(1, min(limit, MAX_BATCH, room))))).scalars().all()
     out["items"] = [{"id": r.id, "username": r.username, "action": r.action, "attempts": r.attempts or 0,
-                       "manual": bool(r.manual)} for r in rows]
+                       "manual": bool(r.manual), "ig_user_id": r.ig_user_id} for r in rows]
     if not rows:
         out["reason"] = "empty"
     return out

@@ -265,6 +265,115 @@
     return { outcome: 'failed', note: 'Düğmeye tıklandı ama sonuç doğrulanamadı; Instagram sayfa düzenini değiştirmiş olabilir.' };
   }
 
+  // ── Takip / takipten çıkma: doğrudan istek ─────────────────────────────────
+  // Instagram web uygulamasının kendi uç noktaları, kullanıcının bu sekmedeki oturumuyla (aynı kaynak, çerezler).
+  // Token (csrftoken) yalnızca burada okunur; uygulamaya, günlüğe ya da nota ASLA yazılmaz. Sekme açılmaz.
+  const IG_APP_ID = '936619743392459';          // Instagram web uygulamasının herkese açık uygulama kimliği
+  const csrfToken = () => (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || '';
+
+  function apiHeaders(post) {
+    const h = { 'X-CSRFToken': csrfToken(), 'X-IG-App-ID': IG_APP_ID, 'X-Requested-With': 'XMLHttpRequest', Accept: '*/*' };
+    let claim = null;
+    try { claim = sessionStorage.getItem('www-claim-v2'); } catch { /* erişilemezse gönderme */ }
+    if (claim) h['X-IG-WWW-Claim'] = claim;
+    if (post) h['Content-Type'] = 'application/x-www-form-urlencoded';
+    return h;
+  }
+
+  async function igFetch(path, init) {
+    const res = await fetch(path, { credentials: 'include', headers: apiHeaders(!!(init && init.method === 'POST')), ...init });
+    let json = null;
+    try { json = await res.json(); } catch { /* HTML ya da boş yanıt */ }
+    return { status: res.status, json };
+  }
+
+  // Instagram'ın hız / spam / doğrulama engeli
+  function blockedResponse(r) {
+    const msg = String((r.json && (r.json.message || r.json.error_type || r.json.spam)) || '');
+    if (r.status === 429) return true;
+    if (r.status === 400 || r.status === 403) return /feedback_required|spam|checkpoint|challenge|rate|wait a few minutes|try again later|restrict/i.test(msg + JSON.stringify(r.json || {}).slice(0, 400));
+    return false;
+  }
+
+  // Kullanıcı kimliği: uygulamada gerçek kimlik varsa o; geçici (negatif) ise profil sayfasının gömülü verisinden
+  async function resolveUserId(item) {
+    if (Number(item.igUserId) > 0) return { id: String(item.igUserId) };
+    const res = await fetch(`/${encodeURIComponent(item.username)}/`, { credentials: 'include', headers: { Accept: 'text/html' } });
+    if (res.status === 404) return { missing: true };
+    const html = await res.text();
+    const m = html.match(/"profile_id":"(\d{5,20})"/);
+    return m ? { id: m[1] } : { unknown: true };
+  }
+
+  const fromFriendship = (j) => (j && (j.friendship_status || (typeof j.following === 'boolean' ? j : null))) || null;
+
+  async function apiAct(item) {
+    if (!csrfToken() || loginWall()) return { error: 'Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor.' };
+    if (!item || !/^[\w.]{1,30}$/.test(String(item.username || '')) || (item.action !== 'follow' && item.action !== 'unfollow')) return { error: 'Geçersiz işlem.' };
+    if (cfg.username && item.username.toLowerCase() === cfg.username.toLowerCase()) return { error: 'Kendi hesabınız için işlem yapılmaz.' };
+    try {
+      const who = await resolveUserId(item);
+      if (who.missing) return { outcome: 'not_found', note: 'Hesap bulunamadı: silinmiş, dondurulmuş ya da kullanıcı adı değişmiş olabilir.' };
+      if (!who.id) return { outcome: 'failed', note: 'Hesap kimliği okunamadı (Instagram sayfa düzeni değişmiş olabilir).' };
+
+      // Önce gerçek durum: uygulamadaki kayıt eski olabilir
+      const show = await igFetch(`/api/v1/friendships/show/${who.id}/`);
+      if (blockedResponse(show)) return { outcome: 'blocked', note: 'Instagram bir kısıtlama uyarısı gösterdi.' };
+      if (show.status === 401 || (show.json && show.json.message === 'login_required')) return { error: 'Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor.' };
+      if (show.status !== 200 || !show.json) return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${show.status}).` };
+      const following = show.json.following === true;
+      const requested = show.json.outgoing_request === true;
+
+      if (item.action === 'unfollow') {
+        if (!following && !requested) return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
+        const r = await igFetch(`/api/v1/friendships/destroy/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
+        if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
+        const fs = fromFriendship(r.json);
+        if (r.status === 200 && r.json && r.json.status === 'ok' && (!fs || (fs.following !== true && fs.outgoing_request !== true))) return { outcome: 'done' };
+        return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}); sonuç doğrulanamadı.` };
+      }
+      if (following) return { outcome: 'already', note: 'Zaten takip ediyorsunuz.' };
+      if (requested) return { outcome: 'already', note: 'Takip isteği zaten gönderilmiş.' };
+      const r = await igFetch(`/api/v1/friendships/create/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
+      if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
+      const fs = fromFriendship(r.json);
+      if (r.status === 200 && r.json && r.json.status === 'ok' && fs && (fs.following === true || fs.outgoing_request === true)) {
+        return { outcome: 'done', note: fs.outgoing_request === true && fs.following !== true ? 'Gizli hesap: takip isteği gönderildi.' : undefined };
+      }
+      return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}); sonuç doğrulanamadı.` };
+    } catch (e) {
+      return { outcome: 'failed', note: `Instagram isteği başarısız (ağ hatası).` };
+    }
+  }
+
+  // Arka plan hangi kişiyi ne zaman yapacağımızı söyler; sonucu ona bildiririz. Aynı anda tek döngü.
+  let apiLoop = false;
+  async function runApiJob(jobId) {
+    if (apiLoop) return;
+    apiLoop = true;
+    try {
+      let result = null;
+      for (let guard = 0; guard < 400; guard++) {
+        let next;
+        try { next = await chrome.runtime.sendMessage({ type: 'ia-api-next', jobId, result }); } catch { break; }
+        if (!next || !next.item) break;
+        if (next.waitMs > 0) await sleep(next.waitMs);
+        result = await apiAct(next.item);
+      }
+    } finally {
+      apiLoop = false;
+    }
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (sender.id !== chrome.runtime.id || !msg || typeof msg !== 'object') return false;
+    if (msg.type === 'ia-api-ping') { sendResponse({ ok: true, csrf: !!csrfToken(), loginWall: loginWall() }); return false; }
+    if (msg.type === 'ia-api-run' && typeof msg.jobId === 'string') { runApiJob(msg.jobId); sendResponse({ ok: true }); return false; }
+    return false;
+  });
+  // Bu sekmeyi doğrudan istekler için aday olarak bildir (sekme izni gerekmez)
+  chrome.runtime.sendMessage({ type: 'ia-tab-hello' }).catch(() => {});
+
   const MORE_COMMENTS = /load more comments|view more comments|view all|daha fazla yorum|yorumların tümünü|tüm yorumları/i;
 
   function moreCommentsButton() {

@@ -218,11 +218,11 @@ describe('jobs started from the app', () => {
     it('opens the first profile, waits 2-4 minutes between profiles and reports every result', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { b, results } = withQueue()
-      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       expect(r).toEqual({ ok: true, total: 2 })
       expect(b.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://www.instagram.com/ali/', active: true })
       const cfg = await msg(b, { type: 'ia-config', viewer: '525' }, fromIg())
-      expect(cfg.job).toEqual({ kind: 'actions', shortcode: 'ali', item: { ...items[0], manual: false } })
+      expect(cfg.job).toEqual({ kind: 'actions', shortcode: 'ali', item: { ...items[0], manual: false, igUserId: 0 } })
       expect(cfg.tools).toEqual({ posts: false, likers: false, comments: false })     // hiçbir şey kaydedilmez
 
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
@@ -261,7 +261,7 @@ describe('jobs started from the app', () => {
         }
         return base(url, init)
       })
-      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       const step = async (m: any) => {
         b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, ...m }, fromIg(), () => {})
         await vi.advanceTimersByTimeAsync(300)
@@ -298,7 +298,7 @@ describe('jobs started from the app', () => {
     it('a job that is really running (session memory intact) is not touched on startup', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { b } = withQueue()
-      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       await b.listeners.startup()
       expect(b.session.job.state).toBe('running')
       vi.useRealTimers()
@@ -311,7 +311,7 @@ describe('jobs started from the app', () => {
       const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
       b.fetchStub.mockImplementation(async (url: string, init?: any) =>
         String(url).includes('/bridge/actions/next') ? new Response(JSON.stringify({ items: two, delay: [120, 240], manual_delay: [15, 35], reason: null }), { status: 200 }) : base(url, init))
-      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
       await vi.advanceTimersByTimeAsync(500)
       const wait = b.session.job.nextAt - Date.now()
@@ -330,7 +330,7 @@ describe('jobs started from the app', () => {
         String(url).includes('/bridge/actions/next') && extra.length
           ? new Response(JSON.stringify({ items: [...items, ...extra], delay: [120, 240], manual_delay: [15, 35], reason: null }), { status: 200 })
           : base(url, init))
-      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
       await vi.advanceTimersByTimeAsync(500)                                  // ali yapıldı; veli için ~2-4 dk bekleme
       expect(b.session.job.nextAt - Date.now()).toBeGreaterThan(100_000)
@@ -357,7 +357,7 @@ describe('jobs started from the app', () => {
         }
         return base(url, init)
       })
-      expect((await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)).total).toBe(1)
+      expect((await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)).total).toBe(1)
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'done' }, fromIg(), () => {})
       await vi.advanceTimersByTimeAsync(500)
       expect(b.session.job.state).toBe('running')                             // bitmedi: yeni gelen var
@@ -368,7 +368,7 @@ describe('jobs started from the app', () => {
     it('stops at once when Instagram blocks the action', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { b, results } = withQueue()
-      await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       b.listeners.message({ type: 'ia-job-done', error: null, seen: 0, outcome: 'blocked', note: 'Action Blocked' }, fromIg(), () => {})
       await vi.advanceTimersByTimeAsync(500)
       expect(results[0].body.outcome).toBe('blocked')
@@ -380,7 +380,7 @@ describe('jobs started from the app', () => {
 
     it('explains why nothing can run (app says: quiet hours / limit / off)', async () => {
       const { b } = withQueue('quiet_hours')
-      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       expect(r.ok).toBe(false)
       expect(r.error).toContain('Sessiz saat')
       expect(b.chrome.tabs.create).not.toHaveBeenCalled()
@@ -388,7 +388,7 @@ describe('jobs started from the app', () => {
 
     it('ignores malformed queue items from the app', async () => {
       const { b } = withQueue(null, [{ id: 1, username: '../evil', action: 'unfollow' }, { id: 2, username: 'ok.user', action: 'delete' }] as any)
-      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+      const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions', mode: 'tab' } }, fromApp)
       expect(r.ok).toBe(false)
       expect(b.chrome.tabs.create).not.toHaveBeenCalled()
     })
@@ -465,5 +465,113 @@ describe('extension reload keeps the app page connected', () => {
     await b.listeners.installed({ reason: 'update', previousVersion: '2.6.4' })
     expect(query).toHaveBeenCalledWith({ url: ['http://localhost:3002/*', 'http://127.0.0.1:3002/*'] })   // Instagram sekmelerine dokunmaz
     expect(reload.mock.calls.map((c: any[]) => c[0])).toEqual([5, 9])
+  })
+})
+
+
+describe('follow / unfollow without opening a tab (direct requests from an open Instagram tab)', () => {
+  const ME = { lastViewer: '525', profiles: { '525': { id: '423ac6e4-e9ae-4dfb-85e4-193fd856ddb8', username: 'gktuoktay' } } }
+  const fromApp = { id: 'ext', tab: { url: 'http://localhost:3002/users' } }
+  const fromIg = (id = 41) => ({ id: 'ext', tab: { id, url: 'https://www.instagram.com/' } })
+  const msg = (b: any, m: any, s: any) => new Promise<any>(res => { if (!b.listeners.message(m, s, res)) res(undefined) })
+  const items = [{ id: 11, username: 'ali', action: 'unfollow', manual: true, ig_user_id: 28088623519 },
+                 { id: 12, username: 'veli', action: 'unfollow', manual: false, ig_user_id: -7 }]
+
+  function setup(opts: { tabs?: number[]; ping?: any } = {}) {
+    const b = loadBackground('2.7.0', '2.7.0', { ...ME })
+    const base = b.fetchStub.getMockImplementation() as (u: string, i?: any) => Promise<Response>
+    const reported: any[] = []
+    b.fetchStub.mockImplementation(async (url: string, init?: any) => {
+      if (String(url).includes('/bridge/actions/next')) return new Response(JSON.stringify({ items, delay: [120, 240], manual_delay: [15, 35], api_delay: [3, 5], reason: null }), { status: 200 })
+      if (String(url).includes('/result')) { reported.push(JSON.parse(init.body)); return new Response('{"ok":true,"status":"done"}', { status: 200 }) }
+      return base(url, init)
+    })
+    const sent: any[] = []
+    ;(b.chrome.tabs as any).sendMessage = vi.fn((tabId: number, m: any, cb?: Function) => {
+      sent.push({ tabId, m })
+      if (m.type === 'ia-api-ping') cb?.('ping' in (opts as any) && opts.ping === null ? undefined : (opts.ping ?? { ok: true, csrf: true, loginWall: false }))
+      else cb?.({ ok: true })
+    })
+    return { b, reported, sent, hello: async (id = 41) => { b.listeners.message({ type: 'ia-tab-hello' }, fromIg(id), () => {}); await Promise.resolve(); await new Promise(r => setTimeout(r, 5)) } }
+  }
+
+  it('starts without opening any tab: tells the open Instagram tab to run the job', async () => {
+    const { b, sent, hello } = setup()
+    await hello()
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r).toEqual({ ok: true, total: 2 })
+    expect(b.chrome.tabs.create).not.toHaveBeenCalled()
+    expect(sent.find(s => s.m.type === 'ia-api-run')).toMatchObject({ tabId: 41 })
+    expect(b.session.job).toMatchObject({ api: true, tabId: 41, state: 'running' })
+  })
+
+  it('without any Instagram tab it says so and opens nothing', async () => {
+    const { b } = setup()
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('Açık bir Instagram sekmesi yok')
+    expect(b.chrome.tabs.create).not.toHaveBeenCalled()
+  })
+
+  it('a signed-out Instagram tab is not used', async () => {
+    const { b, hello } = setup({ ping: { ok: true, csrf: false, loginWall: true } })
+    await hello()
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('oturum görünmüyor')
+  })
+
+  it('the loop: first item at once, then 3-5 s apart, each result is written to the app, id comes through', async () => {
+    const { b, reported, hello } = setup()
+    await hello()
+    await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    const next = (result?: any) => new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: b.session.job.id, result }, fromIg(), res) })
+    const first = await next()
+    expect(first.item).toMatchObject({ id: 11, username: 'ali', igUserId: 28088623519 })
+    expect(first.waitMs).toBe(0)
+    const second = await next({ outcome: 'done' })
+    expect(reported[0]).toMatchObject({ outcome: 'done' })
+    expect(second.item).toMatchObject({ username: 'veli', igUserId: -7 })                 // geçici kimlik: sayfadan çözülecek
+    expect(second.waitMs).toBeGreaterThanOrEqual(3000)
+    expect(second.waitMs).toBeLessThanOrEqual(5000)
+    const end = await next({ outcome: 'already', note: 'Zaten takip etmiyorsunuz.' })
+    expect(end.item).toBeNull()
+    expect(b.session.job.state).toBe('done')
+    expect(b.chrome.tabs.remove).not.toHaveBeenCalled()                                   // kullanıcının sekmesi kapatılmaz
+  })
+
+  it('Instagram blocks: stops at once, the app pauses actions, the tab stays open', async () => {
+    const { b, reported, hello } = setup()
+    await hello()
+    await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    const next = (result?: any) => new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: b.session.job.id, result }, fromIg(), res) })
+    await next()
+    const r = await next({ outcome: 'blocked', note: 'Instagram işlemi engelledi.' })
+    expect(r.item).toBeNull()
+    expect(reported[0].outcome).toBe('blocked')
+    expect(b.session.job.state).toBe('stopped')
+    expect(b.chrome.tabs.remove).not.toHaveBeenCalled()
+  })
+
+  it('does not drive the user\'s own Instagram tab with the page-clicking flow, and ignores a foreign or stale job id', async () => {
+    const { b, hello } = setup()
+    await hello()
+    await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    const cfg = await msg(b, { type: 'ia-config', viewer: '525' }, fromIg())
+    expect(cfg.job).toBeUndefined()                                                       // sekme "iş sekmesi" gibi sürülmez
+    const stale = await new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: 'eski' }, fromIg(), res) })
+    expect(stale.item).toBeNull()
+    const other = await new Promise<any>(res => { b.listeners.message({ type: 'ia-api-next', jobId: b.session.job.id }, fromIg(99), res) })
+    expect(other.item).toBeNull()                                                         // başka sekme bu işi sürüyemez
+  })
+
+  it('closing the Instagram tab stops the job and forgets the tab', async () => {
+    const { b, hello } = setup()
+    await hello()
+    await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    await b.listeners.removed(41)
+    expect(b.session.job.state).toBe('stopped')
+    const r = await msg(b, { type: 'ia-run', cmd: { kind: 'actions' } }, fromApp)
+    expect(r.error).toContain('Açık bir Instagram sekmesi yok')
   })
 })
