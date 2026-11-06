@@ -3,7 +3,7 @@ import { Session } from '../api/sessions'
 import { useSession } from '../contexts/SessionContext'
 import { actionsApi, ActionLogEntry } from '../api/actions'
 import { useLang } from '../contexts/LangContext'
-import { explainProblem } from '../lib/problems'
+import { describeActionNote } from '../lib/actionNotes'
 import { CheckCircle, XCircle, Clock, SkipForward } from 'lucide-react'
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -63,7 +63,21 @@ export default function ActionLogPage() {
                     {entry.action_type === 'unfollow' ? T.actionLog.unfollow : entry.action_type === 'remove_follower' ? T.actionLog.removeFollower : T.actionLog.follow}
                   </span>
                 </div>
-                {entry.error_msg && <p className="text-xs text-red-400 mt-0.5 truncate" title={entry.error_msg}>{explainProblem(entry.error_msg, T).title}</p>}
+                {entry.error_msg && (() => {
+                  const n = describeActionNote(entry.error_msg, T)
+                  const ok = entry.status !== 'failed'
+                  return (
+                    <>
+                      <p className={`text-xs mt-0.5 ${ok ? 'text-gray-400' : 'text-red-400'}`}>{n.title}</p>
+                      {n.detail !== n.title && (
+                        <details className="text-[11px] text-gray-600">
+                          <summary className="cursor-pointer select-none">{T.actionLog.detail}</summary>
+                          <p className="mt-0.5 break-words">{n.detail}</p>
+                        </details>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
               <div className="text-xs text-gray-600 shrink-0">
                 {entry.executed_at
