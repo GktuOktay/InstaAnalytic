@@ -174,7 +174,14 @@
   const UNFOLLOW_RE = /^(unfollow|takibi bırak|takipten çık)$/i;
   const BLOCKED_RE = /try again later|action blocked|we restrict certain activity|restrict certain activity|daha sonra tekrar dene|bazı etkinlikleri kısıtlıyoruz|işlem engellendi/i;
 
-  const btnText = (el) => (el.textContent || '').trim();
+  // Düğme metni: Instagram okun erişilebilirlik metnini de içine yazar ("TakiptesinAşağı Ok Simgesi",
+  // "Following" + "Down chevron icon"). Simge öğeleri ve sondaki simge açıklaması atılır.
+  const ICON_TAIL = /\s*(aşağı ok simgesi|down chevron icon|chevron(?: down)? icon|[\wğüşöçıİĞÜŞÖÇ]+ simgesi|[\w]+ icon)$/i;
+  function btnText(el) {
+    const copy = el.cloneNode(true);
+    for (const x of copy.querySelectorAll('svg, img, [aria-hidden="true"]')) x.remove();
+    return (copy.textContent || '').replace(/\s+/g, ' ').trim().replace(ICON_TAIL, '').trim();
+  }
 
   function profileButtons() {
     const out = [];
@@ -205,7 +212,7 @@
   function pageMissing(username) {
     const path = location.pathname.toLowerCase();
     if (!path.startsWith(`/${username.toLowerCase()}/`) && path !== `/${username.toLowerCase()}`) return true;
-    return /page not found|sayfa bulunamadı|bu sayfa mevcut değil|isn't available|ulaşılamıyor/i.test(`${document.title} ${(document.body.innerText || '').slice(0, 600)}`);
+    return /page not found|sayfa bulunamadı|bu sayfa mevcut değil|isn't available|ulaşılamıyor/i.test(`${document.title} ${(document.body.innerText || document.body.textContent || '').slice(0, 600)}`);
   }
 
   async function performAction(item) {
@@ -216,7 +223,10 @@
     if (cfg.username && item.username.toLowerCase() === cfg.username.toLowerCase()) return { error: 'Kendi hesabınız için işlem yapılmaz.' };
     const first = await waitFor(() => followState() || (pageMissing(item.username) ? { missing: true } : null), 14000);
     if (!first || first.missing) {
-      return { outcome: 'not_found', note: first ? 'Hesap bulunamadı: silinmiş, dondurulmuş ya da kullanıcı adı değişmiş olabilir.' : 'Profil düğmeleri bulunamadı; sayfa yüklenmedi ya da Instagram düzeni değişmiş olabilir.' };
+      if (first) return { outcome: 'not_found', note: 'Hesap bulunamadı: silinmiş, dondurulmuş ya da kullanıcı adı değişmiş olabilir.' };
+      // Düğmeyi tanıyamadık: ne bulduğumuzu yaz ki sorun görülebilsin (yalnızca düğme metinleri)
+      const seen = profileButtons().map(btnText).filter(Boolean).slice(0, 6).join(' | ');
+      return { outcome: 'failed', note: `Takip düğmesi tanınmadı (sayfadaki düğmeler: ${seen || 'yok'}). Instagram sayfa düzeni değişmiş olabilir.` };
     }
     if (blockedNotice()) return { outcome: 'blocked', note: 'Instagram bir kısıtlama uyarısı gösterdi.' };
     await sleep(rand(1500, 3500));                           // profile bakıyormuş gibi bekle
@@ -227,13 +237,20 @@
       if (cur.state === 'follow') return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
       cur.el.click();
       await sleep(rand(900, 1800));
-      const confirmBtn = await waitFor(() => {
+      const findConfirm = () => {
         for (const d of document.querySelectorAll('[role="dialog"]')) {
           for (const el of d.querySelectorAll('button, [role="button"], [role="menuitem"]')) if (UNFOLLOW_RE.test(btnText(el))) return el;
         }
         return null;
-      }, 6000);
-      if (confirmBtn) { await sleep(rand(700, 1500)); confirmBtn.click(); }
+      };
+      // Önce menüdeki "Takibi bırak"; gizli hesaplarda Instagram bir kez daha onay isteyebilir
+      for (let i = 0; i < 2; i++) {
+        const confirmBtn = await waitFor(findConfirm, i === 0 ? 6000 : 3000);
+        if (!confirmBtn) break;
+        await sleep(rand(700, 1500));
+        confirmBtn.click();
+        await sleep(rand(900, 1600));
+      }
       await sleep(rand(1500, 2500));
       const after = await waitFor(() => { const s = followState(); return s && s.state === 'follow' ? s : null; }, 8000);
       if (after) return { outcome: 'done' };

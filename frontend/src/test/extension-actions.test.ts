@@ -46,6 +46,37 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
 
 describe('extension: follow / unfollow by clicking like a person', () => {
+  it("recognises Instagram's real button, whose text carries the icon's accessible name", async () => {
+    // Gerçek profil sayfasında düğme metni: "Takiptesin" + "Aşağı Ok Simgesi"; menüde doğrudan "Takibi Bırak" düğmesi var
+    document.body.innerHTML = '<header><section><button id="main"><div>Takiptesin</div><svg aria-label="x"><title>Aşağı Ok Simgesi</title></svg></button><button>Mesaj Gönder</button></section></header>'
+    const btn = document.getElementById('main') as HTMLElement
+    btn.addEventListener('click', () => {
+      const d = document.createElement('div')
+      d.setAttribute('role', 'dialog')
+      d.innerHTML = '<button>Kapat</button><button>Yakın arkadaşlar listesine ekleYakın arkadaş</button><button>Sessize AlSağ ok</button><button id="u">Takibi Bırak</button>'
+      document.body.appendChild(d)
+      d.querySelector('#u')!.addEventListener('click', () => { d.remove(); btn.innerHTML = '<div>Takip Et</div>' })
+    })
+    expect((await runAction({ id: 1, username: 'ali', action: 'unfollow' }))?.outcome).toBe('done')
+  })
+
+  it('also when the icon name is plain text next to the label (English: "Following" + "Down chevron icon")', async () => {
+    profile('FollowingDown chevron icon', btn => confirmDialog('Unfollow', () => { btn.textContent = 'Follow' }))
+    expect((await runAction({ id: 1, username: 'ali', action: 'unfollow' }))?.outcome).toBe('done')
+  })
+
+  it('a private account that asks for a second confirmation is still unfollowed', async () => {
+    profile('Following', btn => confirmDialog('Unfollow', () => confirmDialog('Unfollow', () => { btn.textContent = 'Follow' })))
+    expect((await runAction({ id: 1, username: 'ali', action: 'unfollow' }))?.outcome).toBe('done')
+  })
+
+  it('when no known button is found it says which buttons it saw (no silent failure)', async () => {
+    document.body.innerHTML = '<header><button>Seçenekler</button><button>Mesaj Gönder</button></header>'
+    const r = await runAction({ id: 1, username: 'ali', action: 'unfollow' })
+    expect(r?.outcome).toBe('failed')
+    expect(r?.note).toContain('Seçenekler | Mesaj Gönder')
+  })
+
   it('unfollow: clicks "Following", confirms "Unfollow", verifies the button became "Follow"', async () => {
     profile('Following', btn => confirmDialog('Unfollow', () => { btn.textContent = 'Follow' }))
     const r = await runAction({ id: 1, username: 'ali', action: 'unfollow' })
