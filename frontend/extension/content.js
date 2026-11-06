@@ -266,10 +266,16 @@
   }
 
   // ── Takip / takipten çıkma: doğrudan istek ─────────────────────────────────
-  // Instagram web uygulamasının kendi uç noktaları, kullanıcının bu sekmedeki oturumuyla (aynı kaynak, çerezler).
-  // Token (csrftoken) yalnızca burada okunur; uygulamaya, günlüğe ya da nota ASLA yazılmaz. Sekme açılmaz.
-  const IG_APP_ID = '936619743392459';          // Instagram web uygulamasının herkese açık uygulama kimliği
+  // Instagram web uygulaması takipten çıkmayı artık GraphQL ile yapar (eski /api/v1/friendships/destroy yolu ölü:
+  // HTML döner). İstek, sayfanın kendi oturum anahtarlarıyla (csrftoken çerezi, sayfa verisindeki LSD / DTSG) ve
+  // kullanıcının bu sekmedeki oturumuyla yapılır. Anahtarlar yalnızca burada okunur; uygulamaya, günlüğe ya da
+  // nota ASLA yazılmaz. Sekme açılmaz.
+  const IG_APP_ID = '936619743392459';                  // Instagram web uygulamasının herkese açık uygulama kimliği
+  const ASBD_ID = '359341';
+  const UNFOLLOW_DOC_ID = '27789106940691111';           // usePolarisUnfollowMutation (Instagram web, canlı istekten alındı)
+  const UNFOLLOW_NAME = 'usePolarisUnfollowMutation';
   const csrfToken = () => (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || '';
+  const viewerCookie = () => (document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/) || [])[1] || '';
 
   function apiHeaders(post) {
     const h = { 'X-CSRFToken': csrfToken(), 'X-IG-App-ID': IG_APP_ID, 'X-Requested-With': 'XMLHttpRequest', Accept: '*/*' };
@@ -287,12 +293,25 @@
     return { status: res.status, json };
   }
 
+  // Sayfanın gömülü verisindeki oturum anahtarları (LSD, DTSG)
+  function pageTokens() {
+    let lsd = null;
+    let dtsg = null;
+    for (const s of document.querySelectorAll('script[type="application/json"]')) {
+      const t = s.textContent || '';
+      if (!lsd) { const m = t.match(/\["LSD",\[\],\{"token":"([^"]+)"/); if (m) lsd = m[1]; }
+      if (!dtsg) { const m = t.match(/\["DTSGInitialData",\[\],\{"token":"([^"]+)"/); if (m) dtsg = m[1]; }
+      if (lsd && dtsg) break;
+    }
+    if (!lsd || !dtsg) return null;
+    return { lsd, dtsg, jazoest: '2' + [...dtsg].reduce((a, ch) => a + ch.charCodeAt(0), 0) };
+  }
+
   // Instagram'ın hız / spam / doğrulama engeli
   function blockedResponse(r) {
-    const msg = String((r.json && (r.json.message || r.json.error_type || r.json.spam)) || '');
+    const text = JSON.stringify(r.json || {}).slice(0, 600);
     if (r.status === 429) return true;
-    if (r.status === 400 || r.status === 403) return /feedback_required|spam|checkpoint|challenge|rate|wait a few minutes|try again later|restrict/i.test(msg + JSON.stringify(r.json || {}).slice(0, 400));
-    return false;
+    return /feedback_required|spam|checkpoint_required|challenge_required|rate.?limit|wait a few minutes|try again later|restrict certain/i.test(text);
   }
 
   // Kullanıcı kimliği: uygulamada gerçek kimlik varsa o; geçici (negatif) ise profil sayfasının gömülü verisinden
@@ -305,16 +324,43 @@
     return m ? { id: m[1] } : { unknown: true };
   }
 
-  // İşlemden sonra gerçek durumu yeniden oku (kısa bir an bekleyip)
-  async function currentState(id) {
-    await sleep(rand(900, 1500));
-    const s = await igFetch(`/api/v1/friendships/show/${id}/`);
-    if (s.status !== 200 || !s.json) return null;
-    return { following: s.json.following === true, requested: s.json.outgoing_request === true };
+  // İşlemden sonra gerçek durumu yeniden oku; Instagram'ın duruma yansıtması gecikebilir, bu yüzden birkaç kez bak
+  async function currentState(id, expectFollowing) {
+    let last = null;
+    for (const [lo, hi] of [[900, 1500], [2000, 3000], [3500, 5000]]) {
+      await sleep(rand(lo, hi));
+      const s = await igFetch(`/api/v1/friendships/show/${id}/`);
+      if (s.status !== 200 || !s.json) continue;
+      last = { following: s.json.following === true, requested: s.json.outgoing_request === true };
+      if (expectFollowing ? (last.following || last.requested) : (!last.following && !last.requested)) return last;
+    }
+    return last;
   }
 
-  // Hata ayıklama için yanıtın yalnızca alan ADLARI (değerler değil: token / kişisel veri sızmasın)
-  const shape = (j) => (j && typeof j === 'object' ? ` (yanıt alanları: ${Object.keys(j).slice(0, 6).join(', ')})` : ' (yanıt JSON değil)');
+  // Hata ayıklama için yanıtın yalnızca alan ADLARI ve Instagram'ın kısa hata iletisi (değer / token asla)
+  function shape(j) {
+    if (!j || typeof j !== 'object') return ' (yanıt JSON değil)';
+    const err = Array.isArray(j.errors) && j.errors[0] && typeof j.errors[0].message === 'string' ? `; ileti: ${j.errors[0].message.slice(0, 80)}` : '';
+    return ` (yanıt alanları: ${Object.keys(j).slice(0, 6).join(', ')}${err})`;
+  }
+
+  async function graphqlUnfollow(id, tokens) {
+    const body = new URLSearchParams({
+      av: viewerCookie(), __d: 'www', __user: '0', __a: '1', __req: '1', dpr: '1', __comet_req: '7',
+      fb_dtsg: tokens.dtsg, jazoest: tokens.jazoest, lsd: tokens.lsd,
+      fb_api_caller_class: 'RelayModern', fb_api_req_friendly_name: UNFOLLOW_NAME,
+      variables: JSON.stringify({ target_user_id: id, container_module: 'profile', nav_chain: 'PolarisProfilePostsTabRoot:profilePage:1' }),
+      server_timestamps: 'true', doc_id: UNFOLLOW_DOC_ID,
+    }).toString();
+    const res = await fetch('/api/graphql', {
+      method: 'POST', credentials: 'include', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken(), 'X-IG-App-ID': IG_APP_ID,
+        'X-FB-LSD': tokens.lsd, 'X-FB-Friendly-Name': UNFOLLOW_NAME, 'X-ASBD-ID': ASBD_ID },
+    });
+    let json = null;
+    try { json = JSON.parse((await res.text()).replace(/^for \(;;\);/, '')); } catch { /* JSON değil */ }
+    return { status: res.status, json };
+  }
 
   async function apiAct(item) {
     if (!csrfToken() || loginWall()) return { error: 'Instagram giriş sayfası açıldı; Instagram oturumu kapalı ya da doğrulama istiyor.' };
@@ -333,28 +379,24 @@
       const following = show.json.following === true;
       const requested = show.json.outgoing_request === true;
 
-      if (item.action === 'unfollow') {
-        if (!following && !requested) return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
-        const r = await igFetch(`/api/v1/friendships/destroy/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
-        if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
-        if (r.status !== 200) return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}).` };
-        // Sonuç, yanıt gövdesinin şekline değil Instagram'ın gerçek durumuna bakılarak doğrulanır
-        const after = await currentState(who.id);
-        if (after && !after.following && !after.requested) return { outcome: 'done' };
-        return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP 200); takipten çıkılamadı, durum hâlâ takipte${shape(r.json)}.` };
+      if (item.action === 'follow') {
+        if (following) return { outcome: 'already', note: 'Zaten takip ediyorsunuz.' };
+        if (requested) return { outcome: 'already', note: 'Takip isteği zaten gönderilmiş.' };
+        return { outcome: 'failed', note: 'Takip etme doğrudan istekle henüz desteklenmiyor; takipten çıkma destekleniyor.' };
       }
-      if (following) return { outcome: 'already', note: 'Zaten takip ediyorsunuz.' };
-      if (requested) return { outcome: 'already', note: 'Takip isteği zaten gönderilmiş.' };
-      const r = await igFetch(`/api/v1/friendships/create/${who.id}/`, { method: 'POST', body: new URLSearchParams({ container_module: 'profile', user_id: who.id }).toString() });
+
+      if (!following && !requested) return { outcome: 'already', note: 'Zaten takip etmiyorsunuz.' };
+      const tokens = pageTokens();
+      if (!tokens) return { outcome: 'failed', note: 'Instagram oturum anahtarları sayfada bulunamadı (sayfa tam yüklenmemiş olabilir).' };
+      const r = await graphqlUnfollow(who.id, tokens);
       if (blockedResponse(r)) return { outcome: 'blocked', note: 'Instagram işlemi engelledi.' };
       if (r.status !== 200) return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP ${r.status}).` };
-      const after = await currentState(who.id);
-      if (after && (after.following || after.requested)) {
-        return { outcome: 'done', note: after.requested && !after.following ? 'Gizli hesap: takip isteği gönderildi.' : undefined };
-      }
-      return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP 200); takip edilemedi${shape(r.json)}.` };
+      // Sonuç, yanıt gövdesinin şekline değil Instagram'ın gerçek durumuna bakılarak doğrulanır
+      const after = await currentState(who.id, false);
+      if (after && !after.following && !after.requested) return { outcome: 'done' };
+      return { outcome: 'failed', note: `Instagram isteği başarısız (HTTP 200); takipten çıkılamadı, durum hâlâ takipte${shape(r.json)}.` };
     } catch (e) {
-      return { outcome: 'failed', note: `Instagram isteği başarısız (ağ hatası).` };
+      return { outcome: 'failed', note: 'Instagram isteği başarısız (ağ hatası).' };
     }
   }
 

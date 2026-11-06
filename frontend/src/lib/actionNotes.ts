@@ -8,7 +8,7 @@ import { explainProblem } from './problems'
  */
 export type ActionNoteKey =
   | 'done' | 'alreadyNot' | 'alreadyFollowing' | 'alreadyRequested' | 'requestSent'
-  | 'apiFailed' | 'noId' | 'noButton' | 'buttonGone' | 'accountGone' | 'unverified' | 'blocked' | 'loggedOut' | 'ownAccount' | 'invalid'
+  | 'apiFailed' | 'noId' | 'noTokens' | 'followUnsupported' | 'noButton' | 'buttonGone' | 'accountGone' | 'unverified' | 'blocked' | 'loggedOut' | 'ownAccount' | 'invalid'
 
 const RULES: [ActionNoteKey, RegExp][] = [
   ['done',             /^Yapıldı\.?$/i],
@@ -18,6 +18,8 @@ const RULES: [ActionNoteKey, RegExp][] = [
   ['requestSent',      /Gizli hesap: takip isteği gönderildi/i],
   ['accountGone',      /Hesap bulunamadı/i],
   ['buttonGone',       /Takip düğmesi kayboldu/i],
+  ['followUnsupported',/Takip etme doğrudan istekle henüz desteklenmiyor/i],
+  ['noTokens',         /oturum anahtarları sayfada bulunamadı/i],
   ['apiFailed',        /Instagram isteği başarısız/i],
   ['noId',             /Hesap kimliği okunamadı/i],
   ['noButton',         /Profil düğmeleri bulunamadı|Takip düğmesi tanınmadı|Takip düğmesi bulunamadı/i],
