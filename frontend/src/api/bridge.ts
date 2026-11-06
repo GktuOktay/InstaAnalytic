@@ -54,9 +54,10 @@ export const bridgeApi = {
   actionHistory: (id: string, limit = 50, state?: 'done' | 'skipped' | 'failed') =>
     api.get<QueueHistory>(`/sessions/${id}/bridge/actions/history`, { params: { limit, ...(state ? { state } : {}) } }).then(r => r.data),
   actions: (id: string) => api.get<ActionQueue>(`/sessions/${id}/bridge/actions`).then(r => r.data),
-  enqueueActions: (id: string, action: 'follow' | 'unfollow', user_ids: number[], manual = false) =>
-    api.post<{ added: number; duplicate: number; skipped: number }>(`/sessions/${id}/bridge/actions`, { action, user_ids, manual }).then(r => r.data),
-  cancelActions: (id: string, user_ids: number[]) => api.post<{ removed: number }>(`/sessions/${id}/bridge/actions/cancel`, { user_ids }).then(r => r.data),
+  // Kişiler KULLANICI ADIYLA gönderilir: ZIP kaynaklı geçici kimlikler (|id| > 2^53) JSON sayısı olarak tarayıcıda bozulur
+  enqueueActions: (id: string, action: 'follow' | 'unfollow', usernames: string[], manual = false) =>
+    api.post<{ added: number; duplicate: number; skipped: number }>(`/sessions/${id}/bridge/actions`, { action, usernames, manual }).then(r => r.data),
+  cancelActions: (id: string, usernames: string[]) => api.post<{ removed: number }>(`/sessions/${id}/bridge/actions/cancel`, { usernames }).then(r => r.data),
   clearActions: (id: string) => api.delete<{ removed: number }>(`/sessions/${id}/bridge/actions`).then(r => r.data),
   status: (id: string) => api.get<BridgeStatus>(`/sessions/${id}/bridge/status`).then(r => r.data),
   todo: (id: string, limit = 8, kind: 'likers' | 'comments' = 'likers') =>

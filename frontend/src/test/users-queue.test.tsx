@@ -42,7 +42,7 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     renderApp(<UsersPage />)
     const btn = await screen.findAllByTitle('Takipten çık')
     await userEvent.click(btn[0])
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['ali'], true))
     expect(actionsApi.unfollow).not.toHaveBeenCalled()          // sunucunun anında-işlem yolu kullanılmaz
     expect(await screen.findByText('1 işlem kuyruğa eklendi')).toBeInTheDocument()
   })
@@ -81,7 +81,7 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     const unfollow = (await screen.findAllByTitle('Takipten çık'))[0]
     expect(unfollow).not.toHaveAttribute('aria-disabled', 'true')               // kapalıyken de kuyruğa ekler
     await userEvent.click(unfollow)
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['ali'], true))
     expect(await screen.findByText(/İşlemler Ayarlar'dan kapatılmış\. İstekler kuyruğa eklenir ve silinmez/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ayarlar\'da aç' })).toHaveAttribute('href', '/settings')
     expect(screen.queryByRole('button', { name: 'İşlemleri aç' })).not.toBeInTheDocument()
@@ -217,7 +217,7 @@ describe('UsersPage — queued people leave the lists and can be taken back', ()
     await userEvent.click(await screen.findByRole('button', { name: /^Kuyrukta\s*1$/ }))
     bridge.actions.mockResolvedValue(queue())                                                   // geri alınca kuyruk boşalır
     await userEvent.click(screen.getByRole('button', { name: 'Kuyruktan geri al: @ali' }))
-    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', [5]))
+    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', ['ali']))
     expect(await screen.findByText('1 kişi kuyruktan geri alındı')).toBeInTheDocument()
     expect(await screen.findByText('@ali')).toBeInTheDocument()                                 // ana listeye döndü
     expect(screen.queryByRole('button', { name: /^Kuyrukta/ })).not.toBeInTheDocument()         // boş sekme kaybolur
@@ -231,7 +231,7 @@ describe('UsersPage — queued people leave the lists and can be taken back', ()
     const boxes = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-square'))
     await userEvent.click(boxes[0])                                                              // üstteki "tümünü seç"
     await userEvent.click(await screen.findByRole('button', { name: 'Kuyruktan geri al' }))
-    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', expect.arrayContaining([5, 6])))
+    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', expect.arrayContaining(['ali', 'veli'])))
   })
 
   it('English mode', async () => {
@@ -270,7 +270,7 @@ describe('UsersPage — permanent queue history', () => {
     bridge.actionHistory.mockResolvedValue(hist([row(2, 'zaten', 'skipped', null), row(3, 'bozuk', 'failed', 'x', 3)], { skipped: 1, failed: 1 }))
     renderApp(<UsersPage />)
     await userEvent.click(await screen.findByRole('button', { name: 'Başarısızları yeniden kuyruğa ekle' }))
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [3], false))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['bozuk'], false))
   })
 
   it('filter buttons ask the server for that state; nothing is shown when there is no history', async () => {
@@ -305,7 +305,7 @@ describe('UsersPage — clicking a person starts the extension at human pace', (
     await screen.findAllByTitle('Takipten çık')
     extReady()
     await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['ali'], true))
     await waitFor(() => expect(runCalls(post).length).toBe(1))
     expect((runCalls(post)[0][0] as any).cmd).toEqual({ kind: 'actions' })
     post.mockRestore()
@@ -319,7 +319,7 @@ describe('UsersPage — clicking a person starts the extension at human pace', (
     const boxes = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-square'))
     await userEvent.click(boxes[0])                                            // tümünü seç
     await userEvent.click(await screen.findByRole('button', { name: /Toplu Çıkar/ }))
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', expect.arrayContaining([5, 6, 7, 8]), false))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', expect.arrayContaining(['ali', 'veli', 'ayse', 'can']), false))
     expect(runCalls(post).length).toBe(0)
     post.mockRestore()
   })
@@ -327,7 +327,7 @@ describe('UsersPage — clicking a person starts the extension at human pace', (
   it('without the extension the click still queues and says nothing is lost', async () => {
     renderApp(<UsersPage />)                                                   // eklenti sinyali yok
     await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
-    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['ali'], true))
   })
 })
 
@@ -440,4 +440,43 @@ describe('UsersPage — a clicked person that is left waiting is started automat
     await new Promise(r => setTimeout(r, 7500))
     expect(runs()).toBe(1)
   }, 25000)
+})
+
+describe('UsersPage — people whose ids are beyond the JS safe-integer range (ZIP placeholders)', () => {
+  // Sunucu -48586600665382524 gönderir; tarayıcı sayıyı -48586600665382520'ye yuvarlar. Eşleşme kimlikle değil kullanıcı adıyla olmalı.
+  const corrupted = -48586600665382520
+  const other = -48586600665382500                      // kuyruk listesinde başka bir yuvarlama
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 2, items: [user(corrupted, 'zip_kisi'), user(6, 'veli')] } })
+  })
+
+  it('the click sends the USERNAME, never the corrupted number', async () => {
+    http.get.mockResolvedValue({ data: { total: 1, items: [user(corrupted, 'zip_kisi')] } })
+    renderApp(<UsersPage />)
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', ['zip_kisi'], true))
+    const sent = bridge.enqueueActions.mock.calls[0][2]
+    expect(JSON.stringify(sent)).not.toContain('4858')                                   // hiçbir yerde sayısal kimlik yok
+  })
+
+  it('a queued person is recognised by username even if the number in the queue list differs', async () => {
+    bridge.actions.mockResolvedValue(queue({ pending_count: 1, pending: [{ id: 1, ig_user_id: other, username: 'Zip_Kisi', action: 'unfollow', manual: false }] }))
+    renderApp(<UsersPage />)
+    expect(await screen.findByText('@veli')).toBeInTheDocument()
+    expect(screen.queryByText('@zip_kisi')).not.toBeInTheDocument()                      // kuyrukta: normal listeden düştü
+    await userEvent.click(screen.getByRole('button', { name: /^Kuyrukta\s*1$/ }))
+    expect(screen.getByText('@zip_kisi')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Kuyruktan geri al: @zip_kisi' }))
+    await waitFor(() => expect(bridge.cancelActions).toHaveBeenCalledWith('s1', ['zip_kisi']))
+  })
+
+  it('bulk selection also goes by username', async () => {
+    renderApp(<UsersPage />)
+    await screen.findAllByTitle('Takipten çık')
+    const boxes = screen.getAllByRole('button').filter(b => b.querySelector('svg.lucide-square'))
+    await userEvent.click(boxes[0])
+    await userEvent.click(await screen.findByRole('button', { name: /Toplu Çıkar/ }))
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', expect.arrayContaining(['zip_kisi', 'veli']), false))
+  })
 })

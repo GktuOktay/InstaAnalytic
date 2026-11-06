@@ -51,6 +51,17 @@ def gate(session: Session, now: datetime) -> str | None:
     return None
 
 
+async def resolve_ids(db: AsyncSession, session: Session, user_ids: list[int], usernames: list[str]) -> list[int]:
+    """Kullanıcı adlarını (ve doğrudan kimlikleri) bu profilin havuzundaki kimliklere çevirir."""
+    ids = list(dict.fromkeys(int(i) for i in user_ids))
+    names = list(dict.fromkeys(str(n).strip().lstrip("@").lower() for n in usernames if str(n).strip()))[:MAX_ENQUEUE]
+    if names:
+        rows = (await db.execute(select(IgUser.id).join(Relationship, and_(
+            Relationship.ig_user_id == IgUser.id, Relationship.session_id == session.id)).where(func.lower(IgUser.username).in_(names)))).scalars().all()
+        ids += [i for i in rows if i not in ids]
+    return ids[:MAX_ENQUEUE]
+
+
 async def enqueue(db: AsyncSession, session: Session, action: str, user_ids: list[int], manual: bool = False) -> dict:
     if action not in ACTIONS:
         raise ValueError("action")

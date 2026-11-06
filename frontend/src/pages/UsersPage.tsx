@@ -113,8 +113,10 @@ export default function UsersPage() {
   const [queue, setQueue] = useState<ActionQueue | null>(null)
   const [history, setHistory] = useState<QueueHistory | null>(null)
   const [histState, setHistState] = useState<'all' | 'done' | 'skipped' | 'failed'>('all')
-  const queuedById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.action]))
-  const attemptsById = new Map((queue?.pending ?? []).map(q => [q.ig_user_id, q.attempts ?? 0]))
+  // Kuyruktakiler KULLANICI ADIYLA eşlenir (geçici kimlikler JSON sayısı olarak bozulduğundan kimlikle eşleşmez)
+  const key = (name: string) => name.toLowerCase()
+  const queuedByName = new Map((queue?.pending ?? []).map(q => [key(q.username), q.action]))
+  const attemptsByName = new Map((queue?.pending ?? []).map(q => [key(q.username), q.attempts ?? 0]))
   const extRunning = ext.job?.kind === 'actions' && ext.job.state === 'running'
 
   const loadQueue = useCallback(async () => {
@@ -186,11 +188,11 @@ export default function UsersPage() {
 
   // Filtrelenmiş + sayfalanmış liste
   // Kuyruğa eklenenler normal listelerden düşer; "Kuyrukta" sekmesinde görünür ve oradan geri alınır
-  const queuedIds = new Set(queuedById.keys())
+  const isQueued = (u: UserPoolItem) => queuedByName.has(key(u.username))
   const baseFor = (items: UserPoolItem[], key: FilterTab) =>
-    key === 'queued' ? items.filter(u => queuedIds.has(u.id)) : items.filter(u => !queuedIds.has(u.id))
+    key === 'queued' ? items.filter(isQueued) : items.filter(u => !isQueued(u))
   const filtered = applyFilter(baseFor(sortedItems, tab), tab, withGhosts)
-  const queuedHere = allItems.filter(u => queuedIds.has(u.id)).length
+  const queuedHere = allItems.filter(isQueued).length
   const totalPages = Math.ceil(filtered.length / LIMIT)
   const pageItems  = filtered.slice((page - 1) * LIMIT, page * LIMIT)
 
@@ -202,10 +204,12 @@ export default function UsersPage() {
 
   // manual: kullanıcı tek bir kişiye tıkladı. Insan hızı sayılır: kuyrukta öne alınır, kısa beklemeyle yapılır
   // ve eklenti hemen tetiklenir (zaten çalışıyorsa yeni kişiyi kendisi alır).
-  const enqueueActions = async (action: 'follow' | 'unfollow', ids: number[], manual = false) => {
+  const namesOf = (ids: number[]) => ids.map(id => allItems.find(x => x.id === id)?.username).filter((n): n is string => !!n)
+
+  const enqueueActions = async (action: 'follow' | 'unfollow', names: string[], manual = false) => {
     if (manual) autoBlocked.current = false          // kullanıcı yeniden tıkladı: otomatik başlatma yeniden denenebilir
     try {
-      const r = await bridgeApi.enqueueActions(sid, action, ids, manual)
+      const r = await bridgeApi.enqueueActions(sid, action, names, manual)
       showToast(r.added ? T.users.queue.added(r.added, r.duplicate, r.skipped) : T.users.queue.nothingAdded, r.added > 0)
       await loadQueue()
       if (manual && ext.available && !extRunning) await runQueue(true)
@@ -216,21 +220,21 @@ export default function UsersPage() {
     }
   }
 
-  const undoQueued = async (ids: number[]) => {
+  const undoQueued = async (names: string[]) => {
     try {
-      const r = await bridgeApi.cancelActions(sid, ids)
+      const r = await bridgeApi.cancelActions(sid, names)
       showToast(T.users.queue.undone(r.removed))
       setSelected(new Set())
       await loadQueue()
-      if (tab === 'queued' && queuedHere <= ids.length) setTab('all')       // son kişi de geri alındıysa boş sekmede kalma
+      if (tab === 'queued' && queuedHere <= names.length) setTab('all')       // son kişi de geri alındıysa boş sekmede kalma
     } catch (e) { showToast(errMsg(e), false) }
   }
 
   // Başarısız olanları yeniden kuyruğa ekle (geçmiş kayıtları silinmez, yeni bekleyen kayıt açılır)
   const retryFailed = async (items: QueueHistory['items']) => {
     for (const action of ['unfollow', 'follow'] as const) {
-      const ids = [...new Set(items.filter(i => i.status === 'failed' && i.action === action).map(i => i.ig_user_id))]
-      if (ids.length) await enqueueActions(action, ids)
+      const names = [...new Set(items.filter(i => i.status === 'failed' && i.action === action).map(i => i.username))]
+      if (names.length) await enqueueActions(action, names)
     }
   }
 
@@ -284,7 +288,7 @@ export default function UsersPage() {
 
   const handleFollow = async (u: UserPoolItem) => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
-    if (viaExt) { await enqueueActions('follow', [u.id], true); return }
+    if (viaExt) { await enqueueActions('follow', [u.username], true); return }
     setActionLoading(p => ({ ...p, [u.id]: 'follow' }))
     try {
       const r = await actionsApi.follow(sid, u.id)
@@ -300,7 +304,7 @@ export default function UsersPage() {
 
   const handleUnfollow = async (u: UserPoolItem) => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
-    if (viaExt) { await enqueueActions('unfollow', [u.id], true); return }
+    if (viaExt) { await enqueueActions('unfollow', [u.username], true); return }
     setActionLoading(p => ({ ...p, [u.id]: 'unfollow' }))
     try {
       const r = await actionsApi.unfollow(sid, u.id)
@@ -339,7 +343,7 @@ export default function UsersPage() {
   const handleBulkUnfollow = async () => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     const ids = [...selected]
-    if (viaExt) { if (await enqueueActions('unfollow', ids)) setSelected(new Set()); return }
+    if (viaExt) { if (await enqueueActions('unfollow', namesOf(ids))) setSelected(new Set()); return }
     setBulkLoading(true)
     try {
       const r = await actionsApi.bulkUnfollow(sid, ids)
@@ -353,7 +357,7 @@ export default function UsersPage() {
   const handleBulkFollow = async () => {
     if (!canAct) { showToast(blockedReason ?? T.users.toast.failed, false); return }
     const ids = [...selected]
-    if (viaExt) { if (await enqueueActions('follow', ids)) setSelected(new Set()); return }
+    if (viaExt) { if (await enqueueActions('follow', namesOf(ids))) setSelected(new Set()); return }
     setBulkLoading(true)
     let ok = 0
     for (const id of ids) {
@@ -566,7 +570,7 @@ export default function UsersPage() {
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-xs text-gray-400">{T.users.selectedN(selected.size)}</span>
             {tab === 'queued' ? (
-              <button onClick={() => undoQueued([...selected])}
+              <button onClick={() => undoQueued(namesOf([...selected]))}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-900 hover:bg-purple-800 rounded-lg text-xs text-purple-200">
                 <Undo2 size={12} /> {T.users.queue.undo}
               </button>
@@ -666,7 +670,7 @@ export default function UsersPage() {
                       {u.is_private  && <Lock size={11} style={{ color: '#5d6585' }} />}
                       {ghost && <span title={T.users.ghost.hint} style={{ fontSize: 9, background: 'rgba(157,106,208,0.15)', color: '#9d6ad0', padding: '1px 6px', borderRadius: 20 }}>👻 {T.users.ghost.badge}</span>}
                       {silent && <span title={T.users.silent.hint} style={{ fontSize: 9, background: 'rgba(224,149,53,0.15)', color: '#e09535', padding: '1px 6px', borderRadius: 20 }}>{T.users.silent.badge}</span>}
-                      {queuedById.has(u.id) && <span style={{ fontSize: 9, background: 'rgba(155,143,224,0.18)', color: '#b9aef0', padding: '1px 6px', borderRadius: 20 }}>⏳ {T.users.queue.queuedBadge}{(attemptsById.get(u.id) ?? 0) > 0 && ` · ${T.users.queue.retryBadge((attemptsById.get(u.id) ?? 0) + 1, queue?.max_attempts ?? 3)}`}</span>}
+                      {isQueued(u) && <span style={{ fontSize: 9, background: 'rgba(155,143,224,0.18)', color: '#b9aef0', padding: '1px 6px', borderRadius: 20 }}>⏳ {T.users.queue.queuedBadge}{(attemptsByName.get(key(u.username)) ?? 0) > 0 && ` · ${T.users.queue.retryBadge((attemptsByName.get(key(u.username)) ?? 0) + 1, queue?.max_attempts ?? 3)}`}</span>}
                       {u.we_follow   && <span style={{ fontSize: 9, background: 'rgba(78,202,138,0.15)', color: '#4eca8a', padding: '1px 6px', borderRadius: 20 }}>{T.followers.following}</span>}
                       {u.they_follow && <span style={{ fontSize: 9, background: 'rgba(96,165,250,0.15)', color: '#60a5fa', padding: '1px 6px', borderRadius: 20 }}>{T.followers.followers}</span>}
                     </div>
@@ -701,8 +705,8 @@ export default function UsersPage() {
 
                   {/* Aksiyon */}
                   <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                    {queuedIds.has(u.id) ? (
-                      <button onClick={() => undoQueued([u.id])} title={T.users.queue.undo} aria-label={`${T.users.queue.undo}: @${u.username}`}
+                    {isQueued(u) ? (
+                      <button onClick={() => undoQueued([u.username])} title={T.users.queue.undo} aria-label={`${T.users.queue.undo}: @${u.username}`}
                         style={{ height: 28, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 4, borderRadius: 6, cursor: 'pointer', fontSize: 11,
                           background: 'rgba(155,143,224,0.15)', border: '1px solid rgba(155,143,224,0.35)', color: '#b9aef0' }}>
                         <Undo2 size={11} /> {T.users.queue.undoShort}

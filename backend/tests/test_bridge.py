@@ -643,3 +643,31 @@ async def test_bulk_selections_are_never_manual_so_they_stay_slow(client, make_s
         await _pool_user(db, s, i, f"k{i}")
     await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "user_ids": list(range(821, 826)), "manual": True})
     assert not any(i["manual"] for i in (await bridge_actions.next_batch(db, s, 10, DAY))["items"])   # 4+ kişi = toplu, insan hızı sayılmaz
+
+
+@pytest.mark.asyncio
+async def test_people_with_ids_beyond_the_js_safe_range_are_queued_by_username(client, make_session, db):
+    """ZIP kaynaklı geçici kimlikler (örn. -48586600665382524) JSON sayısı olarak tarayıcıda bozulur: kullanıcı adıyla eklenir/geri alınır."""
+    s = await make_session(source="zip", allow_actions=True)
+    big = -48586600665382524
+    assert abs(big) > 2**53
+    await _pool_user(db, s, big, "Zip_Kisi")
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "usernames": ["@zip_kisi"], "manual": True})
+    assert r.json() == {"added": 1, "duplicate": 0, "skipped": 0}
+    q = (await client.get(f"/api/sessions/{s.id}/bridge/actions")).json()
+    assert [p["username"] for p in q["pending"]] == ["Zip_Kisi"]
+    nxt = (await client.get(f"/api/sessions/{s.id}/bridge/actions/next")).json()
+    assert nxt["items"][0]["username"] == "Zip_Kisi"
+    assert (await client.post(f"/api/sessions/{s.id}/bridge/actions/cancel", json={"usernames": ["zip_kisi"]})).json() == {"removed": 1}
+    # bulunamayan kişi sessizce "0 eklendi" olmaz, açık bir hata alır
+    r = await client.post(f"/api/sessions/{s.id}/bridge/actions", json={"action": "unfollow", "usernames": ["yok_boyle_biri"]})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_username_from_another_profiles_pool_is_not_queued(client, make_session, db):
+    s1 = await make_session(username="ben", source="zip", allow_actions=True)
+    s2 = await make_session(username="baska", source="zip", allow_actions=True)
+    await _pool_user(db, s2, 99100, "sadece_digerinde")
+    r = await client.post(f"/api/sessions/{s1.id}/bridge/actions", json={"action": "unfollow", "usernames": ["sadece_digerinde"]})
+    assert r.status_code == 422

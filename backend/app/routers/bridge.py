@@ -152,12 +152,15 @@ async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
 
 class EnqueueActions(BaseModel):
     action: Literal["follow", "unfollow"]
-    user_ids: list[int] = Field(min_length=1, max_length=200)
+    # Kullanıcı adı ile çağırmak güvenlidir: geçici (ZIP kaynaklı) kimlikler 2^53'ü aşar ve JSON sayısı olarak istemcide bozulur
+    user_ids: list[int] = Field(default_factory=list, max_length=200)
+    usernames: list[str] = Field(default_factory=list, max_length=200)
     manual: bool = False        # kullanıcı tek bir kişiye tıkladı: insan hızında, öne alınarak yapılır
 
 
 class CancelActions(BaseModel):
-    user_ids: list[int] = Field(min_length=1, max_length=200)
+    user_ids: list[int] = Field(default_factory=list, max_length=200)
+    usernames: list[str] = Field(default_factory=list, max_length=200)
 
 
 class ActionResult(BaseModel):
@@ -174,7 +177,12 @@ async def actions_status(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
 async def actions_enqueue(session_id: uuid.UUID, body: EnqueueActions, db: AsyncSession = Depends(get_db)):
     # Kuyruğa ekleme her zaman kabul edilir ve kalıcıdır. İşlemlerin açık olması, saatlik/günlük sınır, sessiz saat ve
     # duraklatma yalnızca eklenti işlem isteyince (/actions/next) uygulanır: bekleyen işlem hiçbir zaman kaybolmaz.
-    return await bridge_actions.enqueue(db, await _session(db, session_id), body.action, body.user_ids, manual=body.manual and len(body.user_ids) <= 3)
+    s = await _session(db, session_id)
+    ids = await bridge_actions.resolve_ids(db, s, body.user_ids, body.usernames)
+    if not ids:
+        raise HTTPException(422, "Kişi bulunamadı")
+    total = len(body.user_ids) + len(body.usernames)
+    return await bridge_actions.enqueue(db, s, body.action, ids, manual=body.manual and total <= 3)
 
 
 @router.get("/sessions/{session_id}/bridge/actions/next")
@@ -196,7 +204,8 @@ async def actions_history(session_id: uuid.UUID, limit: int = 50, offset: int = 
 @router.post("/sessions/{session_id}/bridge/actions/cancel")
 async def actions_cancel(session_id: uuid.UUID, body: CancelActions, db: AsyncSession = Depends(get_db)):
     """Kuyruğa eklenen kişileri geri al: yalnızca bekleyenler silinir."""
-    return {"removed": await bridge_actions.cancel(db, await _session(db, session_id), body.user_ids)}
+    s = await _session(db, session_id)
+    return {"removed": await bridge_actions.cancel(db, s, await bridge_actions.resolve_ids(db, s, body.user_ids, body.usernames))}
 
 
 @router.delete("/sessions/{session_id}/bridge/actions")
