@@ -21,7 +21,7 @@ export interface ExtensionJob {
   results?: { shortcode: string | null; saved: number; seen: number; ok: boolean; note: string | null }[]
 }
 
-export interface RunReply { ok: boolean; error?: string; total?: number }
+export interface RunReply { ok: boolean; error?: string; code?: string; total?: number }
 
 interface Msg { __ia?: unknown; type?: unknown; [k: string]: unknown }
 

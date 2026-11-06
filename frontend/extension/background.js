@@ -413,7 +413,7 @@ async function startJob(cmd) {
   const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
   if (!kind) return { ok: false, error: 'Bilinmeyen iş.' };
   const running = await getJob();
-  if (running && running.state === 'running') return { ok: false, error: `Zaten çalışan bir iş var (${KIND_LABEL[running.kind]}).` };
+  if (running && running.state === 'running') return { ok: false, code: 'running', error: `Zaten çalışan bir iş var (${KIND_LABEL[running.kind]}).` };
 
   const cfg = await getCfg();
   const profile = cfg.lastViewer ? cfg.profiles[cfg.lastViewer] : null;
@@ -435,7 +435,7 @@ async function startJob(cmd) {
       ? d.items.filter((x) => x && Number.isInteger(x.id) && ACTION_USER_RE.test(String(x.username)) && (x.action === 'follow' || x.action === 'unfollow'))
           .map(toItem)
       : [];
-    if (!items.length) return { ok: false, error: ACTION_REASON[d.reason] || 'Yapılacak işlem yok.' };
+    if (!items.length) return { ok: false, code: d.reason || 'empty', error: ACTION_REASON[d.reason] || 'Yapılacak işlem yok.' };
     queue = items.map((x) => x.username);
     delay = Array.isArray(d.delay) && d.delay.length === 2 ? [Math.max(60, Number(d.delay[0]) || 120), Math.max(75, Number(d.delay[1]) || 240)] : [120, 240];
     apiDelay = Array.isArray(d.api_delay) && d.api_delay.length === 2 ? [Math.max(2, Number(d.api_delay[0]) || 3), Math.max(3, Number(d.api_delay[1]) || 5)] : [3, 5];

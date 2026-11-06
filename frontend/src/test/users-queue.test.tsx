@@ -330,3 +330,64 @@ describe('UsersPage — clicking a person starts the extension at human pace', (
     await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledWith('s1', 'unfollow', [5], true))
   })
 })
+
+
+describe('UsersPage — several quick clicks in a row', () => {
+  const rows = [user(5, 'ali'), user(6, 'veli'), user(7, 'ayse')]
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 3, items: rows } })
+  })
+  const announce = () => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.8.2' }, origin: window.location.origin, source: window }))
+
+  function replyToRuns(replies: any[], delay = 5) {
+    let n = 0
+    return vi.spyOn(window, 'postMessage').mockImplementation(((d: any) => {
+      if (d?.type === 'ia-run') {
+        const r = replies[Math.min(n++, replies.length - 1)]
+        setTimeout(() => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-reply', id: d.id, reply: r }, origin: window.location.origin, source: window })), delay)
+      }
+    }) as any)
+  }
+
+  it('"job already running" / "queue empty" after the automatic start are not shown as errors', async () => {
+    const post = replyToRuns([{ ok: false, code: 'running', error: 'Zaten çalışan bir iş var (Takip işlemleri).' }])
+    renderApp(<UsersPage />)
+    await screen.findAllByTitle('Takipten çık')
+    announce()
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    await waitFor(() => expect(post.mock.calls.some(c => (c[0] as any)?.type === 'ia-run')).toBe(true))      // gerçekten tetiklendi
+    await new Promise(r => setTimeout(r, 60))
+    expect(screen.queryByText(/Zaten çalışan bir iş var/)).not.toBeInTheDocument()
+    post.mockRestore()
+    const post2 = replyToRuns([{ ok: false, code: 'empty', error: 'Kuyrukta bekleyen işlem yok.' }])
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    await waitFor(() => expect(post2.mock.calls.some(c => (c[0] as any)?.type === 'ia-run')).toBe(true))
+    await new Promise(r => setTimeout(r, 60))
+    expect(screen.queryByText(/Kuyrukta bekleyen işlem yok/)).not.toBeInTheDocument()
+    post2.mockRestore()
+  })
+
+  it('a real reason (hourly limit) is still shown', async () => {
+    const post = replyToRuns([{ ok: false, code: 'limit', error: 'Bu saat ya da gün için işlem sınırına ulaşıldı. Biraz sonra tekrar deneyin.' }])
+    renderApp(<UsersPage />)
+    await screen.findAllByTitle('Takipten çık')
+    announce()
+    await userEvent.click((await screen.findAllByTitle('Takipten çık'))[0])
+    expect(await screen.findByText(/işlem sınırına ulaşıldı/)).toBeInTheDocument()
+    post.mockRestore()
+  })
+
+  it('quick successive clicks all get queued, but only one start request is sent while one is in flight', async () => {
+    const post = replyToRuns([{ ok: true, total: 1 }], 400)                                       // ilk başlatma henüz yanıtlanmadı
+    renderApp(<UsersPage />)
+    const btns = await screen.findAllByTitle('Takipten çık')
+    announce()
+    await userEvent.click(btns[0])
+    await userEvent.click(btns[1])
+    await userEvent.click(btns[2])
+    await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledTimes(3))                  // üçü de kuyruğa girdi
+    expect(post.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run').length).toBe(1)          // tek başlatma isteği
+    post.mockRestore()
+  })
+})

@@ -233,10 +233,20 @@ export default function UsersPage() {
     }
   }
 
+  // Art arda tıklamalar tek bir tetikleme olarak birleşir; "iş zaten çalışıyor" ve "kuyruk boş" (iş kişiyi çoktan aldı)
+  // otomatik tetiklemede hata değildir: çalışan iş yeni tıklananları kendisi alır.
+  const runInFlight = useRef(false)
   const runQueue = async (silent = false) => {
-    const r = await ext.run('actions')
-    if (!r.ok) showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
-    else if (silent) showToast(T.users.queue.started)
+    if (silent && runInFlight.current) return
+    runInFlight.current = true
+    try {
+      const r = await ext.run('actions')
+      if (r.ok) { if (silent) showToast(T.users.queue.started); return }
+      if (silent && (r.code === 'running' || r.code === 'empty')) return
+      showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
+    } finally {
+      runInFlight.current = false
+    }
   }
 
   const clearQueue = async () => {
