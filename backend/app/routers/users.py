@@ -80,7 +80,8 @@ async def list_users(
         .outerjoin(comment_sub, comment_sub.c.ig_user_id == IgUser.id)
         .where(
             # Havuzda olma koşulu: relationship VEYA en az bir interaction
-            (Relationship.session_id == sid) |
+            # Takipten çıkılıp artık ilişkisi kalmayan (ne ben takip ediyorum ne o) ve hiç etkileşimi olmayan kişi havuzdan düşer
+            ((Relationship.session_id == sid) & (Relationship.we_follow | Relationship.they_follow)) |
             (like_sub.c.ig_user_id != None) |
             (comment_sub.c.ig_user_id != None)
         )
