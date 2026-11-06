@@ -546,6 +546,7 @@ const en: Translations = {
       retryFailed:  'Queue the failed ones again',
       attempts:     (n: number) => `${n} attempts`,
       keptNote:     'History is permanent; it is not lost when you close or refresh the app or restart the extension.',
+      notStarted:   'The extension could not start the job',
       started:      'The extension started: opening the Instagram tab.',
       undo:         'Take back from queue',
       undoShort:    'Undo',

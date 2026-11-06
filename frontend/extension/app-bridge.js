@@ -34,7 +34,7 @@
     const d = e.data;
     if (!d || d.__ia !== true || typeof d.type !== 'string') return;
     if (d.type === 'ia-ping') { announce(); return; }
-    if (!['ia-run', 'ia-stop', 'ia-job'].includes(d.type)) return;
+    if (!['ia-run', 'ia-stop', 'ia-job', 'ia-diag'].includes(d.type)) return;
     let reply;
     try {
       if (d.type === 'ia-run') {

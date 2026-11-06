@@ -236,14 +236,17 @@ export default function UsersPage() {
   // Art arda tıklamalar tek bir tetikleme olarak birleşir; "iş zaten çalışıyor" ve "kuyruk boş" (iş kişiyi çoktan aldı)
   // otomatik tetiklemede hata değildir: çalışan iş yeni tıklananları kendisi alır.
   const runInFlight = useRef(false)
+  const [runError, setRunError] = useState<string | null>(null)      // son başlatmanın hatası: toast kaybolsa da panelde kalır
   const runQueue = async (silent = false) => {
     if (silent && runInFlight.current) return
     runInFlight.current = true
     try {
       const r = await ext.run('actions')
-      if (r.ok) { if (silent) showToast(T.users.queue.started); return }
+      if (r.ok) { setRunError(null); if (silent) showToast(T.users.queue.started); return }
       if (silent && (r.code === 'running' || r.code === 'empty')) return
-      showToast(r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed), false)
+      const msg = r.error === 'timeout' ? T.users.queue.needExt : (r.error ?? T.users.toast.failed)
+      setRunError(msg)
+      showToast(msg, false)
     } finally {
       runInFlight.current = false
     }
@@ -454,6 +457,11 @@ export default function UsersPage() {
           )}
           {queue.blocked === 'paused' && <p className="text-xs text-amber-300 mt-1">{T.users.queue.pausedNote}</p>}
           {queue.quiet_hours && <p className="text-xs text-amber-300 mt-1">{T.users.queue.quiet}</p>}
+          {runError && queue.pending_count > 0 && !extRunning && (
+            <p role="alert" className="text-xs text-red-300 bg-red-950/30 border border-red-900 rounded-lg px-2 py-1 mt-2">
+              {T.users.queue.notStarted}: {runError}
+            </p>
+          )}
           {!ext.available && <p className="text-xs text-amber-300 mt-1">{T.users.queue.needExt}</p>}
           {extRunning && ext.job && <p className="text-xs text-purple-300 mt-1 whitespace-pre-line">{ext.job.message}</p>}
 

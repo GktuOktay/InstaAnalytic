@@ -91,6 +91,7 @@ export function useExtension() {
   }, [version, call])
 
   const stop = useCallback(() => call('ia-stop'), [call])
+  const diag = useCallback(() => call('ia-diag'), [call])
 
-  return { available: version !== null, version, job, run, stop }
+  return { available: version !== null, version, job, run, stop, diag }
 }

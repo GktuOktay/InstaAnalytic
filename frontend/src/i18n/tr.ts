@@ -546,6 +546,7 @@ const tr = {
       retryFailed:  'Başarısızları yeniden kuyruğa ekle',
       attempts:     (n: number) => `${n} deneme`,
       keptNote:     'Geçmiş kalıcıdır; uygulamayı kapatsan, yenilesen ya da eklentiyi yeniden başlatsan da silinmez.',
+      notStarted:   'Eklenti işi başlatamadı',
       started:      'Eklenti başladı: Instagram sekmesi açılıyor.',
       undo:         'Kuyruktan geri al',
       undoShort:    'Geri al',

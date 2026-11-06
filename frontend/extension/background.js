@@ -409,6 +409,24 @@ async function openOwnIgTab() {
   return { id: null };
 }
 
+// Teşhis (yalnızca okuma): eklenti hangi Instagram sekmelerini görüyor, yanıt veriyorlar mı, son başlatma ne oldu
+async function saveLastRun(r) {
+  await chrome.storage.local.set({ lastRun: { at: Date.now(), ok: !!(r && r.ok), code: (r && r.code) || null, error: (r && r.error) || null } });
+}
+
+async function diag() {
+  const { igTabs } = await chrome.storage.session.get('igTabs').catch(() => ({}));
+  const tabs = [];
+  for (const id of Object.keys(igTabs || {})) {
+    const res = await pingTab(Number(id));
+    tabs.push({ id: Number(id), answers: !!res, csrf: !!(res && res.csrf), loginWall: !!(res && res.loginWall) });
+  }
+  const job = await getJob();
+  const { lastRun } = await chrome.storage.local.get('lastRun');
+  return { version: chrome.runtime.getManifest().version, tabs, lastRun: lastRun || null,
+    job: job ? { kind: job.kind, state: job.state, api: !!job.api, ownTab: !!job.ownTab, index: job.index, total: job.total } : null };
+}
+
 async function startJob(cmd) {
   const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
   if (!kind) return { ok: false, error: 'Bilinmeyen iş.' };
@@ -897,10 +915,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // İş başlatma / durdurma: açılır pencereden ya da uygulama sayfasından (app-bridge.js)
+  if (msg.type === 'ia-diag') {
+    const fromApp = !!(sender.tab && /^http:\/\/(localhost|127\.0\.0\.1):3002\//.test(String(sender.tab.url || '')));
+    if (!fromApp && sender.tab) return false;
+    diag().then(sendResponse, () => sendResponse(null));
+    return true;
+  }
   if (msg.type === 'ia-run' || msg.type === 'ia-stop' || msg.type === 'ia-job') {
     const fromApp = !!(sender.tab && /^http:\/\/(localhost|127\.0\.0\.1):3002\//.test(String(sender.tab.url || '')));
     if (sender.tab && !fromApp) return false;
-    const work = msg.type === 'ia-run' ? startJob(msg.cmd) : msg.type === 'ia-stop' ? stopJob() : getJob();
+    const work = msg.type === 'ia-run' ? startJob(msg.cmd).then(async (r) => { await saveLastRun(r).catch(() => {}); return r; }) : msg.type === 'ia-stop' ? stopJob() : getJob();
     work.then(sendResponse, () => sendResponse({ ok: false, error: 'Beklenmeyen bir hata oldu.' }));
     return true;
   }
