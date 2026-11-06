@@ -626,7 +626,7 @@ const tr: GuideContent = {
       },
       {
         term: 'Kartta "Eklentin güncel değil" yazıyor.',
-        text: 'Eklenti birkaç saat içinde kendini günceller. Beklemek istemezsen eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. Orada "elle kurulum gerekiyor" yazıyorsa bir alttaki satıra bak.',
+        text: 'Eklenti her açıldığında kendini günceller. Beklemek istemezsen eklenti penceresinde Güncelleme sekmesini aç ve "Şimdi denetle"ye bas. Orada "elle kurulum gerekiyor" yazıyorsa bir alttaki satıra bak.',
         link: { to: '#guncelle', label: 'Güncelleme' },
       },
       {
@@ -1325,7 +1325,7 @@ const en: GuideContent = {
       { term: 'The card still says the extension has not connected.', text: 'Is the switch at the top right of the popup on and a profile picked? Reload the Instagram tab once, then reload the app page too.' },
       {
         term: 'The card says "Eklentin güncel değil" (your extension is out of date).',
-        text: 'The extension updates itself within a few hours. If you do not want to wait, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, see the next row.',
+        text: 'The extension updates itself every time it is opened. If you do not want to wait, open the Güncelleme tab in the popup and press "Şimdi denetle" (check now). If it says manual install is needed, see the next row.',
         link: { to: '#guncelle', label: 'Updating' },
       },
       {
