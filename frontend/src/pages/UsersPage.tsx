@@ -43,11 +43,11 @@ const isGhost  = (u: UserPoolItem) => u.reach_status === 'unreachable'
 const noTouch = (u: UserPoolItem) => u.like_count === 0 && u.comment_count === 0 && !isGhost(u)   // beğeni ve yorum yok, hesap duruyor
 const isSilent = (u: UserPoolItem) => u.engagement_score === 0 && !isGhost(u) && !!(u.we_follow || u.they_follow)
 
-function applyFilter(items: UserPoolItem[], tab: FilterTab): UserPoolItem[] {
+function applyFilter(items: UserPoolItem[], tab: FilterTab, ghostsInNotBack = true): UserPoolItem[] {
   switch (tab) {
     case 'following': return items.filter(u => u.we_follow)
     case 'followers': return items.filter(u => u.they_follow)
-    case 'notBack':   return items.filter(u => u.we_follow && !u.they_follow)   // ben takip ediyorum, o etmiyor
+    case 'notBack':   return items.filter(u => u.we_follow && !u.they_follow && (ghostsInNotBack || !isGhost(u)))   // ben takip ediyorum, o etmiyor
     case 'oneWaySilent':  return items.filter(u => u.we_follow && !u.they_follow && noTouch(u))   // ben takip ediyorum, o etmiyor, hiç etkileşimi yok
     case 'mutualSilent':  return items.filter(u => u.we_follow && u.they_follow && noTouch(u))    // karşılıklı ama sessiz
     case 'silent':    return items.filter(isSilent)
@@ -88,6 +88,7 @@ export default function UsersPage() {
   const [sort,          setSort]          = useState<{ col: SortCol; dir: SortDir }>({ col: 'engagement_score', dir: 'desc' })
   const [search,        setSearch]        = useState('')
   const [tab,           setTab]           = useState<FilterTab>('all')
+  const [withGhosts,    setWithGhosts]    = useState(true)    // "Beni takip etmeyenler" listesinde hayaletler (silinmiş/dondurulmuş hesaplar) olsun mu
   const [loading,       setLoading]       = useState(false)
   const [actionLoading, setActionLoading] = useState<Record<number, string>>({})  // id → 'follow'|'unfollow'
   const [selected,      setSelected]      = useState<Set<number>>(new Set())
@@ -174,7 +175,7 @@ export default function UsersPage() {
   }
 
   // Filtrelenmiş + sayfalanmış liste
-  const filtered = applyFilter(sortedItems, tab)
+  const filtered = applyFilter(sortedItems, tab, withGhosts)
   const totalPages = Math.ceil(filtered.length / LIMIT)
   const pageItems  = filtered.slice((page - 1) * LIMIT, page * LIMIT)
 
@@ -406,11 +407,19 @@ export default function UsersPage() {
             }`}>
             {f.label}
             <span className="ml-1.5 opacity-60">
-              {applyFilter(allItems, f.key).length}
+              {applyFilter(allItems, f.key, withGhosts).length}
             </span>
           </button>
         ))}
       </div>
+
+      {tab === 'notBack' && (
+        <label className="inline-flex items-center gap-2 text-xs text-gray-300 mb-3 cursor-pointer select-none">
+          <input type="checkbox" checked={withGhosts} onChange={e => { setWithGhosts(e.target.checked); setPage(1); setSelected(new Set()) }} />
+          {T.users.includeGhosts}
+          <span className="text-gray-500">({allItems.filter(u => u.we_follow && !u.they_follow && isGhost(u)).length})</span>
+        </label>
+      )}
 
       {/* Toolbar: search + sort + bulk */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">

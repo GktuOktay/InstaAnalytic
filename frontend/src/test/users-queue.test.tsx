@@ -140,3 +140,36 @@ describe('UsersPage — filters that replaced the Cleanup page', () => {
     expect(screen.queryByText('@tek_yonlu_sessiz')).not.toBeInTheDocument()
   })
 })
+
+describe('UsersPage — "Not following me back" with a ghost switch', () => {
+  const rows = [
+    user(1, 'canli', { we_follow: true, they_follow: false }),
+    user(2, 'hayalet', { we_follow: true, they_follow: false, reach_status: 'unreachable' }),
+    user(3, 'karsilikli', { we_follow: true, they_follow: true }),
+  ]
+  beforeEach(() => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    http.get.mockResolvedValue({ data: { total: 3, items: rows } })
+  })
+
+  it('includes ghosts by default and can leave them out', async () => {
+    renderApp(<UsersPage />)
+    await userEvent.click(await screen.findByRole('button', { name: /Beni Takip Etmeyenler/ }))
+    expect(screen.getByText('@canli')).toBeInTheDocument()
+    expect(screen.getByText('@hayalet')).toBeInTheDocument()
+    expect(screen.queryByText('@karsilikli')).not.toBeInTheDocument()
+    const box = screen.getByRole('checkbox', { name: /Hayalet hesapları da dahil et/ })
+    expect(box).toBeChecked()
+    await userEvent.click(box)
+    expect(screen.queryByText('@hayalet')).not.toBeInTheDocument()
+    expect(screen.getByText('@canli')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Beni Takip Etmeyenler\s*1$/ })).toBeInTheDocument()     // sekme sayısı da güncellenir
+  })
+
+  it('the switch only shows on that tab, and in English too', async () => {
+    renderApp(<UsersPage />, { lang: 'en' })
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: /Not Following Me Back/ }))
+    expect(screen.getByRole('checkbox', { name: /Include ghost accounts/ })).toBeInTheDocument()
+  })
+})

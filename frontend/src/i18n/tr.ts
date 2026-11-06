@@ -472,6 +472,7 @@ const tr = {
       ghosts:       '👻 Hayaletler',
     },
     sortBy:         'Sırala',
+    includeGhosts:  'Hayalet hesapları da dahil et',
     notBackHint:    'Sen takip ediyorsun, o seni takip etmiyor',
     oneWaySilentHint:  'Sen takip ediyorsun, o etmiyor ve hiçbir gönderine beğeni/yorum bırakmamış. Takipten çıkma adaylarının çoğu burada.',
     mutualSilentHint:  'Birbirinizi takip ediyorsunuz ama gönderilerine hiç dokunmamış. Çoğu zaman gerçek bir tanıdık; acele etme.',

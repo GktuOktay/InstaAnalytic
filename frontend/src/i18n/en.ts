@@ -474,6 +474,7 @@ const en: Translations = {
       ghosts:       '👻 Ghosts',
     },
     sortBy:         'Sort',
+    includeGhosts:  'Include ghost accounts',
     notBackHint:    'You follow them, they do not follow you',
     oneWaySilentHint:  'You follow them, they do not follow back, and they never liked or commented. Most unfollow candidates are here.',
     mutualSilentHint:  'You follow each other but they never touched your posts. Often a real acquaintance; do not rush.',
