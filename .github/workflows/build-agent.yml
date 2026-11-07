@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14        # arm64
+          - os: macos-15        # arm64 (macos-14 jobs get cancelled without a runner)
             arch: arm64
             out: host_agent-darwin-arm64
           - os: macos-15-intel  # x86_64 (macos-13 runner retired: jobs never started)
