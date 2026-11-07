@@ -11,14 +11,16 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14        # arm64
             arch: arm64
             out: host_agent-darwin-arm64
-          - os: macos-13        # x86_64
+          - os: macos-15-intel  # x86_64 (macos-13 runner retired: jobs never started)
             arch: amd64
             out: host_agent-darwin-amd64
+            optional: true
           - os: ubuntu-22.04
             arch: amd64
             out: host_agent-linux-amd64
@@ -27,6 +29,8 @@ jobs:
             out: host_agent-windows-amd64.exe
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional == true }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -65,22 +69,34 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: host-agent
     steps:
       - uses: actions/checkout@v4
 
       - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          path: scripts/bin/
+          path: dist/
           merge-multiple: true
 
-      - name: Commit binaries
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum host_agent-* > SHA256SUMS && cat SHA256SUMS
+
+      # Binaries live in a rolling GitHub Release (tag: host-agent), not in git.
+      # start.sh / start.ps1 download from:
+      #   https://github.com/<owner>/<repo>/releases/download/host-agent/<file>
+      - name: Publish rolling release
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add scripts/bin/
-          git diff --cached --quiet || git commit -m "ci: host_agent binaries rebuilt [skip ci]"
-          git push
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Host Agent (latest build)" \
+              --notes "Built automatically from scripts/host_agent.py. Assets are replaced on every build of main." \
+              --target "$GITHUB_SHA" --latest=false
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --notes "Built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d). Verify with SHA256SUMS."

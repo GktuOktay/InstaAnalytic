@@ -94,6 +94,25 @@ fi
 echo "► Host Agent kontrol ediliyor…"
 mkdir -p "$SCRIPT_DIR/scripts/bin"
 
+RELEASE_URL="https://github.com/GktuOktay/InstaAnalytic/releases/download/host-agent"
+if [ ! -f "$AGENT_BIN" ] && command -v curl &>/dev/null; then
+  echo "  Binary indiriliyor (GitHub Releases)…"
+  _name="$(basename "$AGENT_BIN")"
+  _tmp="$(mktemp -d)"
+  if curl -fsSL -o "$_tmp/$_name" "$RELEASE_URL/$_name" \
+     && curl -fsSL -o "$_tmp/SHA256SUMS" "$RELEASE_URL/SHA256SUMS"; then
+    _want="$(grep " $_name\$" "$_tmp/SHA256SUMS" | awk '{print $1}')"
+    if command -v shasum &>/dev/null; then _got="$(shasum -a 256 "$_tmp/$_name" | awk '{print $1}')"
+    else _got="$(sha256sum "$_tmp/$_name" | awk '{print $1}')"; fi
+    if [ -n "$_want" ] && [ "$_want" = "$_got" ]; then
+      mv "$_tmp/$_name" "$AGENT_BIN"
+    else
+      echo "  ⚠ Checksum uyuşmadı, indirilen dosya kullanılmıyor."
+    fi
+  fi
+  rm -rf "$_tmp"
+fi
+
 if [ ! -f "$AGENT_BIN" ]; then
   echo "  Binary bulunamadı ($AGENT_BIN), derleniyor…"
   _build_agent() {
