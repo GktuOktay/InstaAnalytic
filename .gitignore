@@ -55,3 +55,6 @@ CREDENTIALS.md
 
 # Tarayıcı test artıkları (kişisel veri içerebilir)
 .playwright-mcp/
+
+# Celery runtime state
+backend/celerybeat-schedule*
