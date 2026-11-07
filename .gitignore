@@ -58,3 +58,6 @@ CREDENTIALS.md
 
 # ── Host Agent binaries (GitHub Releases'ta: tag host-agent) ─────────────────
 scripts/bin/
+
+# Celery runtime state
+backend/celerybeat-schedule*
