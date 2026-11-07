@@ -82,6 +82,27 @@ if ($py) { & $py.Source "$ScriptDir\scripts\init_env.py" } else { Write-Host "  
 Write-Host "► Host Agent kontrol ediliyor…"
 New-Item -ItemType Directory -Force -Path "$ScriptDir\scripts\bin" | Out-Null
 
+$ReleaseUrl = "https://github.com/GktuOktay/InstaAnalytic/releases/download/host-agent"
+if (-not (Test-Path $AgentBin)) {
+    Write-Host "  Binary indiriliyor (GitHub Releases)…"
+    $agentFile = [System.IO.Path]::GetFileName($AgentBin)
+    $tmpBin  = Join-Path $env:TEMP $agentFile
+    $tmpSums = Join-Path $env:TEMP "instaanalytic-SHA256SUMS"
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseUrl/$agentFile" -OutFile $tmpBin
+        Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseUrl/SHA256SUMS" -OutFile $tmpSums
+        $line = Select-String -Path $tmpSums -Pattern " $([regex]::Escape($agentFile))$" | Select-Object -First 1
+        $want = if ($line) { ($line.Line -split '\s+')[0].ToLower() } else { "" }
+        $got  = (Get-FileHash -Algorithm SHA256 $tmpBin).Hash.ToLower()
+        if ($want -and $want -eq $got) { Move-Item -Force $tmpBin $AgentBin }
+        else { Write-Warn "Checksum uyuşmadı, indirilen dosya kullanılmıyor." }
+    } catch {
+        Write-Warn "İndirme başarısız, yerel derlemeye geçiliyor."
+    } finally {
+        Remove-Item -ErrorAction SilentlyContinue $tmpBin, $tmpSums
+    }
+}
+
 if (-not (Test-Path $AgentBin)) {
     Write-Host "  Binary bulunamadı, derleniyor…"
     if (Get-Command "pip" -ErrorAction SilentlyContinue) {

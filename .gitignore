@@ -56,5 +56,8 @@ CREDENTIALS.md
 # Tarayıcı test artıkları (kişisel veri içerebilir)
 .playwright-mcp/
 
+# ── Host Agent binaries (GitHub Releases'ta: tag host-agent) ─────────────────
+scripts/bin/
+
 # Celery runtime state
 backend/celerybeat-schedule*
