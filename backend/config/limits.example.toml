@@ -1,0 +1,47 @@
+# InstaAnalytic ek iş sınırları. Bu dosya kopyalanıp limits.toml olarak düzenlenir.
+# Takip işlemlerinin sınırları bu dosyadan yönetilmez.
+# Kodda sabit sert tavanlar vardır; bu dosyadaki değer tavanı aşarsa tavana kırpılır ve uyarı loglanır.
+# Değişiklik yeniden başlatmadan en geç 30 saniye içinde geçerli olur.
+version = 1
+
+[account]            # hesap toplamı: takip + kaydedilen temizleme (ek iş tarafında uygulanır)
+hourly = 80          # sert tavan 80
+daily  = 400         # sert tavan 400
+
+[batch]
+max_items = 500      # sert tavan 500
+
+[ramp]               # özellik ilk açıldığında günlük tavan kademeli artar
+enabled         = true
+first_hours     = 72
+first_fraction  = 0.333
+second_hours    = 168
+second_fraction = 0.667
+
+[scan]
+page_delay_min   = 3   # sn, sert alt sınır 2
+page_delay_max   = 6   # sn, sert üst sınır 120
+saved_max_pages  = 100 # sert tavan 200
+max_per_hour     = 2   # sert tavan 4
+
+[reads]              # yazma olmadan biten durum okumaları (zaten çıkarılmış / bulunamadı)
+status_per_hour = 120  # sert tavan 240
+
+# Profil adları uygulamanın risk profilleridir (safe, balanced, aggressive).
+[profiles.safe.unsave]
+hourly = 40
+daily = 200
+delay_min = 20
+delay_max = 45
+
+[profiles.balanced.unsave]
+hourly = 60
+daily = 300
+delay_min = 15
+delay_max = 35
+
+[profiles.aggressive.unsave]
+hourly = 80
+daily = 400
+delay_min = 10
+delay_max = 25

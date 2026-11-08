@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     session_ttl_days: int = 30    # kullanılmayan tarayıcı oturumunun çerezleri bu süreden sonra silinir
     host_agent_url: str = "http://host.docker.internal:8002"
+    # SPEC-001 §6.5 / AC-L12: ek iş sınırları dosyası. Boş = <backend>/config/limits.toml; göreli yol backend köküne (/app) göre.
+    cleanup_limits_file: str = ""
 
     # Tarama/aksiyon hızı session başına risk profilinden gelir (app/services/risk_profiles.py)
     scan_page_size: int = 50              # tek istekte çekilen kullanıcı sayısı

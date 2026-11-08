@@ -53,6 +53,9 @@ tmp/
 # Erişim bilgileri belgesi (gizli)
 CREDENTIALS.md
 
+# Yerel ek iş sınırları (SPEC-001 §6.5); örnek dosya takip edilir
+backend/config/limits.toml
+
 # Tarayıcı test artıkları (kişisel veri içerebilir)
 .playwright-mcp/
 

@@ -10,6 +10,7 @@ Kullanım:  python3 scripts/init_env.py
 """
 import re
 import secrets
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
 CRED_FILE = ROOT / "CREDENTIALS.md"
 AGENT_SECRET_FILE = Path.home() / ".instaanalytic_agent_secret"
+LIMITS_DIR = ROOT / "backend" / "config"
 
 
 def _read_env() -> dict[str, str]:
@@ -39,6 +41,16 @@ def _agent_secret() -> str:
     AGENT_SECRET_FILE.write_text(token)
     AGENT_SECRET_FILE.chmod(0o600)
     return token
+
+
+def ensure_limits_file(config_dir: Path) -> bool:
+    """limits.toml yoksa limits.example.toml'dan kopyalar; varsa dokunmaz (SPEC-001 AC-L7). True = kopyalandı."""
+    target = config_dir / "limits.toml"
+    example = config_dir / "limits.example.toml"
+    if target.exists() or not example.exists():
+        return False
+    shutil.copyfile(example, target)
+    return True
 
 
 def main() -> int:
@@ -71,6 +83,8 @@ def main() -> int:
     CRED_FILE.chmod(0o600)
 
     print(f"✓ {ENV_FILE.name} güncellendi, {CRED_FILE.name} yazıldı (izin: 600)")
+    if ensure_limits_file(LIMITS_DIR):
+        print("✓ backend/config/limits.toml örnekten oluşturuldu")
     return 0
 
 
