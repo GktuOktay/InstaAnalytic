@@ -1,6 +1,6 @@
 # Spec 001 — Kaydedilenleri temizleme (Faz 0 + Faz 1); DM silme taslağı (Ek A)
 
-- Status: Awaiting approval (v1.6; açık CEO sorusu yok, §14.3). Önceki imza: v1.5 Approved (CEO, 2026-11-08, K-12); v1.6 yeniden imza ister.
+- Status: Approved (v1.6; CEO, 2026-11-08, K-25). Önceki imza: v1.5 Approved (K-12).
 - Version: v1.6 (2026-11-08)
 - Tier: full
 - Signature scope: **Faz 0 + Faz 1 (Kaydedilenleri temizleme).** Ek A (DM silme, Faz 2) bu imzanın kapsamı dışında. T-0b spike'ından sonra ayrı spec ve ayrı imzayla gelir.
@@ -2499,7 +2499,7 @@ Status `Awaiting approval`. İmzayı yalnız CEO atar. Spec dışı S-30 silme k
 ---
 ## Signature record (CEO only)
 
-### v1.6: imza bekliyor
+### v1.6: imza kaydı
 Kapsam: **yalnız Faz 0 + Faz 1 (§1-§14), v1.6, W modu (T-0c = W, K-21).** Ek A imzanın kapsamı dışındadır. Tavan 37 g (K-24); tahmin 36,0 g; tampon 1,0 g. W ekleri 4,5 g alt sınırla ve KN-W1/KN-W2 kontrol noktalarıyla izlenir. Açık CEO sorusu yok.
 
 **İmzayla onaylanacak metinler (K-23):**
@@ -2524,7 +2524,7 @@ Kapsam: **yalnız Faz 0 + Faz 1 (§1-§14), v1.6, W modu (T-0c = W, K-21).** Ek 
 13. **(v1.6, R7 M5) Başarısız yazmalar da bütçeden düşer:** Instagram'a giden her izinli deneme sayılır. Hata çok olursa saatlik pay daha az başarılı çıkarmayla dolar.
 14. **(v1.6) Tavan 37 g, tampon 1,0 g** (K-24). Tavan aşılırsa iş durur ve CEO'ya dönülür.
 
-Approved by / on: _(boş: CEO doldurur; onay, yukarıdaki 14 riski ve K-23 kapsamındaki iki diyalog metnini kapsar)_
+Approved by / on: CEO (Göktuğ OKTAY), 2026-11-08 — sohbette "İmzalıyorum". Kapsam: Faz 0 + Faz 1, v1.6, W modu; yukarıdaki 14 risk ve K-23 kapsamındaki iki diyalog metni kabul edildi. (K-25; imza anındaki sha256 `docs/plan/SPEC-001-uygulama-plani.md` içinde.)
 
 ### v1.5: imza kaydı (tarihçe, korunuyor)
 Kapsam: **yalnız Faz 0 + Faz 1 (§1-§14).** Ek A imzanın kapsamı dışındadır.
