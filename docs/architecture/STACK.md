@@ -18,3 +18,4 @@ SPEC-001 (2026-11-08): yeni teknoloji yok, durum değişikliği yok.
 SPEC-001 v1.1 yeniden inceleme (2026-11-08): yeni teknoloji yok, durum değişikliği yok; yeni eklenti izni yok.
 SPEC-001 v1.2 kısa bakış (2026-11-08): TOML yapılandırma dosyası `trial` olarak girdi (üçüncü taraf bağımlılık değil); ADR-0001 Accepted.
 SPEC-001 v1.3 kısa doğrulama (2026-11-08): yeni teknoloji yok, durum değişikliği yok; mevcut Celery beat'e iki görev ekleniyor (`gorus-SPEC-001-v1.3-2026-11-08.md`).
+SPEC-001 v1.6 kısa bakış (2026-11-08): yeni teknoloji ve bağımlılık yok, yeni eklenti izni yok. Unsave, Instagram'ın iç GraphQL ucuna düz `fetch` ile gider (mevcut takipten çıkma kalıbı); bu bir dış sözleşmedir, yığın kaydı değildir. Durum değişikliği yok (`gorus-SPEC-001-v1.6-2026-11-08.md`).

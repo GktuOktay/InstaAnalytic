@@ -18,7 +18,7 @@ CEO ayrıca "ortak koleksiyonlara dokunma" kuralını koydu. Spike'ta hiçbir ko
 - Yazma işlemleri bir gönderide yapıldı ve her adım arasında en az 30 sn beklendi: unsave → save → unsave → save. Gönderi kaydedilmiş hâlde, koleksiyonsuz ve listenin en üstünde bırakıldı (son doğrulama: `has_viewer_saved: true`, liste başında).
 - Engel, 429 ya da uyarı gözlenmedi.
 - Rapora token, çerez, `fb_dtsg`, `lsd`, `doc_id` değeri ve gönderi sahibi kullanıcı adı yazılmadı.
-- Gizlilik notu: GraphQL yanıtları elle taranırken bir yanıtın DM kutusu meta verisi (`get_slide_mailbox_for_iris_subscription`) olduğu görüldü. İçinde mesaj metni yoktu, yalnız kimlikler ve zaman damgaları vardı. Hiçbir yere kaydedilmedi.
+- Gizlilik notu: GraphQL yanıtları elle taranırken bir yanıtın DM kutusu meta verisi (`get_slide_mailbox_for_iris_subscription`) olduğu görüldü. İçinde mesaj metni yoktu, yalnız kimlikler ve zaman damgaları vardı. Bu rapora ve repoya yazılmadı. **Düzeltme (AppSec S-30):** Yanıt, ajan oturum kaydına (`~/.claude/projects/…/7d1e8b75-….jsonl`, satır 356) araç sonucu olarak kalıcı biçimde yazıldı. Silinip silinmeyeceği CEO kararıdır. T-0c'de yalnız hedef sorgu adlarıyla süzülmüş istekler açıldı.
 
 ## Sonuçlar
 
@@ -53,6 +53,30 @@ CEO ayrıca "ortak koleksiyonlara dokunma" kuralını koydu. Spike'ta hiçbir ko
 3. **Ortak koleksiyonlar (CEO kuralı):** "Ortak koleksiyondaki gönderiler temizlemeye girmez." Ortak koleksiyonları ayırt eden alan bilinmediği için güvenli varsayılan şu: `saved_collection_ids` dolu olan her gönderi varsayılan olarak hariç tutulur. Ya da ortak koleksiyon işareti ayrı bir spike adımında çıkarılır.
 4. **Doğrulama kuralı:** `has_viewer_saved` alanı yoksa "kaydedilmemiş" sayılır.
 5. **Reklam gönderileri** (`product_type: "ad"`) envanterde görünür; tür filtresinde ayrı ele alınmalı.
+
+## T-0c: koleksiyon listesi ve `doc_id` (salt okuma, 2026-11-08)
+
+Yazma işlemi yapılmadı. `doc_id` değerleri sayfanın yüklediği Relay modüllerinden okundu (K-20'nin yazmasız yolu). Bunlar herkese açık sorgu kimlikleri; eklentideki `UNFOLLOW_DOC_ID` ile aynı türden. Instagram sürümüyle değişebilirler.
+
+| İşlem | friendly name | `doc_id` | Tür |
+|---|---|---|---|
+| Unsave | `usePolarisSaveMediaUnsaveMutation` | `27371251859134880` | mutation |
+| Save (kapsam dışı, bilgi) | `usePolarisSaveMediaSaveMutation` | `27365486596441074` | mutation; `input.{collection_id, media_id}` |
+| Koleksiyon listesi | `PolarisSavedCollectionPickerQuery` | `29115677831365401` | query |
+
+§6.10'daki beş ölçüt:
+
+| Ölçüt | Sonuç |
+|---|---|
+| Sorgu adı ve `doc_id` | ✓ (yukarıda) |
+| Kimlik ve ad yolları | ✓ `data.viewer.media_collections.edges[].node.{collection_id, collection_name, id, cover_media.id}` |
+| Kimlikler `saved_collection_ids` ile eşleşiyor mu | ✓ Listelemenin 1. sayfasındaki 2 farklı koleksiyon kimliğinin 2'si de listede var. Kimlikler sayısal, ≤ 25 hane. |
+| Sayfalama | ✓ `variables.{first, after}`, `page_info.{end_cursor, has_next_page}`. `first=50` ile 9 koleksiyon tek sayfada geldi; sayı sayfada görünen koleksiyonlarla aynı (otomatik "Tüm gönderiler" ve "Ses" hariç). |
+| Salt okuma | ✓ `operationKind: "query"` |
+
+- İstek: `POST /api/graphql`, gövde `fb_dtsg`, `lsd`, `fb_api_caller_class`, `fb_api_req_friendly_name`, `variables`, `server_timestamps`, `doc_id`. Başlıklar `X-CSRFToken`, `X-IG-App-ID`, `X-FB-LSD`. HTTP 200, `errors` yok.
+- **Ortaklık alanı yok.** Şemada koleksiyonun ortak olduğunu gösteren bir alan bulunmuyor, bu yüzden `shared_locked` uygulanamıyor. Başkasına ait ortak koleksiyonların bu listeye girip girmediği de doğrulanamadı.
+- **Sonuç: W modu uygulanabilir.** CK-22 (tavan) CEO kararına gidiyor.
 
 ## Karar (CEO, G1)
 

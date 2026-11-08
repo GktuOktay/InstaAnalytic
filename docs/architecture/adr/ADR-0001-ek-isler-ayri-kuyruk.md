@@ -1,9 +1,13 @@
 # ADR-0001 — Yıkıcı ek işler ayrı kuyrukta ve ayrı şemada
 
-- Status: Accepted (mimari kurul, 2026-11-08; `docs/architecture/gorus-SPEC-001-v1.2-2026-11-08.md`)
-- Date: 2026-11-08 (rev. 2: v1.2 ile)
+- Status: Accepted (rev. 3; mimari kurul, 2026-11-08; `docs/architecture/gorus-SPEC-001-v1.6-2026-11-08.md` "İkinci tur"). Rev. 2: Accepted (mimari kurul, 2026-11-08; `docs/architecture/gorus-SPEC-001-v1.2-2026-11-08.md`).
+- Date: 2026-11-08 (rev. 2: v1.2 ile; rev. 3: v1.6 ile, kurul K-8)
 - Author: business-analyst (spec sahibi; kurul kendi önerisini onaylamaz)
-- Related: `docs/specs/SPEC-001-kaydedilen-ve-dm-temizleme.md` v1.2, `docs/architecture/gorus-SPEC-001-2026-11-08.md` (koşul 9), `docs/architecture/gorus-SPEC-001-v1.1-2026-11-08.md` (Y-3)
+- Related: `docs/specs/SPEC-001-kaydedilen-ve-dm-temizleme.md` v1.6, `docs/architecture/gorus-SPEC-001-2026-11-08.md` (koşul 9), `docs/architecture/gorus-SPEC-001-v1.1-2026-11-08.md` (Y-3), `docs/architecture/gorus-SPEC-001-v1.6-2026-11-08.md` (K-8)
+
+## Rev. 3 değişiklikleri (v1.6)
+- (a) Faz 1 tablo listesine `saved_collections` eklendi (T-0c = W, K-21).
+- (c) Instagram işlem kimlikleri için değişmez eklendi.
 
 ## Bağlam
 
@@ -23,7 +27,10 @@ Eklenti tarafında da takip yolu türe sabit kodlu (`frontend/extension/backgrou
 
 ### (a) Ayrı şema; `bridge_actions` genelleştirilmez
 Yıkıcı işler yeni tablolarda tutulur:
-- Faz 1: `cleanup_scans`, `saved_targets`, `cleanup_batches`, `cleanup_items`.
+- Faz 1: `cleanup_scans`, `saved_targets`, `cleanup_batches`, `cleanup_items` ve (rev. 3) `saved_collections`.
+  - `saved_collections` profil başına koleksiyon koruma ayarıdır; varsayılan `protected=true`.
+  - Ekleyicidir: geri almak kullanıcının koruma seçimlerini siler ve "tümü korunur" moduna döner. Bu güvenli yöndür.
+  - `cleanup_scans.collections_mode` (`per_collection` \| `all_protected`) tarama başına moddur. Kod düzeyindeki mod yalnız backend'de tanımlıdır (kurul K-5).
 - Faz 2: `dm_targets`, `dm_whitelist`.
 
 `bridge_actions` ve `bridge_actions.py` değişmez. Ek işler kendi kapısını (`cleanup_gate`) kullanır. Mevcut `gate()` (`bridge_actions.py:45-51`) `allow_actions`'a bağlı olduğu için yeniden kullanılmaz.
@@ -50,6 +57,16 @@ Reddedilen seçenek: ayrı `cleanup_log` tablosu. Aksiyon Geçmişi ekranı (`ro
   ```
   Kodun tamamı `cleanup-bg.js`'te durur. Bu, kurulun v1.1 önerisi A-04'tür.
 - Backend'i geri almak eklentiyi geri almaz. Eklenti 2.9.0 eski bir backend'e karşı çalışırsa `/cleanup/*` 404 döner ve eklenti işi başlatmaz (fail-closed).
+- **(rev. 3) Değişmez: Instagram işlem kimlikleri eklentide sabittir.**
+  - `doc_id`, `fb_api_req_friendly_name` ve `variables` kalıbı yalnız `content.js` sabitlerinden gelir: `UNSAVE_DOC_ID`, `UNSAVE_NAME`, `COLLECTIONS_DOC_ID`, `COLLECTIONS_NAME` ve `UNFOLLOW_DOC_ID`.
+  - Backend, ayar dosyası, `chrome.storage` ve mesajlar bunları sağlayamaz. `cleanCmd` ve `next` yanıtı işlenirken bu alanlar kabul edilmez; gelirse yok sayılır.
+  - `variables` içindeki tek değişken değerler şunlardır: doğrulanmış `ref`, istek anındaki `ds_user_id` ve koleksiyon listesi sorgusunun `after` değişkeni. `after`, Instagram'ın bir önceki yanıtındaki `page_info.end_cursor` değeridir; backend'den, ayar dosyasından ya da mesajlardan gelmez.
+  - Gerekçe: `doc_id` işlemin kendisini belirler. Uzaktan sağlanabilir bir `doc_id`, yerel bir sürecin (spec §8 sınır 1) eklentiye başka bir mutasyon yaptırmasına yol açar.
+  - Bedel: `doc_id` değişince onarım yeni bir eklenti yama sürümüdür (CEO onayıyla).
+  - Kanıt: spec AC-C56 testi (`ia-run`/`next` yükündeki fazladan `doc_id` yok sayılır).
+  - Reddedilen seçenekler:
+    1. Backend ya da ayar dosyasından `doc_id`: yayınsız güncelleme sağlar, ama yukarıdaki saldırı yüzeyini açar.
+    2. Çalışma anında Instagram betiklerinden keşif: kırılgandır ve sayfa betiklerini okuma yüzeyini büyütür.
 
 Reddedilen seçenekler:
 1. **Sürüm kapısı yok.** Eski eklenti yeni sözleşmeyi bilmez. Örneğin `precheck` yapmadan yazabilir; bu, yıkıcı bir işte kabul edilemez.
@@ -77,3 +94,9 @@ Reddedilen seçenekler:
 ## Kurul karar notu (2026-11-08)
 
 Kurulun v1.1 görüşündeki (Y-3) dört ek doğrulandı: (c)'deki `importScripts` koruması ve tek isim alanı, (c)'deki muafiyet notu, (b) ve (c)'deki reddedilen seçenekler, yeni (d). Karar `Accepted`. T-1 bu ADR'ye dayanarak başlayabilir. Kapsam Faz 1 kararlarıdır; (a)'daki Faz 2 tablo adları yönelim olarak durur, Faz 2 spec'i gerekirse bu ADR'yi günceller. Uygulama notu (T-9): isim alanı denetimi `globalThis.iaCleanup` ile yazılsın (node test ortamında `self` tanımsız). Spec'e ait K-1 ve K-2 koşulları bu ADR'nin içeriğini değiştirmez.
+
+## Kurul karar notu, rev. 3 (2026-11-08)
+
+K-8 karşılandı: (a)'da `saved_collections` ve `collections_mode` (`per_collection` | `all_protected`), K-5'e bağlı tek kaynak notu; (c)'de Instagram işlem kimlikleri değişmezi, reddedilen iki seçenek ve kanıt testi (spec AC-C56, §9 test tablosu). Karar `Accepted`. Kapsam Faz 1 W yapımıdır (T-0c = W, K-21).
+
+Engelleyici olmayan not (BA bir sonraki revizyonda düzeltsin): (c)'deki "`variables` içindeki tek değişken değerler doğrulanmış `ref` ve `ds_user_id`" cümlesi koleksiyon sorgusunu tam kapsamıyor. O sorgunun `after` değeri Instagram'ın bir önceki yanıtındaki `end_cursor`'dan gelir (spec §7.2.1 istek 4). Değişmezin özü bozulmaz, çünkü değer backend, ayar dosyası, `chrome.storage` ya da mesajdan gelmez. Cümleye "ve aynı sorgunun önceki sayfa yanıtındaki imleç" eklenmeli.
