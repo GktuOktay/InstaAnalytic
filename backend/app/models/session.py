@@ -23,3 +23,8 @@ class Session(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # SPEC-001 §7.2: kaydedilenler temizleme
+    allow_unsave: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    unsave_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cleanup_paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cleanup_paused_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)  # blocked | follow_blocked
