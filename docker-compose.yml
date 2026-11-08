@@ -37,6 +37,9 @@ services:
       - "127.0.0.1:8001:8000"
     volumes:
       - ./backend:/app
+      # I-1/N-7 (SPEC-001, T-pre'de değerlendirildi, KAPALI): T-2b `backend/config/` klasörünü oluşturunca
+      # açılacak. Konteyner süreçleri limits.toml'u değiştiremez. backend VE worker'a birlikte eklenir.
+      # - ./backend/config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +54,9 @@ services:
     env_file: .env
     volumes:
       - ./backend:/app
+      # I-1/N-7 (SPEC-001, T-pre'de değerlendirildi, KAPALI): T-2b `backend/config/` klasörünü oluşturunca
+      # açılacak. Konteyner süreçleri limits.toml'u değiştiremez. backend VE worker'a birlikte eklenir.
+      # - ./backend/config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -24,6 +24,9 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
     css: false,
+    // Yavaş makinede 5 sn varsayılanı bileşen testlerini (ZIP akışı, Fans listesi) düşürüyordu (IA D-03).
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
   server: {
     host: '0.0.0.0',

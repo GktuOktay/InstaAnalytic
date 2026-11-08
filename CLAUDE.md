@@ -32,8 +32,9 @@ Repodaki bir doküman değişince `python3 ~/Desktop/Projects/proje-masasi/bin/b
 ## Yerel çalıştırma ve test
 
 - Yığın: `docker compose up -d` (UI 3002, API 8001, Flower 5555, Postgres 5434).
-- Backend testleri izole `instaanalytic_pytest` veritabanında koşar (gerçek veriye dokunmaz). İmajda pytest yok (bkz. IA D-04): `docker exec instaanalytic-backend-1 sh -c 'pip install -q -r requirements-dev.txt && python -m pytest -q'`.
-- Frontend: `cd frontend && npx tsc --noEmit && npx vitest run && npm run build`. Node 25'te vitest için `NODE_OPTIONS=--no-experimental-webstorage` gerekir (bkz. IA D-02); CI Node 20 kullanır.
+- Tek komut: `scripts/test.sh` (ikisi), `scripts/test.sh backend [pytest args]`, `scripts/test.sh frontend`. Backend tek kullanımlık konteynerde, izole `instaanalytic_pytest` veritabanında koşar (gerçek veriye dokunmaz).
+- Migration kontrolü: `scripts/migrate-check.sh` (geçici veritabanında upgrade → downgrade -1 → upgrade).
+- Node 22 LTS hedeflenir (`.nvmrc`); CI da `.nvmrc`'yi okur. Node 25'teki bozuk `localStorage` `frontend/src/test/setup.ts` içinde ele alınır.
 
 ## Bilinen tuzaklar
 

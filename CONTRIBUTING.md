@@ -19,6 +19,16 @@ docker compose up -d
 
 Backend API auto-reloads on file changes. Frontend HMR works via Vite.
 
+## Tests
+
+Node 22 LTS is pinned (`.nvmrc`, `frontend/package.json` engines).
+
+```bash
+scripts/test.sh backend     # pytest in a throwaway container, isolated instaanalytic_pytest DB
+scripts/test.sh frontend    # tsc + vitest + build
+scripts/migrate-check.sh    # alembic upgrade -> downgrade -1 -> upgrade on a temporary DB
+```
+
 ## Project Structure
 
 ```
