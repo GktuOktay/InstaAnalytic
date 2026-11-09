@@ -158,5 +158,7 @@ async def action_log(
             error_msg=log.error_msg,
             created_at=log.created_at,
             executed_at=log.executed_at,
+            target_ref=log.target_ref,
+            target_label=log.target_label,
         ))
     return entries

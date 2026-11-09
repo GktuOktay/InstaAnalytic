@@ -27,12 +27,14 @@ class BulkUnfollowResponse(BaseModel):
 
 class ActionLogEntry(BaseModel):
     id: int
-    ig_user_id: int
+    ig_user_id: int | None           # SPEC-001 AC-C17: kaydedilenler kayıtlarında null
     ig_username: str | None
     action_type: str
     status: str
     error_msg: str | None
     created_at: datetime
     executed_at: datetime | None
+    target_ref: str | None = None    # kaydedilenler için media pk; koleksiyon koruması için collection_id
+    target_label: str | None = None
 
     model_config = {"from_attributes": True}
