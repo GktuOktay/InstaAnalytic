@@ -20,7 +20,7 @@ Self-hosted Instagram analiz ve otomasyon uygulaması. Backend `backend/` (FastA
 | Senkron betikleri | `~/Desktop/Projects/proje-masasi/bin/bs_sync_ia.py` (repo `docs/` → BookStack), `plane_seed_ia.py` (Plane kurulumu/görevler) |
 | Kayıt numaraları | `proje-masasi/bookstack/instaanalytic-ids.json`, `proje-masasi/plane/instaanalytic-ids.json` |
 
-Repodaki bir doküman değişince `python3 ~/Desktop/Projects/proje-masasi/bin/bs_sync_ia.py <anahtar>` ile BookStack'e aktarılır. Yeni doküman için betikteki `MAP`'e satır eklenir. CEO kararları BookStack › Kararlar ve Sorular › Karar Kaydı'na işlenir.
+Repodaki bir doküman değişince `python3 ~/Desktop/Projects/proje-masasi/bin/bs_sync_ia.py <anahtar>` ile BookStack'e aktarılır. Yeni doküman için betikteki `MAP`'e satır eklenir. CEO kararları BookStack › Kararlar › Karar Kaydı (açık sorular: Sorular kitabı › Sorular sayfası)'na işlenir.
 
 ## Temel ilkeler (bozma)
 
