@@ -4,16 +4,8 @@ import random
 import time
 import urllib.parse
 import httpx
-from instagrapi import Client
-from instagrapi.exceptions import (
-    ChallengeRequired,
-    PleaseWaitFewMinutes,
-    RateLimitError,
-)
 
 logger = logging.getLogger(__name__)
-
-PLAN_B_EXCEPTIONS = (ChallengeRequired, PleaseWaitFewMinutes, RateLimitError)
 
 # Gerçek tarayıcı profillerini simüle eden User-Agent havuzu
 _WEB_USER_AGENTS = [
@@ -64,11 +56,6 @@ def _mobile_headers() -> dict:
         "X-IG-Capabilities": "3brTvw==",
         "X-IG-Connection-Type": "WIFI",
     }
-
-
-# Geriye dönük uyumluluk için sabit dict aliasları (instagrapi client kullanımı için)
-_WEB_HEADERS = _web_headers()
-_MOBILE_HEADERS = _mobile_headers()
 
 
 def _parse_user_id_from_sessionid(sessionid: str) -> int | None:
@@ -186,22 +173,6 @@ def _web_account_info(sessionid: str, extra_cookies: dict | None = None) -> dict
         "Instagram session geçersiz veya süresi dolmuş. "
         "Tarayıcıda instagram.com'a giriş yap ve tekrar dene."
     )
-
-
-def login_by_sessionid(sessionid: str):
-    user = _web_account_info(sessionid)
-    cl = Client()
-    cl.set_settings({"cookies": {"sessionid": sessionid}})
-    cl.user_id = str(user["pk"])
-    raw = cl.get_settings()
-    session_data = raw if isinstance(raw, dict) else json.loads(raw)
-    return cl, session_data, user
-
-
-def build_client(session_json: str) -> Client:
-    cl = Client()
-    cl.load_settings(json.loads(session_json))
-    return cl
 
 
 def verify_client(session_json: str) -> tuple[bool, str | None]:

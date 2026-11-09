@@ -36,6 +36,7 @@ jobs:
           ENCRYPTION_KEY: ci-only-key
         run: pytest -q
       - name: Dependency audit
+        if: always()
         run: pip-audit -r backend/requirements.txt
 
   frontend:
