@@ -1,0 +1,27 @@
+{
+  "_spec": "SPEC-001 v1.6 AC-S21 (K-17, R7 L4): koruma kuralının tek tablosu. Python (is_protected), SQL (protected_clause) ve eklenti (allow_collections) bu dosyaya karşı koşar.",
+  "_rule": "protected <=> collections_unreadable OR (collection_ids non-empty AND collection_ids NOT subset of allow)",
+  "_notes": [
+    "collection_ids null: taramada alan yoktu. Envanterde KORUNMAZ (available); karar taze okumadadır. Taze okumada alan yoksa korunur (AC-C52), bu satırın konusu değildir.",
+    "allow: bağlam taramasının modu F ise her zaman []; W ise korumasız VE bilinen kimlikler (burada yalnız B).",
+    "mode: all_protected = F, per_collection = W."
+  ],
+  "collections": {
+    "A": {"collection_id": "17890000000000001", "protected": true,  "known": true},
+    "B": {"collection_id": "17890000000000002", "protected": false, "known": true},
+    "X": {"collection_id": "17890000000000003", "protected": null,  "known": false}
+  },
+  "cases": [
+    {"name": "empty_list_f",        "mode": "all_protected", "allow": [],                    "collection_ids": [],                                         "collections_unreadable": false, "protected": false},
+    {"name": "empty_list_w",        "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": [],                                         "collections_unreadable": false, "protected": false},
+    {"name": "null_f",              "mode": "all_protected", "allow": [],                    "collection_ids": null,                                       "collections_unreadable": false, "protected": false},
+    {"name": "null_w",              "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": null,                                       "collections_unreadable": false, "protected": false},
+    {"name": "unreadable_f",        "mode": "all_protected", "allow": [],                    "collection_ids": null,                                       "collections_unreadable": true,  "protected": true},
+    {"name": "unreadable_w",        "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": null,                                       "collections_unreadable": true,  "protected": true},
+    {"name": "non_empty_f",         "mode": "all_protected", "allow": [],                    "collection_ids": ["17890000000000002"],                        "collections_unreadable": false, "protected": true},
+    {"name": "a_protected_w",       "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": ["17890000000000001"],                        "collections_unreadable": false, "protected": true},
+    {"name": "b_unprotected_w",     "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": ["17890000000000002"],                        "collections_unreadable": false, "protected": false},
+    {"name": "a_and_b_w",           "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": ["17890000000000001", "17890000000000002"], "collections_unreadable": false, "protected": true},
+    {"name": "x_unknown_w",         "mode": "per_collection", "allow": ["17890000000000002"], "collection_ids": ["17890000000000003"],                        "collections_unreadable": false, "protected": true}
+  ]
+}
