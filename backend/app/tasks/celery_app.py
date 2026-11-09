@@ -5,7 +5,8 @@ celery_app = Celery(
     "instaanalytic",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.sync_tasks", "app.tasks.action_tasks", "app.tasks.ghost_tasks"],
+    include=["app.tasks.sync_tasks", "app.tasks.action_tasks", "app.tasks.ghost_tasks",
+             "app.tasks.cleanup_tasks"],
 )
 
 celery_app.conf.update(
@@ -22,4 +23,7 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "resume-action-queues": {"task": "resume_action_queues", "schedule": 15 * 60},
     "expire-stale-sessions": {"task": "expire_stale_sessions", "schedule": 24 * 3600},
+    # SPEC-001 §7.4 (AC-C32): kaydedilenleri temizleme bakımı. expires=55: bir önceki dakikanın birikmiş mesajları atılır (N-5).
+    "cleanup-stale": {"task": "cleanup_stale", "schedule": 60, "options": {"expires": 55}},
+    "cleanup-retention": {"task": "cleanup_retention", "schedule": 24 * 3600},
 }

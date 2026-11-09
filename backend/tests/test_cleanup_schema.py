@@ -370,3 +370,19 @@ async def test_targets_filter_index(db_engine):
     async with db_engine.connect() as c:
         idx = await c.run_sync(lambda sc: inspect(sc).get_indexes("saved_targets"))
     assert any(i["column_names"] == ["scan_id", "owner_username"] for i in idx)
+
+
+# ---- v1.6 ek kolonlar (main session kararı): koleksiyon hakkı ve "bu taramada listelendi" işareti ----------
+
+async def test_scan_collections_received_at_and_listed_scan_id(db, make_session):
+    s = await make_session()
+    sc = await _scan(db, s)
+    assert sc.collections_received_at is None
+    c = SavedCollection(session_id=s.id, collection_id="21", name="x", listed_scan_id=sc.id)
+    db.add(c)
+    await db.commit()
+    assert c.listed_scan_id == sc.id and c.last_seen_scan_id is None
+    await db.delete(sc)                                          # ON DELETE SET NULL
+    await db.commit()
+    await db.refresh(c)
+    assert c.listed_scan_id is None

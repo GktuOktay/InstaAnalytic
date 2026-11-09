@@ -46,6 +46,7 @@ class CleanupScan(Base):
     note_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     collections_mode: Mapped[str] = mapped_column(
         String(14), nullable=False, default="all_protected", server_default="all_protected")
+    collections_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # K-7: koleksiyon hakkı tüketildi
 
 
 class SavedCollection(Base):
@@ -66,6 +67,8 @@ class SavedCollection(Base):
         BigInteger, ForeignKey("cleanup_scans.id", ondelete="SET NULL"), nullable=True)
     last_seen_scan_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cleanup_scans.id", ondelete="SET NULL"), nullable=True)
+    listed_scan_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("cleanup_scans.id", ondelete="SET NULL"), nullable=True)   # son koleksiyon çağrısının taraması; finish(ok|partial) last_seen'e çevirir
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
