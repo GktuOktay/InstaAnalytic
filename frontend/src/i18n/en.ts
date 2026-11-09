@@ -454,6 +454,7 @@ const en: Translations = {
     follow:         'Follow',
     unfollow:       'Unfollow',
     removeFollower: 'Remove Follower',
+    collectionProtection: 'Collection Protection',
     detail:         'Detail',
     notes: {
       done:             'Done',

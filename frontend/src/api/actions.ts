@@ -27,8 +27,10 @@ export interface BulkUnfollowResponse {
 
 export interface ActionLogEntry {
   id: number
-  ig_user_id: number
+  ig_user_id: number | null
   ig_username: string | null
+  target_ref: string | null
+  target_label: string | null
   action_type: string
   status: string
   error_msg: string | null

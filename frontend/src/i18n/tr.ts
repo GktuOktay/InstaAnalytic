@@ -452,6 +452,7 @@ const tr = {
     follow:         'Takip Et',
     unfollow:       'Takipten Çık',
     removeFollower: 'Takipçiden Çıkart',
+    collectionProtection: 'Koleksiyon Koruması',
     detail:         'Ayrıntı',
     notes: {
       done:             'Yapıldı',

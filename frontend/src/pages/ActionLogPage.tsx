@@ -55,12 +55,21 @@ export default function ActionLogPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">
-                    @{entry.ig_username ?? entry.ig_user_id}
+                    {entry.ig_username
+                      ? `@${entry.ig_username}`
+                      : entry.ig_user_id != null
+                        ? `@${entry.ig_user_id}`
+                        : entry.target_label ?? entry.target_ref ?? '—'}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    entry.action_type === 'unfollow' ? 'bg-red-900/50 text-red-400' : 'bg-green-900/50 text-green-400'
+                    entry.action_type === 'unfollow' ? 'bg-red-900/50 text-red-400'
+                    : entry.action_type === 'collection_protection' ? 'bg-gray-800 text-gray-300'
+                    : 'bg-green-900/50 text-green-400'
                   }`}>
-                    {entry.action_type === 'unfollow' ? T.actionLog.unfollow : entry.action_type === 'remove_follower' ? T.actionLog.removeFollower : T.actionLog.follow}
+                    {entry.action_type === 'unfollow' ? T.actionLog.unfollow
+                      : entry.action_type === 'remove_follower' ? T.actionLog.removeFollower
+                      : entry.action_type === 'collection_protection' ? T.actionLog.collectionProtection
+                      : T.actionLog.follow}
                   </span>
                 </div>
                 {entry.error_msg && (() => {
