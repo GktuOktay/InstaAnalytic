@@ -1,7 +1,8 @@
 """Kaydedilenleri temizleme zamanlanmış görevleri (SPEC-001 §7.4, AC-C32; T-4a).
 
 - `cleanup_stale` (60 sn, `expires=55`): `T_eff`'i aşan `running` partiler -> `stopped(stale)`; takılma eşiğini aşan
-  `running` taramalar -> `failed`. Güncellemeler koşulludur (I-6).
+  `running` taramalar -> `failed`. Güncellemeler koşulludur (I-6). Aynı çalıştırmada süresi dolan taslaklar
+  `expired` olur (§6.8, T-4c: `cleanup_batch.expire_drafts`); sonuç sözlüğü değişmez, sayı yalnız log'a yazılır.
 - `cleanup_retention` (günde bir): 7 gün kuralı, eski taslaklar, tür başına son 20 tarama, 48 saatten eski yazma izinleri.
 
 Servisler async'tir (`services/cleanup_scan.py`); Celery görevi senkrondur. Her çalıştırma kendi olay döngüsünde
@@ -19,7 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.services import cleanup_scan
+from app.services import cleanup_batch, cleanup_scan
 from app.tasks.celery_app import celery_app
 
 log = logging.getLogger("cleanup_tasks")
@@ -43,8 +44,12 @@ async def _run(work):
 @celery_app.task(name="cleanup_stale")
 def cleanup_stale() -> dict:
     async def work(db, now):
-        return {"scans_failed": await cleanup_scan.fail_stale_scans(db, now),
-                "batches_stopped": await cleanup_scan.stop_stale_batches(db, now)}
+        out = {"scans_failed": await cleanup_scan.fail_stale_scans(db, now),
+               "batches_stopped": await cleanup_scan.stop_stale_batches(db, now)}
+        drafts = await cleanup_batch.expire_drafts(db, now)
+        if drafts:
+            log.info("cleanup_stale drafts_expired=%s", drafts)
+        return out
 
     out = asyncio.run(_run(work))
     if out["scans_failed"] or out["batches_stopped"]:
