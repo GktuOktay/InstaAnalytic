@@ -25,8 +25,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.bridge_action import BridgeAction
-from app.models.cleanup import CleanupWriteGrant
+from app.models.cleanup import CleanupItem, CleanupWriteGrant
 from app.models.session import Session
+from app.services import cleanup_limits as cl
 from app.services.cleanup_limits import PROFILES, get_limits, hard_cap
 from app.services.risk_profiles import DEFAULT_PROFILE, QUIET_HOURS, QUIET_TZ, in_quiet_hours
 
@@ -149,7 +150,8 @@ def _quiet_end(t: datetime) -> datetime:
     return t.astimezone(ZoneInfo(QUIET_TZ)).replace(hour=QUIET_HOURS[1], minute=0, second=0, microsecond=0)
 
 
-def _state(eff: Effective, ev: Events, remaining: int, t: datetime, pause_until: datetime | None):
+def _state(eff: Effective, ev: Events, remaining: int, t: datetime, pause_until: datetime | None,
+           not_before: datetime | None = None):
     g1, g24 = _count(ev.grants, t, HOUR), _count(ev.grants, t, DAY)
     f1, f24 = _count(ev.follows, t, HOUR), _count(ev.follows, t, DAY)
     hourly_room = min(eff.hourly_eff - g1, eff.account_hourly - (g1 + f1))
@@ -160,17 +162,19 @@ def _state(eff: Effective, ev: Events, remaining: int, t: datetime, pause_until:
     daily_need = max(1, daily_need)
     quiet = in_quiet_hours(t)
     paused = pause_until is not None and pause_until > t
-    ok = hourly_room >= need and daily_room >= daily_need and not quiet and not paused
+    ok = (hourly_room >= need and daily_room >= daily_need and not quiet and not paused
+          and (not_before is None or t >= not_before))     # AC-C53: okuma boş yeri >= 1
     return ok, hourly_room, daily_room, need, daily_need, quiet
 
 
 def evaluate_ready(eff_at: Callable[[datetime], Effective], ev: Events, remaining: int, now: datetime,
-                   pause_until: datetime | None, extra_times: Iterable[datetime] = ()) -> Readiness:
+                   pause_until: datetime | None, extra_times: Iterable[datetime] = (),
+                   not_before: datetime | None = None) -> Readiness:
     """"Hazır" kuralı (AC-C42) ve `next_allowed_at`: dört koşulun (saatlik boş yer >= need, günlük boş yer >=
     daily_need, sessiz saat dışı, duraklatma yok) ilk birlikte sağlandığı an. Adaylar: pencereden düşen olaylar,
     duraklatma sonu, sessiz saat sonu ve ısınma geçişleri."""
     eff0 = eff_at(now)
-    ok, hr, dr, need, dneed, quiet = _state(eff0, ev, remaining, now, pause_until)
+    ok, hr, dr, need, dneed, quiet = _state(eff0, ev, remaining, now, pause_until, not_before)
     if ok:
         return Readiness(True, None, hr, dr, need, dneed, eff0)
     cand: list[datetime] = []
@@ -179,6 +183,8 @@ def evaluate_ready(eff_at: Callable[[datetime], Effective], ev: Events, remainin
     if pause_until is not None:
         cand.append(pause_until)
     cand += list(extra_times)
+    if not_before is not None:
+        cand.append(not_before)
     if quiet:
         cand.append(_quiet_end(now))
     heap = [c for c in cand if c > now]
@@ -193,7 +199,7 @@ def evaluate_ready(eff_at: Callable[[datetime], Effective], ev: Events, remainin
             continue
         seen.add(t)
         last = t
-        ok, _hr, _dr, _n, _dn, q = _state(eff_at(t), ev, remaining, t, pause_until)
+        ok, _hr, _dr, _n, _dn, q = _state(eff_at(t), ev, remaining, t, pause_until, not_before)
         if ok:
             return Readiness(False, t, hr, dr, need, dneed, eff0)
         if q:
@@ -216,6 +222,47 @@ def estimate(item_count: int, values: Mapping, profile: str, age_hours: float) -
         left -= todo
         days += 1
     return {"hourly": e0.hourly_cap, "daily": e0.daily_cap, "days": days, "starts": starts}
+
+
+# ── Okuma bütçesi (AC-C53; tek tanım) ───────────────────────────────────────────
+READ_STATUSES = ("already", "not_found", "protected")       # yazma yapılmadan biten öğeler
+READ_WINDOW = HOUR
+
+
+def read_cap(limits=None) -> int:
+    """`reads.status_per_hour`: ayar dosyası değeri, sert tavana (240) kırpılmış; bozuk değer -> varsayılan (120)."""
+    lim = limits if limits is not None else get_limits()
+    lo, hi = cl.hard_cap("reads.status_per_hour")
+    try:
+        v = lim.values["reads.status_per_hour"]
+        if type(v) is bool or not isinstance(v, (int, float)) or v != v:
+            raise ValueError
+        v = int(v)
+    except Exception:                                      # noqa: BLE001  (bozuk değer: varsayılan)
+        v = int(cl.DEFAULTS["reads.status_per_hour"])
+    return int(min(max(v, lo), hi))
+
+
+@dataclass(frozen=True)
+class ReadBudget:
+    used: int
+    cap: int
+    room: int
+    next_at: datetime | None          # boş yer >= 1 olacağı an (room >= 1 ise None)
+
+
+async def read_budget(db: AsyncSession, session: Session, now: datetime, *, limits=None) -> ReadBudget:
+    """Son 60 dk (kayan, yarı açık: `done_at > now − 60 dk`) bu profilde yazma yapılmadan biten öğe sayısı."""
+    cap = read_cap(limits)
+    times = list((await db.execute(
+        select(CleanupItem.done_at).where(
+            CleanupItem.session_id == session.id, CleanupItem.status.in_(READ_STATUSES),
+            CleanupItem.done_at.is_not(None), CleanupItem.done_at > now - READ_WINDOW
+        ).order_by(CleanupItem.done_at))).scalars())
+    used = len(times)
+    room = cap - used
+    next_at = None if room >= 1 else times[used - cap] + READ_WINDOW
+    return ReadBudget(used, cap, room, next_at)
 
 
 # ── Veritabanı ──────────────────────────────────────────────────────────────────
@@ -277,8 +324,9 @@ async def budget_state(db: AsyncSession, session: Session, now: datetime, remain
     def eff_at(t: datetime) -> Effective:
         return compute_effective(values, profile, age + (t - now).total_seconds() / 3600)
 
+    rb = await read_budget(db, session, now, limits=lim)        # AC-C53: read_room >= 1 hazır kuralının parçası
     r = evaluate_ready(eff_at, ev, max(0, int(remaining)), now, pause_until(session),
-                       ramp_change_times(values, age, now))
+                       ramp_change_times(values, age, now), None if rb.room >= 1 else rb.next_at)
     return BudgetState(r.ready, r.next_allowed_at, r.hourly_room, r.daily_room, r.need, r.daily_need, r.eff)
 
 

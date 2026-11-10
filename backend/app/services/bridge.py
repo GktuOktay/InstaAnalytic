@@ -633,6 +633,11 @@ async def remember_extension(kv: KV, session_id, version: str) -> None:
     await kv.set(_k(session_id, "ext_version"), version, ex=STATE_TTL_S)
 
 
+async def recall_extension(kv: KV, session_id) -> str | None:
+    """`remember_extension`ın yazdığı son sürüm (yoksa None)."""
+    return await _get(kv, session_id, "ext_version")
+
+
 async def set_stopped(kv: KV, session_id: uuid.UUID, stopped: bool) -> None:
     if stopped:
         await kv.set(_k(session_id, "off"), "1", ex=STATE_TTL_S)

@@ -45,8 +45,9 @@ from app.services.cleanup_batch import (
     record_anomaly, stop_stale_for_session,
 )
 from app.services.cleanup_gate import (
-    cleanup_gate, compute_effective, lock_session, ramp_age_hours, record_grant,
-)
+    READ_STATUSES, ReadBudget, cleanup_gate, compute_effective, lock_session, ramp_age_hours, read_budget, read_cap,
+    record_grant,
+)  # noqa: F401  (okuma bütçesi artık cleanup_gate'te; buradan da erişilir)
 from app.services.cleanup_scan import (
     BLOCK_PAUSE, KIND, CleanupError, _pause_24h, protection_context, stale_threshold_s,
 )
@@ -58,7 +59,6 @@ HOUR = timedelta(hours=1)
 MAX_ATTEMPTS = 3                                            # AC-C19
 MAX_NEXT_LIMIT = 10                                         # §7.8 next.limit
 MAX_COLLECTION_IDS = 20                                     # §7.8 precheck.collection_ids
-READ_STATUSES = ("already", "not_found", "protected")       # AC-C53 tek tanım (yazma yapılmadan biten öğeler)
 RESULT_OUTCOMES = ("done", "already", "not_found", "protected", "failed", "blocked")
 MAX_FIELDS = 10
 _FIELD = re.compile(r"[a-z_][a-z0-9_]{0,39}")
@@ -107,45 +107,6 @@ def classify_failure(note_code: str | None, http_status: int | None) -> tuple[st
     if note_code is None or note_code in RETRY_NOTES:
         return "retry", None
     return "permanent", None
-
-
-# ── Okuma bütçesi (AC-C53; tek tanım) ───────────────────────────────────────────
-
-def read_cap(limits=None) -> int:
-    """`reads.status_per_hour`: ayar dosyası değeri, sert tavana (240) kırpılmış; bozuk değer -> varsayılan (120)."""
-    lim = limits if limits is not None else cl.get_limits()
-    lo, hi = cl.hard_cap("reads.status_per_hour")
-    try:
-        v = lim.values["reads.status_per_hour"]
-        if type(v) is bool or not isinstance(v, (int, float)) or v != v:
-            raise ValueError
-        v = int(v)
-    except Exception:                                      # noqa: BLE001  (bozuk değer: varsayılan)
-        v = int(cl.DEFAULTS["reads.status_per_hour"])
-    return int(min(max(v, lo), hi))
-
-
-@dataclass(frozen=True)
-class ReadBudget:
-    used: int
-    cap: int
-    room: int
-    next_at: datetime | None          # boş yer >= 1 olacağı an (room >= 1 ise None)
-
-
-async def read_budget(db: AsyncSession, session: Session, now: datetime, *, limits=None) -> ReadBudget:
-    """Son 60 dk (kayan, yarı açık: `done_at > now − 60 dk`) bu profilde yazma yapılmadan biten öğe sayısı
-    (`already`, `not_found`, `protected`). `protected` precheck'siz ya da `precheck reason=protected` sonrası fark etmez."""
-    cap = read_cap(limits)
-    times = list((await db.execute(
-        select(CleanupItem.done_at).where(
-            CleanupItem.session_id == session.id, CleanupItem.status.in_(READ_STATUSES),
-            CleanupItem.done_at.is_not(None), CleanupItem.done_at > now - HOUR
-        ).order_by(CleanupItem.done_at))).scalars())
-    used = len(times)
-    room = cap - used
-    next_at = None if room >= 1 else times[used - cap] + HOUR
-    return ReadBudget(used, cap, room, next_at)
 
 
 # ── Doğrulama yardımcıları (hata gövdesine girdi yansımaz) ──────────────────────

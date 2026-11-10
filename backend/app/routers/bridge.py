@@ -5,7 +5,8 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+import re
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,9 @@ from app.services import bridge, bridge_actions
 from app.services import notifications
 
 router = APIRouter(tags=["bridge"])
+
+SAVED_KINDS = ("saved_scan", "saved_unsave")
+_COUNT_MESSAGE = re.compile(r"[0-9 /,.:]{0,200}")
 
 _kv = None
 
@@ -116,7 +120,7 @@ class JobResultItem(BaseModel):
 class JobReport(BaseModel):
     """Eklentinin bitirdiği bir işin sonucu (Kuyruk Monitörü'nde görünür)."""
     session_id: uuid.UUID
-    kind: Literal["posts", "likers", "comments", "actions"]
+    kind: Literal["posts", "likers", "comments", "actions", "saved_scan", "saved_unsave"]
     outcome: Literal["ok", "partial", "failed", "stopped"]
     total: int = Field(ge=0, le=1000)
     done: int = Field(ge=0, le=1000)
@@ -126,6 +130,13 @@ class JobReport(BaseModel):
     results: list[JobResultItem] = Field(default_factory=list, max_length=50)
     started_at: datetime
     finished_at: datetime
+
+    @model_validator(mode="after")
+    def _saved_counts_only(self):
+        """AC-C29: kaydedilenler türlerinde `results=[]` ve `message` yalnız sayıdır (kullanıcı adı/kimlik/metin yok)."""
+        if self.kind in SAVED_KINDS and (self.results or not _COUNT_MESSAGE.fullmatch(self.message)):
+            raise ValueError("counts_only")
+        return self
 
 
 _OUTCOME_STATUS = {"ok": "completed", "partial": "partial", "failed": "failed", "stopped": "stopped"}
@@ -141,8 +152,11 @@ async def report_job(body: JobReport, db: AsyncSession = Depends(get_db)):
     )
     db.add(job)
     await db.commit()
+    params = {"done": body.done, "total": body.total, "ok": body.ok, "saved": body.saved}
+    if body.kind not in SAVED_KINDS:                 # AC-C29: kaydedilenler bildirimi yalnız sayı taşır (tür adı dahil değil)
+        params = {"job": body.kind, **params}
     await notifications.add(db, session_id=body.session_id, kind=f"job_{body.outcome}", level=notifications.JOB_LEVEL[body.outcome],
-                            params={"job": body.kind, "done": body.done, "total": body.total, "ok": body.ok, "saved": body.saved},
+                            params=params,
                             link="/monitor")
     await notifications.trim(db)
     return {"id": str(job.id)}
