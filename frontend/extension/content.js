@@ -53,8 +53,19 @@
   // `ia-observed` yolu da `scanEmbedded` de buradan geçer. Desen eşleşirse bütün blok düşer (sorgu adından bağımsız).
   const BODY_GUARD = /get_slide_mailbox|iris_subscription|as_ig_direct_thread|threads_by_folder|direct_v2|"thread_|DTSGInitialData|"LSD",\[\]|"csrf_token"/;
 
+  // FB-1 sayaçları: YALNIZ sayı. İletilen blok, bekçiye takılan blok, bunlardan gönderi verisi içerenler. Gövde, url ya da
+  // başka içerik tutulmaz, loglanmaz, hiçbir yere gönderilmez; yalnız bu betiğin kendi `window`'undan okunur (hata ayıklama).
+  const guardStats = { forwarded: 0, guarded: 0, guardedWithPostData: 0 };
+  const looksLikePost = (t) => t.indexOf('"username"') !== -1 && (t.indexOf('"taken_at') !== -1 || t.indexOf('liker') !== -1);
+  window.__iaGuardStats = () => ({ forwarded: guardStats.forwarded, guarded: guardStats.guarded, guardedWithPostData: guardStats.guardedWithPostData });
+
   function forward(payload) {
-    if (payload && typeof payload.text === 'string' && BODY_GUARD.test(payload.text)) return;
+    if (payload && typeof payload.text === 'string' && BODY_GUARD.test(payload.text)) {
+      guardStats.guarded += 1;
+      if (looksLikePost(payload.text)) guardStats.guardedWithPostData += 1;
+      return;
+    }
+    guardStats.forwarded += 1;
     const kinds = Object.keys(cfg.tools).filter((k) => cfg.tools[k]);
     chrome.runtime.sendMessage({ type: 'ia-observed', viewer: viewerId(), page: location.href, kinds, ...payload })
       .catch(() => { /* eklenti güncellendiyse sessizce geç */ });

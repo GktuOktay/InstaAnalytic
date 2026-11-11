@@ -102,7 +102,8 @@ export default function ExtrasPage() {
           {status && (
             <SavedTab
               ref={tab} sessionId={sessionId} username={active.ig_username} status={status} ext={ext} viewerUnknown={viewerUnknown}
-              maxItems={caps.maxItems} pageDelayMax={caps.pageDelayMax} onStatusRefresh={refresh}
+              maxItems={caps.maxItems} pageDelayMax={caps.pageDelayMax}
+              collectionChoice={settings?.saved.collection_choice_available !== false} onStatusRefresh={refresh}
             />
           )}
           <HistoryPanel sessionId={sessionId} refreshKey={historyKey} />

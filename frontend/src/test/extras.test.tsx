@@ -12,6 +12,7 @@ vi.mock('../api/cleanup', async (orig) => {
     cleanupApi: {
       settings: vi.fn(), setEnabled: vi.fn(), limits: vi.fn(), status: vi.fn(), inventory: vi.fn(), preview: vi.fn(),
       batchItems: vi.fn(), confirm: vi.fn(), start: vi.fn(), stop: vi.fn(), cancel: vi.fn(), history: vi.fn(),
+      collections: vi.fn(), setCollectionProtected: vi.fn(),
     },
   }
 })
@@ -23,6 +24,7 @@ import ExtrasPage from '../pages/ExtrasPage'
 import ConfirmDialog from '../components/cleanup/ConfirmDialog'
 import CleanupSettingsCard from '../components/cleanup/CleanupSettingsCard'
 import tr from '../i18n/tr'
+import en from '../i18n/en'
 
 const sess = sessionsApi as unknown as { list: ReturnType<typeof vi.fn> }
 const api = cleanupApi as unknown as Record<keyof typeof cleanupApi, ReturnType<typeof vi.fn>>
@@ -81,6 +83,7 @@ beforeEach(() => {
   api.limits.mockResolvedValue(limits())
   api.history.mockResolvedValue({ counts: {}, items: [] })
   api.inventory.mockResolvedValue({ scan: null, total: 0, protected_total: 0, items: [] })
+  api.collections.mockResolvedValue({ mode: null, scan_id: null, items: [] })
 })
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
@@ -1255,5 +1258,205 @@ describe('SavedTab: selection (AC-S12, AC-U17, AC-U19)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Yeniden tara' })).toBeEnabled())
     await userEvent.click(screen.getByRole('button', { name: 'Yeniden tara' }))
     await waitFor(() => expect(posted.some(m => m.type === 'ia-run' && m.cmd.kind === 'saved_scan')).toBe(true))
+  })
+})
+
+/* ═══ T-11w: Korunan koleksiyonlar paneli (AC-U27) ve korumayı kaldırma diyaloğu (AC-U28) ═══════════ */
+
+const coll = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+  collection_id: id, name, id_suffix: null, protected: true, in_last_scan: true, is_new: false, post_count: 3, ...over,
+})
+const colls = (items: unknown[], mode: string | null = 'per_collection') => ({ mode, scan_id: mode ? 1 : null, items })
+const trC = tr.cleanup.collections
+const setColl = () => {
+  return { list: api.collections, put: api.setCollectionProtected }
+}
+const sw = (name: string) => screen.getByRole('switch', { name })
+
+describe('Collections panel (AC-U27)', () => {
+  beforeEach(() => { api.inventory.mockResolvedValue(inv(five())) })
+
+  it('loading: skeleton status while the list is pending', async () => {
+    fakeExtension()
+    setColl().list.mockReturnValue(new Promise(() => {}))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText(trC.loading)).toBeInTheDocument()
+  })
+
+  it('error: its own text with Tekrar dene that reloads; inventory is unaffected', async () => {
+    fakeExtension()
+    const { list } = setColl()
+    list.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(colls([coll('1', 'Gezi')]))
+    renderApp(<ExtrasPage />)
+    const panel = (await screen.findByText(trC.title)).closest('section') as HTMLElement
+    expect(await within(panel).findByText('Koleksiyonlar yüklenemedi.')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: '@kisi1, SC1 seç' })).toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: 'Tekrar dene' }))
+    expect(await within(panel).findByRole('switch', { name: 'Gezi koleksiyonunu koru' })).toBeInTheDocument()
+  })
+
+  it('never scanned: "Koleksiyonlar tarama sırasında okunur."', async () => {
+    fakeExtension()
+    api.inventory.mockResolvedValue(inv([], {}, null))
+    setColl().list.mockResolvedValue(colls([], null))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText('Koleksiyonlar tarama sırasında okunur.')).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+  })
+
+  it('code-level F (collection_choice_available=false): no panel and no collections call', async () => {
+    fakeExtension()
+    api.settings.mockResolvedValue(settings(true, false))
+    const { list } = setColl()
+    list.mockResolvedValue(colls([coll('1', 'Gezi')], 'all_protected'))
+    renderApp(<ExtrasPage />)
+    await screen.findByRole('checkbox', { name: '@kisi1, SC1 seç' })
+    expect(screen.queryByText(trC.title)).not.toBeInTheDocument()
+    expect(list).not.toHaveBeenCalled()
+  })
+
+  it('fallback to F: yellow strip and every switch disabled', async () => {
+    fakeExtension()
+    setColl().list.mockResolvedValue(colls([coll('1', 'Gezi')], 'all_protected'))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText(trC.fallback)).toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toBeDisabled()
+  })
+
+  it('empty: "Koleksiyonun yok."', async () => {
+    fakeExtension()
+    setColl().list.mockResolvedValue(colls([]))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText('Koleksiyonun yok.')).toBeInTheDocument()
+  })
+
+  it('list: id_suffix for same names, count, New badge, not-seen note, text state and header count', async () => {
+    fakeExtension()
+    setColl().list.mockResolvedValue(colls([
+      coll('11111234', 'Seyahat', { id_suffix: '1234', is_new: true, post_count: 12 }),
+      coll('22229999', 'Seyahat', { id_suffix: '9999', protected: false }),
+      coll('3', 'Eski', { in_last_scan: false }),
+    ]))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText('3 koleksiyondan 2\'si korunuyor.')).toBeInTheDocument()
+    const s1 = sw('Seyahat ·1234 koleksiyonunu koru')
+    expect(s1).toHaveAttribute('aria-checked', 'true')
+    expect(sw('Seyahat ·9999 koleksiyonunu koru')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByText('12 gönderi')).toBeInTheDocument()
+    expect(screen.getAllByText('Yeni')).toHaveLength(1)
+    expect(screen.getAllByText('Son taramada görülmedi')).toHaveLength(1)
+    expect(screen.getAllByText('Korunuyor').length).toBe(2)
+    expect(screen.getAllByText('Korunmuyor')).toHaveLength(1)
+  })
+
+  it('protecting is one step: PUT {protected:true}, no dialog; the inventory reloads', async () => {
+    fakeExtension()
+    const { list, put } = setColl()
+    list.mockResolvedValue(colls([coll('5', 'Gezi', { protected: false })]))
+    put.mockResolvedValue({ collection_id: '5', protected: true })
+    renderApp(<ExtrasPage />)
+    const before = api.inventory.mock.calls.length
+    await userEvent.click(await screen.findByRole('switch', { name: 'Gezi koleksiyonunu koru' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('s1', '5', true))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(sw('Gezi koleksiyonunu koru')).toHaveAttribute('aria-checked', 'true'))
+    await waitFor(() => expect(api.inventory.mock.calls.length).toBeGreaterThan(before))
+  })
+
+  it('saving: that row\'s switch is disabled with a spinner status until the PUT settles', async () => {
+    fakeExtension()
+    const { list, put } = setColl()
+    list.mockResolvedValue(colls([coll('5', 'Gezi', { protected: false }), coll('6', 'Yemek')]))
+    let done: (v: unknown) => void = () => {}
+    put.mockReturnValue(new Promise(r => { done = r }))
+    renderApp(<ExtrasPage />)
+    await userEvent.click(await screen.findByRole('switch', { name: 'Gezi koleksiyonunu koru' }))
+    expect(await screen.findByRole('status', { name: trC.saving })).toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toBeDisabled()
+    expect(sw('Yemek koleksiyonunu koru')).toBeEnabled()
+    await act(async () => { done({ collection_id: '5', protected: true }) })
+    await waitFor(() => expect(sw('Gezi koleksiyonunu koru')).toBeEnabled())
+  })
+
+  it('failed save: the switch returns to its old position with "Kaydedilemedi; tekrar dene."', async () => {
+    fakeExtension()
+    const { list, put } = setColl()
+    list.mockResolvedValue(colls([coll('5', 'Gezi', { protected: false })]))
+    put.mockRejectedValue(httpErr(500, 'x'))
+    renderApp(<ExtrasPage />)
+    await userEvent.click(await screen.findByRole('switch', { name: 'Gezi koleksiyonunu koru' }))
+    expect(await screen.findByText('Kaydedilemedi; tekrar dene.')).toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('active batch: the R7 L5 note is shown and the switches still work', async () => {
+    fakeExtension()
+    api.status.mockResolvedValue(status({}, batch()))
+    setColl().list.mockResolvedValue(colls([coll('5', 'Gezi')]))
+    renderApp(<ExtrasPage />)
+    expect(await screen.findByText(trC.activeBatch)).toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toBeEnabled()
+  })
+})
+
+describe('Unprotect dialog (AC-U28, K-23)', () => {
+  beforeEach(() => { api.inventory.mockResolvedValue(inv(five())) })
+
+  async function open(name = 'Gezi') {
+    fakeExtension()
+    const m = setColl()
+    m.list.mockResolvedValue(colls([coll('5', name)]))
+    m.put.mockResolvedValue({ collection_id: '5', protected: false })
+    renderApp(<ExtrasPage />)
+    await userEvent.click(await screen.findByRole('switch', { name: `${name} koleksiyonunu koru` }))
+    return { ...m, dlg: await screen.findByRole('dialog') }
+  }
+
+  it('shows the K-23 TR text verbatim; "Korumayı kaldır" is disabled until the box is ticked', async () => {
+    const { dlg } = await open()
+    expect(within(dlg).getByRole('heading', { name: '"Gezi" koleksiyonunun korumasını kaldır' })).toBeInTheDocument()
+    expect(within(dlg).getByText('Bu koleksiyondaki gönderiler temizlemeye seçilebilir hale gelir. Instagram\'da kaydedilenlerden çıkan bir gönderi bu koleksiyondan da çıkabilir.')).toBeInTheDocument()
+    expect(within(dlg).getByText('Bu koleksiyon başka kişilerle paylaşılıyorsa onlar da etkilenebilir. Uygulama bir koleksiyonun paylaşılıp paylaşılmadığını bilemez.')).toBeInTheDocument()
+    expect(within(dlg).getByText('Koruma, sen geri alana kadar kaldırılmış kalır.')).toBeInTheDocument()
+    const btn = within(dlg).getByRole('button', { name: 'Korumayı kaldır' })
+    expect(btn).toBeDisabled()
+    await userEvent.click(within(dlg).getByRole('checkbox', { name: 'Bu koleksiyonun başka kişilerle paylaşılmadığını biliyorum.' }))
+    expect(btn).toBeEnabled()
+  })
+
+  it('EN strings are the K-23 text verbatim', () => {
+    expect(en.cleanup.collections.dlgBody).toBe('Posts in this collection can now be selected for cleanup. On Instagram, a post removed from Saved may also leave this collection.')
+    expect(en.cleanup.collections.dlgShared).toBe('If this collection is shared with other people, they may be affected too. The app cannot tell whether a collection is shared.')
+    expect(en.cleanup.collections.dlgPersist).toBe('Protection stays off until you turn it back on.')
+    expect(en.cleanup.collections.dlgAck).toBe('I know this collection is not shared with other people.')
+    expect(en.cleanup.collections.dlgTitle('Gezi')).toBe('Unprotect the "Gezi" collection')
+    expect(en.cleanup.collections.dlgConfirm).toBe('Unprotect')
+    expect(en.cleanup.collections.dlgCancel).toBe('Cancel')
+  })
+
+  it('Cancel: the switch stays on "Korunuyor" and PUT is not called', async () => {
+    const { dlg, put } = await open()
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Vazgeç' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toHaveAttribute('aria-checked', 'true')
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('Confirm: PUT {protected:false} with the acknowledgement, then the row reads "Korunmuyor"', async () => {
+    const { dlg, put } = await open()
+    await userEvent.click(within(dlg).getByRole('checkbox'))
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Korumayı kaldır' }))
+    await waitFor(() => expect(put).toHaveBeenCalledWith('s1', '5', false))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(sw('Gezi koleksiyonunu koru')).toHaveAttribute('aria-checked', 'false'))
+  })
+
+  it('failed unprotect: the dialog closes, the switch stays on and the row shows the failure text', async () => {
+    const { dlg, put } = await open()
+    put.mockRejectedValue(httpErr(409, 'collections_unavailable'))
+    await userEvent.click(within(dlg).getByRole('checkbox'))
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Korumayı kaldır' }))
+    expect(await screen.findByText('Kaydedilemedi; tekrar dene.')).toBeInTheDocument()
+    expect(sw('Gezi koleksiyonunu koru')).toHaveAttribute('aria-checked', 'true')
   })
 })

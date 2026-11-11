@@ -5,8 +5,11 @@ kaydeder ve bu bilgisayarda çalışan InstaAnalytic uygulamasına iletir.
 
 ## Nasıl çalışır
 
-Eklenti **Instagram'a kendisi hiçbir istek göndermez.** Zamanlayıcısı yoktur, arka planda bir şey açmaz,
-tıklamaz, kaydırmaz.
+Eklenti, **yalnızca kendi izleme (pasif okuma) modunda** Instagram'a istek göndermez: bu modda zamanlayıcısı
+yoktur, arka planda bir şey açmaz, tıklamaz, kaydırmaz. İki mod bunun dışındadır ve ancak sizin başlattığınız
+işte çalışır: **takipten çıkma** ve **kaydedilenleri temizleme** (tarama ve kaydedilenlerden çıkarma) modları,
+sizin kendi Instagram sekmenizde, sizin oturumunuzla ve insan hızında Instagram'a istek gönderir. Bu iki mod
+uygulamada açık onayınızla (önizleme ve sayı yazarak onay) başlar; kendiliğinden hiçbir şey yapmaz.
 
 Siz kendi gönderinizi açıp altındaki "beğenme" sayısına tıkladığınızda Instagram'ın sayfası beğenenler
 listesini zaten indirir. Eklenti bu yanıtın bir kopyasını okur ve uygulamaya gönderir. Profilinizi açıp
@@ -36,7 +39,9 @@ yalnızca sayfanın kendi kodunun da okuyabildiği `ds_user_id` değerini (hesab
 
 **Yapmadıkları**
 
-- Instagram'a istek göndermez, istekleri değiştirmez, sayfada tıklamaz ya da kaydırmaz.
+- Pasif okuma modunda Instagram'a istek göndermez, istekleri değiştirmez, sayfada tıklamaz ya da kaydırmaz.
+  (Takipten çıkma ve kaydedilenleri temizleme modları bunun istisnasıdır; yukarıda anlatıldığı gibi sizin
+  başlattığınız işte, sekmenizde istek gönderir.)
 - Kapalıyken hiçbir yanıtı kopyalamaz.
 - Yalnızca kendi profil sayfanızda ve gönderi sayfalarında, yalnızca gönderi / beğenen / yorum / profil
   ızgarası yanıtlarını iletir. Mesajlar, bildirimler, hikâyeler, arama ve keşfet hiç okunmaz.

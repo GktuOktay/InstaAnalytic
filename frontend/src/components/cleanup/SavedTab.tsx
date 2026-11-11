@@ -9,6 +9,7 @@ import type { useExtension } from '../../lib/extensionBridge'
 import { fill } from '../../lib/text'
 import { proxyImg } from '../../utils/imgProxy'
 import ConfirmDialog from './ConfirmDialog'
+import CollectionsPanel from './CollectionsPanel'
 import SelectionBar from './SelectionBar'
 import { reasonText } from './format'
 
@@ -24,6 +25,8 @@ interface Props {
   viewerUnknown: boolean
   maxItems: number
   pageDelayMax: number
+  /** `settings.saved.collection_choice_available`: false iken (kod düzeyinde F) koleksiyon paneli yoktur. */
+  collectionChoice?: boolean
   onStatusRefresh: () => void
 }
 
@@ -40,7 +43,7 @@ const normQ = (raw: string) => raw.trim().replace(/^@/, '').toLowerCase()
 
 /** Kaydedilenler sekmesi: tarama, envanter, iki seçim modu, önizleme (§4.1-4.4). */
 const SavedTab = forwardRef<SavedTabHandle, Props>(function SavedTab(
-  { sessionId, username, status, ext, viewerUnknown, maxItems, pageDelayMax, onStatusRefresh }, handle,
+  { sessionId, username, status, ext, viewerUnknown, maxItems, pageDelayMax, collectionChoice = true, onStatusRefresh }, handle,
 ) {
   const { T, lang } = useLang()
   const S = T.cleanup.saved
@@ -275,6 +278,13 @@ const SavedTab = forwardRef<SavedTabHandle, Props>(function SavedTab(
         </div>
       )}
       {invLoading && !inv && !invFailed && <p role="status" className="text-sm" style={{ color: 'var(--text-3)' }}>{T.common.loading}</p>}
+
+      {collectionChoice && (
+        <CollectionsPanel
+          sessionId={sessionId} scanKey={scanKey} activeBatch={activeBatch}
+          onChanged={() => setReloadKey(k => k + 1)}
+        />
+      )}
 
       {neverScanned && !scanError && <p className="text-sm">{S.neverScanned}</p>}
       {emptyInventory && <p className="text-sm">{S.emptyInv}</p>}

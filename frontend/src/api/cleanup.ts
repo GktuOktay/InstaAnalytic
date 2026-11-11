@@ -166,6 +166,25 @@ export const batchItemsSchema = z.object({
 })
 export type BatchItems = z.infer<typeof batchItemsSchema>
 
+/** `GET saved/collections` (AC-S22): `mode` null = envanter taraması yok; `id_suffix` yalnız aynı adlı satırlarda dolu. */
+export const collectionRowSchema = z.object({
+  collection_id: z.string(),
+  name: z.string(),
+  id_suffix: z.string().nullable(),
+  protected: z.boolean(),
+  in_last_scan: z.boolean(),
+  is_new: z.boolean(),
+  post_count: z.number(),
+})
+export type CollectionRow = z.infer<typeof collectionRowSchema>
+export const collectionsSchema = z.object({
+  mode: z.string().nullable(),
+  scan_id: z.number().nullable(),
+  items: z.array(collectionRowSchema),
+})
+export type Collections = z.infer<typeof collectionsSchema>
+export const collectionProtectSchema = z.object({ collection_id: z.string(), protected: z.boolean() })
+
 export const confirmSchema = z.object({ batch_id: z.number(), status: z.string(), queued: z.number() })
 export const startSchema = z.object({ batch_id: z.number(), status: z.string(), run_seq: z.number(), started_at: ts })
 export type StartReply = z.infer<typeof startSchema>
@@ -230,6 +249,12 @@ export const cleanupApi = {
   status: (id: string) => api.get(`${base(id)}/status`).then(r => statusSchema.parse(r.data).saved),
   inventory: (id: string, p: { q?: string; media_type?: string; limit?: number; offset?: number }) =>
     api.get(`${saved(id)}/inventory`, { params: p }).then(r => inventorySchema.parse(r.data)),
+  collections: (id: string) => api.get(`${saved(id)}/collections`).then(r => collectionsSchema.parse(r.data)),
+  /** `protected=false` için `ack_shared_risk=true` zorunlu (AC-S22); korumaya almak diyaloğsuzdur. */
+  setCollectionProtected: (id: string, collectionId: string, isProtected: boolean) =>
+    api.put(`${saved(id)}/collections/${encodeURIComponent(collectionId)}`,
+      isProtected ? { protected: true } : { protected: false, ack_shared_risk: true })
+      .then(r => collectionProtectSchema.parse(r.data)),
   preview: (id: string, body: PreviewSelection) =>
     api.post(`${saved(id)}/preview`, body).then(r => previewSchema.parse(r.data)),
   batchItems: (id: string, batchId: number, limit = 50, offset = 0) =>

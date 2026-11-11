@@ -809,6 +809,40 @@ describe('passive path: own saved page, body guard, scanEmbedded (AC-S6, AC-C55)
   })
 })
 
+// ── FB-1 sayaçları: yalnız sayı ─────────────────────────────────────────────
+
+describe('FB-1 body-guard counters (counts only)', () => {
+  const stats = () => (window as unknown as { __iaGuardStats?: () => Record<string, number> }).__iaGuardStats?.()
+
+  it('counts forwarded blocks, guard-dropped blocks, and dropped blocks that carried post data; embedded scan goes through the same counters', async () => {
+    document.body.innerHTML = `
+      <script type="application/json">{"threads_by_folder":[],"username":"u","taken_at":1}</script>
+      <script type="application/json">{"csrf_token":"${TOKENS.csrf}"}</script>
+      <script type="application/json">{"items":[{"username":"clean","taken_at":2}]}</script>`
+    boot(() => undefined, () => J({}), ON)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(stats()).toEqual({ forwarded: 1, guarded: 1, guardedWithPostData: 1 })   // csrf bloğu gönderi benzeri değil: scanEmbedded süzer, bekçiye ulaşmaz
+    postMessageObserved({ url: 'https://www.instagram.com/api/graphql', status: 200, text: MAILBOX, friendly: 'PolarisProfilePostsQuery', variables: '' })
+    postMessageObserved({ url: 'https://www.instagram.com/api/graphql', status: 200, text: '{"DTSGInitialData":1}', friendly: 'PolarisProfilePostsQuery', variables: '' })
+    postMessageObserved({ url: 'https://www.instagram.com/api/graphql', status: 200, text: '{"data":{"user":{"username":"a","taken_at":1}}}', friendly: 'PolarisProfilePostsQuery', variables: '' })
+    expect(stats()).toEqual({ forwarded: 2, guarded: 3, guardedWithPostData: 2 })
+  })
+
+  it('only numbers are kept; nothing from them or from a guarded body is sent anywhere or logged', async () => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map(k => vi.spyOn(console, k).mockImplementation(() => {}))
+    boot(() => undefined, () => J({}), ON)
+    await vi.advanceTimersByTimeAsync(2000)
+    postMessageObserved({ url: 'https://www.instagram.com/api/graphql', status: 200, text: MAILBOX, friendly: 'PolarisProfilePostsQuery', variables: '' })
+    const s = stats()!
+    expect(Object.values(s).every(v => typeof v === 'number')).toBe(true)
+    expect(Object.keys(s).sort()).toEqual(['forwarded', 'guarded', 'guardedWithPostData'])
+    expect(observed()).toHaveLength(0)
+    expect(JSON.stringify(sent)).not.toMatch(/guard|forwarded|threads_by_folder|get_slide_mailbox|thread_id/i)
+    for (const sp of spies) expect(sp).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
 // ── listener.js NEVER (AC-C55 madde 2) ──────────────────────────────────────
 
 describe('listener.js NEVER pattern widened (AC-C55)', () => {

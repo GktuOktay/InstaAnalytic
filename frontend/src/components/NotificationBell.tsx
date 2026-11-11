@@ -25,7 +25,10 @@ export function describe(T: ReturnType<typeof useLang>['T'], n: AppNotification)
   if (!k) return { title: N.unknown, body: '' }
   const label = n.kind.startsWith('sync_')
     ? (N.sync[String(n.params.job_type)] ?? String(n.params.job_type ?? ''))
-    : (N.jobs[String(n.params.job)] ?? String(n.params.job ?? ''))
+    : n.params.job == null
+      // AC-C29: kaydedilenler bildirimi tür adı taşımaz; sunucu türü bildirmediği için iki yedek başlık birlikte yazılır
+      ? `${N.jobs.saved_scan} / ${N.jobs.saved_unsave}`
+      : (N.jobs[String(n.params.job)] ?? String(n.params.job))
   return { title: k.title(label), body: k.body(n.params as Record<string, number>) }
 }
 

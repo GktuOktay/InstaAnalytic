@@ -85,5 +85,15 @@ describe('ActionLogPage — rows without ig_user_id (SPEC-001 AC-C17)', () => {
     expect(await screen.findByText('Koleksiyon Koruması')).toBeInTheDocument()
     expect(screen.getByText('Seyahat')).toBeInTheDocument()
   })
-})
 
+  it('an unsave row is labelled as such, never as "Takip Et" (TR and EN)', async () => {
+    log.mockResolvedValue([bare(5, { action_type: 'unsave', target_label: 'gonderi-5' })])
+    const { unmount } = renderApp(<ActionLogPage />)
+    expect(await screen.findByText('Kaydedilenden Çıkar')).toBeInTheDocument()
+    expect(screen.queryByText('Takip Et', { selector: 'span' })).not.toBeInTheDocument()
+    unmount()
+    renderApp(<ActionLogPage />, { lang: 'en' })
+    expect(await screen.findByText('Unsave')).toBeInTheDocument()
+    expect(screen.queryByText('Follow', { selector: 'span' })).not.toBeInTheDocument()
+  })
+})

@@ -63,12 +63,13 @@ export default function ActionLogPage() {
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     entry.action_type === 'unfollow' ? 'bg-red-900/50 text-red-400'
-                    : entry.action_type === 'collection_protection' ? 'bg-gray-800 text-gray-300'
+                    : entry.action_type === 'collection_protection' || entry.action_type === 'unsave' ? 'bg-gray-800 text-gray-300'
                     : 'bg-green-900/50 text-green-400'
                   }`}>
                     {entry.action_type === 'unfollow' ? T.actionLog.unfollow
                       : entry.action_type === 'remove_follower' ? T.actionLog.removeFollower
                       : entry.action_type === 'collection_protection' ? T.actionLog.collectionProtection
+                      : entry.action_type === 'unsave' ? T.actionLog.unsave
                       : T.actionLog.follow}
                   </span>
                 </div>
