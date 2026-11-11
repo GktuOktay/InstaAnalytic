@@ -383,7 +383,7 @@ function Row({ r, checked, blocked, capped, protectedBadge, nameOf, onToggle }: 
         )}
       </div>
       {src && !imgFailed ? (
-        <img src={src} alt="" loading="lazy" width={44} height={44} className="w-11 h-11 rounded object-cover shrink-0" onError={() => setImgFailed(true)} />
+        <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" width={44} height={44} className="w-11 h-11 rounded object-cover shrink-0" onError={() => setImgFailed(true)} />
       ) : (
         <div data-testid={`thumb-placeholder-${r.ref}`} className="w-11 h-11 rounded shrink-0 flex items-center justify-center text-[10px] overflow-hidden"
           style={{ background: 'var(--surface-2)', color: 'var(--text-3)' }}>{r.shortcode}</div>

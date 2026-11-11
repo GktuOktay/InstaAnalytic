@@ -60,7 +60,8 @@
   window.__iaGuardStats = () => ({ forwarded: guardStats.forwarded, guarded: guardStats.guarded, guardedWithPostData: guardStats.guardedWithPostData });
 
   function forward(payload) {
-    if (payload && typeof payload.text === 'string' && BODY_GUARD.test(payload.text)) {
+    if (payload && ((typeof payload.text === 'string' && BODY_GUARD.test(payload.text)) ||
+        (typeof payload.variables === 'string' && BODY_GUARD.test(payload.variables)))) {
       guardStats.guarded += 1;
       if (looksLikePost(payload.text)) guardStats.guardedWithPostData += 1;
       return;

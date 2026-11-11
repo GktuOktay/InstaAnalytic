@@ -373,6 +373,40 @@ async def test_gate_takes_profile_row_lock(db, db_engine, make_session):
     assert any("FOR UPDATE" in q and "FROM sessions" in q for q in seen)
 
 
+async def test_gate_holds_profile_row_lock_against_a_second_connection(db, db_engine, make_session):
+    """AC-C26/C47 (davranış): kapı döndüğünde profil satırı hâlâ kilitli; ikinci bağlantı NOWAIT ile alamaz.
+    Kilit `cleanup_gate` içindeki `lock_session` çağrısından gelir (cleanup_exec'e dayanmaz); `lock=False` kilit almaz."""
+    from sqlalchemy import select
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from app.models.session import Session
+
+    s = await _session(make_session)
+    await db.commit()                                       # satır görünür, işlem temiz
+    sid = s.id                                              # rollback nesneyi eskitir; kimliği önceden al
+    other = async_sessionmaker(db_engine, expire_on_commit=False)
+
+    async def try_lock():
+        async with other() as o:
+            try:
+                await o.execute(select(Session.id).where(Session.id == sid).with_for_update(nowait=True))
+                return True
+            except DBAPIError:
+                return False
+            finally:
+                await o.rollback()
+
+    assert await try_lock() is True                         # kontrol: kimse tutmuyorken alınabilir
+    assert await gate(db, s, lock=False) is None
+    assert await try_lock() is True                         # lock=False: kapı kilit almaz
+    await db.rollback()
+    await db.refresh(s)                                     # rollback nesneyi eskitti; kapı sessizce 'limit' dönmesin
+    assert await gate(db, s) is None                                       # varsayılan: kapı kilidi alır
+    assert await try_lock() is False                        # işlem açıkken ikinci bağlantı alamaz
+    await db.rollback()
+    assert await try_lock() is True                         # işlem bitince kilit düşer
+
+
 async def test_record_grant_writes_row_counted_immediately(db, make_session):
     """R7 M5: `record_grant` bir satır yazar; aynı işlemde sayıma girer (uçuştaki izin ayrı kural değildir)."""
     s = await _session(make_session)

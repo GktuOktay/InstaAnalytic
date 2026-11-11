@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
+
+// findBy*/waitFor varsayılanı 1 sn; yüklü makinede (tam suite, paralel işçiler) ilk render bunu aşıp testi flaky yapıyordu.
+configure({ asyncUtilTimeout: 5000 })
 
 // Node 25+ kendi (bozuk) global localStorage'ını getirir ve jsdom'unkini gölgeler
 // (`localStorage.clear is not a function`, IA D-02). Çalışmıyorsa bellek içi bir Storage koyarız;

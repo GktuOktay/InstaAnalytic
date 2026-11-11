@@ -75,6 +75,7 @@ function fakeExtension(o: { version?: string | null; jobs?: unknown[]; runReply?
 const runningJob = (kind: string) => ({ id: 'j1', kind, state: 'running', index: 1, total: 5, message: '', errors: [], queue: [], startedAt: Date.now() })
 
 beforeEach(() => {
+  sessionStorage.clear()
   vi.resetAllMocks()
   sess.list.mockResolvedValue([makeSession({ ig_user_id: 111 })])
   ;(riskApi.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ profile: 'safe', profiles: [] })
@@ -120,7 +121,7 @@ describe('ExtrasPage gates', () => {
     api.status.mockResolvedValue(status({}, batch()))
     renderApp(<ExtrasPage />)
     expect(await screen.findByText(/eklenti 2\.9\.0 veya üstü gerekli/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Başlat' })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: 'Başlat' })).toBeDisabled()
   })
 
   it('settings load failure shows a retry button, not a blank page', async () => {
@@ -926,6 +927,14 @@ describe('SavedTab: inventory rows', () => {
     expect(rowOf(3).getByText('Sponsorlu')).toBeInTheDocument()
     expect(rowOf(1).queryByText('Sponsorlu')).not.toBeInTheDocument()
     expect(document.querySelector('img[src*="x1.jpg"]')).not.toBeNull()
+  })
+
+  it('S19 thumbnails are requested with referrerPolicy no-referrer (no page address leaks to the image host)', async () => {
+    fakeExtension()
+    api.inventory.mockResolvedValue(inv([item(1)]))
+    renderApp(<ExtrasPage />)
+    await screen.findByText('@kisi1')
+    expect(document.querySelector('img[src*="x1.jpg"]')).toHaveAttribute('referrerpolicy', 'no-referrer')
   })
 
   it('S19 sponsored rows are selectable like any other', async () => {

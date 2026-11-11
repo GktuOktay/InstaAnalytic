@@ -828,6 +828,17 @@ describe('FB-1 body-guard counters (counts only)', () => {
     expect(stats()).toEqual({ forwarded: 2, guarded: 3, guardedWithPostData: 2 })
   })
 
+  it('a clean text but a DM body in payload.variables is dropped by the guard too (forward() checks variables)', async () => {
+    boot(() => undefined, () => J({}), ON)
+    await vi.advanceTimersByTimeAsync(2000)
+    const before = stats()!
+    postMessageObserved({ url: 'https://www.instagram.com/api/graphql', status: 200, text: '{"data":{"user":{"username":"a","taken_at":1}}}', friendly: 'PolarisProfilePostsQuery', variables: MAILBOX })
+    const after = stats()!
+    expect(after.guarded).toBe(before.guarded + 1)
+    expect(after.forwarded).toBe(before.forwarded)
+    expect(observed()).toHaveLength(0)
+  })
+
   it('only numbers are kept; nothing from them or from a guarded body is sent anywhere or logged', async () => {
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map(k => vi.spyOn(console, k).mockImplementation(() => {}))
     boot(() => undefined, () => J({}), ON)

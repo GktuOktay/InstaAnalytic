@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderApp, makeSession } from './utils'
 
@@ -404,6 +404,7 @@ describe('UsersPage — a clicked person that is left waiting is started automat
   }) as any)
 
   beforeEach(() => {
+    sessionStorage.clear()                                // önceki testin bekleyen komutu (PENDING_KEY) bu testte yeniden oynatılmasın
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
     http.get.mockResolvedValue({ data: { total: 2, items: rows } })
   })
@@ -430,16 +431,26 @@ describe('UsersPage — a clicked person that is left waiting is started automat
   }, 15000)
 
   it('when the start fails it does not retry in a loop', async () => {
-    post = answer({ ok: false, code: 'nostab', error: "Açık bir Instagram sekmesi yok." })
-    bridge.actions.mockResolvedValue(pendingManual(true))
-    renderApp(<UsersPage />)
-    await screen.findByText('@veli')
-    announce()
-    await waitFor(() => expect(runs()).toBe(1), { timeout: 9000 })
-    expect(await screen.findByText(/Eklenti işi başlatamadı: Açık bir Instagram sekmesi yok/)).toBeInTheDocument()   // hata panelde kalır
-    await new Promise(r => setTimeout(r, 7500))
-    expect(runs()).toBe(1)
-  }, 25000)
+    vi.useFakeTimers()                                   // gerçek bekleme yok: zaman elle ilerletilir (suite yükünden bağımsız)
+    try {
+      post = answer({ ok: false, code: 'nostab', error: "Açık bir Instagram sekmesi yok." })
+      bridge.actions.mockResolvedValue(pendingManual(true))
+      renderApp(<UsersPage />)
+      const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+      for (let i = 0; i < 20 && !screen.queryByText('@veli'); i++) await tick(50)
+      expect(screen.getByText('@veli')).toBeInTheDocument()
+      act(() => announce())
+      expect(runs()).toBe(0)
+      await tick(6_100)                                  // otomatik başlatma gecikmesi (6 sn) + yanıt (5 ms)
+      await tick(100)
+      expect(runs()).toBe(1)
+      expect(screen.getByText(/Eklenti işi başlatamadı: Açık bir Instagram sekmesi yok/)).toBeInTheDocument()   // hata panelde kalır
+      await tick(60_000)                                 // 1 dakika geçse de yeniden denenmez
+      expect(runs()).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('UsersPage — people whose ids are beyond the JS safe-integer range (ZIP placeholders)', () => {

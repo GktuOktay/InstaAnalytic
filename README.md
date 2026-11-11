@@ -185,6 +185,8 @@ Full docs → [docs/](docs/)
 
 ---
 
+> Dev note: `scripts/test.sh frontend` runs on the host Node (not a container); use Node 22 (`.nvmrc`, `engines` `>=22 <23`), e.g. `nvm use`.
+
 ### Contributing
 
 We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
