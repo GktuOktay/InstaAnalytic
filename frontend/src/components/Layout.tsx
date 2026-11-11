@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Image, Network,
-  History, MonitorDot, FileBarChart2, Flame, Settings, BookOpen,
+  History, MonitorDot, ListChecks, FileBarChart2, Flame, Settings, BookOpen,
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -26,6 +26,7 @@ export default function Layout() {
     { to: '/users',     label: T.nav.users,      icon: Network         },
     { to: '/monitor',   label: T.nav.monitor,    icon: MonitorDot      },
     { to: '/actions',   label: T.nav.actions,    icon: History         },
+    { to: '/extras',    label: T.nav.extras,     icon: ListChecks      },
     { to: '/settings',  label: T.nav.settings,   icon: Settings        },
     { to: '/guide',     label: T.nav.guide,      icon: BookOpen        },
   ]

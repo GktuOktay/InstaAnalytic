@@ -59,3 +59,31 @@ describe('ActionLogPage — extension notes', () => {
     }
   })
 })
+
+describe('ActionLogPage — rows without ig_user_id (SPEC-001 AC-C17)', () => {
+  const bare = (id: number, over: Record<string, unknown>) => ({
+    id, ig_user_id: null, ig_username: null, target_ref: null, target_label: null, action_type: 'unfollow', status: 'success',
+    error_msg: null, created_at: '2026-11-06T09:00:00Z', executed_at: null, ...over,
+  })
+
+  it('C17 renders rows without ig_user_id: label, then ref, then a dash; never "@null"', async () => {
+    log.mockResolvedValue([
+      bare(1, { target_label: 'gonderi-etiketi', target_ref: '111' }),
+      bare(2, { target_ref: '222' }),
+      bare(3, {}),
+    ])
+    renderApp(<ActionLogPage />)
+    expect(await screen.findByText('gonderi-etiketi')).toBeInTheDocument()
+    expect(screen.getByText('222')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.queryByText(/null|undefined/)).not.toBeInTheDocument()
+  })
+
+  it('C17 a collection-protection row carries its own action label', async () => {
+    log.mockResolvedValue([bare(4, { action_type: 'collection_protection', target_label: 'Seyahat' })])
+    renderApp(<ActionLogPage />)
+    expect(await screen.findByText('Koleksiyon Koruması')).toBeInTheDocument()
+    expect(screen.getByText('Seyahat')).toBeInTheDocument()
+  })
+})
+

@@ -11,6 +11,7 @@ import MonitorPage from './pages/MonitorPage'
 import ReportPage from './pages/ReportPage'
 import FansPage from './pages/FansPage'
 import GuidePage from './pages/GuidePage'
+import ExtrasPage from './pages/ExtrasPage'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="report" element={<ReportPage />} />
         <Route path="fans" element={<FansPage />} />
         <Route path="cleanup" element={<Navigate to="/users" replace />} />
+        <Route path="extras" element={<ExtrasPage />} />
         <Route path="guide" element={<GuidePage />} />
       </Route>
     </Routes>

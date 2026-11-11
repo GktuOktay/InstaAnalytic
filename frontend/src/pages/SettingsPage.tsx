@@ -5,6 +5,7 @@ import RiskProfilePicker from '../components/RiskProfilePicker'
 import DataStatusCard from '../components/DataStatusCard'
 import BridgeStatusCard from '../components/BridgeStatusCard'
 import ProblemNote from '../components/ProblemNote'
+import CleanupSettingsCard from '../components/cleanup/CleanupSettingsCard'
 import { apiErrorMessage } from '../lib/problems'
 import { sessionsApi, Session, BrowserCandidate } from '../api/sessions'
 import { downloadCsv } from '../api/insights'
@@ -113,6 +114,10 @@ export default function SettingsPage() {
 
           <Section title={ST.sectionSafety} desc={ST.sectionSafetyDesc}>
             <SessionCard s={sel} onChanged={async () => { await refresh(); setTick(t => t + 1) }} S={S} />
+          </Section>
+
+          <Section title={T.cleanup.title} desc={T.cleanup.sectionDesc}>
+            <CleanupSettingsCard sessionId={sel.id} />
           </Section>
         </>
       )}

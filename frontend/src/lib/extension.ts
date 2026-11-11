@@ -19,3 +19,11 @@ export function cmpVersion(a: string, b: string): number {
 export function extensionOutdated(reported: string | null | undefined): boolean {
   return !!reported && !!LATEST_EXTENSION_VERSION && cmpVersion(reported, LATEST_EXTENSION_VERSION) < 0
 }
+
+/** Kaydedilenleri temizleme işi için gereken en düşük eklenti sürümü (SPEC-001 AC-C37, AC-U2). */
+export const MIN_CLEANUP_EXTENSION = '2.9.0'
+
+/** Eklenti kurulu ve temizleme işini destekleyecek kadar yeniyse true. */
+export function extensionSupportsCleanup(reported: string | null | undefined): boolean {
+  return !!reported && cmpVersion(reported, MIN_CLEANUP_EXTENSION) >= 0
+}
