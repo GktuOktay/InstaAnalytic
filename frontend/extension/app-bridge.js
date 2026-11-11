@@ -18,8 +18,26 @@
     post({ type: 'ia-ext', version });
   }
 
+  // Kaydedilenler temizliği (SPEC-001 AC-C33, C56): yalnız kind, session_id (+ batch_id, run_seq). doc_id, sorgu adı,
+  // variables ve diğer her alan atılır; Instagram kimlikleri yalnız content.js sabitlerinden gelir.
+  const CLEAN_KINDS = ['saved_scan', 'saved_unsave'];
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function cleanCleanupCmd(cmd) {
+    if (!UUID_RE.test(String(cmd.session_id || ''))) return null;
+    const out = { kind: cmd.kind, session_id: String(cmd.session_id) };
+    if (cmd.kind === 'saved_unsave') {
+      const batch = Number(cmd.batch_id);
+      const seq = Number(cmd.run_seq);
+      if (!Number.isSafeInteger(batch) || batch < 1 || !Number.isSafeInteger(seq) || seq < 0) return null;
+      out.batch_id = batch;
+      out.run_seq = seq;
+    }
+    return out;
+  }
+
   // Komutun biçimini burada da denetle: arka plana yalnızca geçerli iş gider
   function cleanCmd(cmd) {
+    if (cmd && CLEAN_KINDS.includes(cmd.kind)) return cleanCleanupCmd(cmd);
     if (!cmd || !KINDS.includes(cmd.kind)) return null;
     const out = { kind: cmd.kind };
     if (cmd.mode === 'tab') out.mode = 'tab';        // varsayılan: açık Instagram sekmesinden doğrudan istek

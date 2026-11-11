@@ -23,7 +23,7 @@
   const GRAPHQL = /^https:\/\/www\.instagram\.com\/(graphql\/query|api\/graphql)\/?(\?|$)/;
   // GraphQL sorgu adı: yalnızca bunlar; mesaj, bildirim, hikâye, arama, keşfet asla
   const WANTED = /liker|likes|liked_?by|comment|post|media|timeline|profile|feed/i;
-  const NEVER = /direct|message|inbox|thread|notification|story|stories|search|explore|ads?\b|login|password|account/i;
+  const NEVER = /direct|message|inbox|thread|notification|story|stories|search|explore|ads?\b|login|password|account|save|collection|mailbox|iris|slide/i;
   const MAX_CHARS = 8 * 1024 * 1024;
 
   window.addEventListener('message', (e) => {

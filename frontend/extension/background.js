@@ -13,6 +13,9 @@ const MAX_QUEUE = 20;            // uygulama yavaşsa bekleyen yanıt birikmesin
 const API_DEAD_AFTER_MS = 60 * 1000;       // en uzun adım: 3-5 sn bekleme + birkaç istek (~25 sn); bunun iki katından fazla sessizlik = ölü döngü
 const UPDATE_MIN_GAP_MS = 30 * 1000;      // eklenti her açıldığında sürüm denetlenir; yalnızca art arda tekrarları engellemek için kısa bir aralık
 const VERSION_RE = /^\d+(\.\d+){0,3}$/;
+// Kaydedilenler temizliği (SPEC-001, T-9): ayrı dosya, `globalThis.iaCleanup` isim alanı. Yoksa yeni türler desteklenmez (Y-1, N-1).
+if (typeof importScripts === 'function') importScripts('cleanup-bg.js');
+const CLEANUP_KINDS = ['saved_scan', 'saved_unsave'];
 const DEFAULT_TOOLS = { posts: true, likers: true, comments: true };
 const TOOL_KEYS = Object.keys(DEFAULT_TOOLS);
 
@@ -351,7 +354,7 @@ function jobUrl(job, i) {
   return `https://www.instagram.com/p/${code}/`;
 }
 
-const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar', actions: 'Takip işlemleri' };
+const KIND_LABEL = { posts: 'Gönderi listesi', likers: 'Beğenenler', comments: 'Yorumlar', actions: 'Takip işlemleri', saved_scan: 'Kaydedilenler taraması', saved_unsave: 'Kaydedilenlerden çıkarma' };
 
 const toItem = (x) => ({ id: x.id, username: String(x.username), action: x.action, manual: x.manual === true,
   igUserId: Number.isSafeInteger(Number(x.ig_user_id)) ? Number(x.ig_user_id) : 0 });
@@ -428,15 +431,25 @@ async function diag() {
     job: job ? { kind: job.kind, state: job.state, api: !!job.api, ownTab: !!job.ownTab, index: job.index, total: job.total } : null };
 }
 
+// Yeni türler tek dalda `iaCleanup`'a gider; takip yolu tabloya sarılmaz (AC-C31)
+function cleanupCall(name, ...args) {
+  const ns = globalThis.iaCleanup;
+  if (!ns || typeof ns[name] !== 'function') return Promise.resolve({ ok: false, error: 'Bu iş bu eklenti sürümünde desteklenmiyor.' });
+  ns.init({ chrome, getCfg, callApp, getJob, findIgTab, openOwnIgTab, notify, finishJob, checkUpdate });
+  return ns[name](...args);
+}
+
 async function startJob(cmd) {
+  if (cmd && CLEANUP_KINDS.includes(cmd.kind)) return cleanupCall('startJob', cmd);
   const kind = cmd && KINDS.includes(cmd.kind) ? cmd.kind : null;
   if (!kind) return { ok: false, error: 'Bilinmeyen iş.' };
   const running = await getJob();
   if (running && running.state === 'running') {
     // Doğrudan istek döngüsü sekmede çalışır; sekme yenilenir/gezinirse sessizce ölür ve iş "çalışıyor" diye takılı kalırdı
     const beat = running.beat || running.startedAt || 0;
-    if (running.api && Date.now() - beat > API_DEAD_AFTER_MS) {
-      await finishJob(running, 'stopped', `İş yanıt vermediği için durduruldu (Instagram sekmesi yenilenmiş ya da kapanmış olabilir). ${(running.results || []).length} / ${running.total} işlendi. Kalanlar kuyrukta bekliyor.`);
+    if (running.api && Date.now() - beat > (running.deadAfterMs || API_DEAD_AFTER_MS)) {
+      if (running.cleanup) await cleanupCall('finishDead', running);
+      else await finishJob(running, 'stopped', `İş yanıt vermediği için durduruldu (Instagram sekmesi yenilenmiş ya da kapanmış olabilir). ${(running.results || []).length} / ${running.total} işlendi. Kalanlar kuyrukta bekliyor.`);
     } else {
       return { ok: false, code: 'running', error: `Zaten çalışan bir iş var (${KIND_LABEL[running.kind]}).` };
     }
@@ -781,6 +794,7 @@ async function apiNext(tabId, msg) {
 async function stopJob() {
   const job = await getJob();
   if (!job || job.state !== 'running') return { ok: true };
+  if (job.cleanup) return cleanupCall('stopJob', job);
   await finishJob(job, 'stopped', `Durduruldu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
   if (job.tabId != null && (!job.api || job.ownTab)) chrome.tabs.remove(job.tabId).catch(() => {});     // kullanıcının kendi sekmesi kapatılmaz; kendi açtığımızı kapatırız
   return { ok: true };
@@ -790,6 +804,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   forgetIgTab(tabId).catch(() => {});
   const job = await getJob();
   if (job && job.state === 'running' && job.tabId === tabId) {
+    if (job.cleanup) { await cleanupCall('tabClosed', job); return; }
     await finishJob(job, 'stopped', `Sekme kapatıldı, iş durdu. ${(job.results || []).length} / ${job.total} gönderi işlenmişti.\n${summarize(job)}`);
   }
 });
@@ -889,6 +904,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!fromInstagram) return false;
     rememberIgTab(sender.tab.id).catch(() => {});
     return false;
+  }
+  if (typeof msg.type === 'string' && msg.type.startsWith('ia-cl-')) {
+    if (!fromInstagram) return false;
+    cleanupCall('handleMessage', msg, sender.tab.id).then(sendResponse, () => sendResponse(null));
+    return true;
   }
   if (msg.type === 'ia-api-next') {
     if (!fromInstagram) return false;

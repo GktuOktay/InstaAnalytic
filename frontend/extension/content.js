@@ -44,10 +44,17 @@
     const path = location.pathname;
     if (POST_PATH.test(path)) return true;
     const me = (cfg.username || '').toLowerCase();
+    // Kendi kaydedilenler sayfam (ve koleksiyonları) asla gözlenmez (AC-S6)
+    if (me && (path.toLowerCase() === `/${me}/saved` || path.toLowerCase().startsWith(`/${me}/saved/`))) return false;
     return !!me && (path.toLowerCase() === `/${me}/` || path.toLowerCase().startsWith(`/${me}/`));
   }
 
+  // Gövde bekçisi (AC-C55, S-28/S-29): DM kutusu meta verisi ve oturum anahtarı kalıpları. `forward()` tek geçittir;
+  // `ia-observed` yolu da `scanEmbedded` de buradan geçer. Desen eşleşirse bütün blok düşer (sorgu adından bağımsız).
+  const BODY_GUARD = /get_slide_mailbox|iris_subscription|as_ig_direct_thread|threads_by_folder|direct_v2|"thread_|DTSGInitialData|"LSD",\[\]|"csrf_token"/;
+
   function forward(payload) {
+    if (payload && typeof payload.text === 'string' && BODY_GUARD.test(payload.text)) return;
     const kinds = Object.keys(cfg.tools).filter((k) => cfg.tools[k]);
     chrome.runtime.sendMessage({ type: 'ia-observed', viewer: viewerId(), page: location.href, kinds, ...payload })
       .catch(() => { /* eklenti güncellendiyse sessizce geç */ });
@@ -419,10 +426,369 @@
     }
   }
 
+  // ── Kaydedilenler temizliği (SPEC-001 v1.6, T-8a) ─────────────────────────────
+  // Bu bölüm yalnız KENDİ gönderdiği isteklerin yanıtını okur; ia-observed akışını ve listener.js'in yakaladığı
+  // yanıtları hiç kullanmaz (AC-C55). Gövdeyi yerel ayrıştırır, uygulamaya yalnız kod / HTTP durumu / alan adı gider (AC-C28).
+  //
+  // İçerik betiği ↔ arka plan sözleşmesi (arka plan tarafı cleanup-bg.js, T-9). Hepsi chrome.runtime.sendMessage:
+  //   arka plan → içerik: { type:'ia-cl-run', jobId, kind:'saved_scan'|'saved_unsave', collectionChoice? }, { type:'ia-cl-abort', jobId }
+  //   içerik → arka plan (yanıtı arka plan verir; içerik yalnız aşağıda adı geçen alanları okur):
+  //     ia-cl-next      { jobId, result|null }       → { item:{id, ref}|null, delay:[a,b] sn, readGap?:[a,b] sn, allow:[koleksiyon kimliği] }
+  //     ia-cl-precheck  { jobId, itemId, collectionIds, viewer } → { action:'write'|'wait'(+retryAfterMs)|'skip'|'report'(+outcome,note_code)|'end' }
+  //     ia-cl-beat      { jobId }                      (bekleme sırasında 15 sn'de bir)
+  //     ia-cl-collections { jobId, available, collections?|note_code? }  → yanıt kullanılmaz
+  //     ia-cl-page      { jobId, pageNo, items, skipped } → { continue:true, waitMs } | { end:true }
+  //     ia-cl-finish    { jobId, outcome, note_code?, http_status?, fields? }
+  //   result: { item_id, outcome, note_code?, http_status?, fields?, wrote }
+  // doc_id, sorgu adı ve variables yalnız aşağıdaki sabitlerden ve doğrulanmış ref'ten kurulur; hiçbir mesaj bunları taşıyamaz (AC-C56).
+  // Kaynak (kurul N-11): SPEC-001-spike.md "T-0c"; değerler yazmasız yoldan (sayfanın Relay modülleri) alındı, 2026-11-08.
+  const UNSAVE_DOC_ID = '27371251859134880';
+  const UNSAVE_NAME = 'usePolarisSaveMediaUnsaveMutation';
+  const COLLECTIONS_DOC_ID = '29115677831365401';
+  const COLLECTIONS_NAME = 'PolarisSavedCollectionPickerQuery';
+
+  const NUM_ID_RE = /^\d{1,25}$/;
+  const CODE_RE = /^[\w-]{5,40}$/;
+  const OWNER_RE = /^[a-z0-9._]{1,30}$/;
+  const FIELD_NAME_RE = /^[a-z_][a-z0-9_]{0,39}$/;
+  const THUMB_HOST_RE = /\.(cdninstagram\.com|fbcdn\.net)$/;
+  const MAX_COLLECTION_IDS = 20;
+  const MAX_COLLECTION_PAGES = 4;
+  const READ_GAP_DEFAULT = [3, 6];                       // sn; tarama sayfa gecikmesinin varsayılanı (AC-C52)
+  const VERIFY_DELAYS = [[900, 1500], [2000, 3000], [3500, 5000]];   // ms; content.js currentState deseni
+  const BLOCK_CODES = ['feedback_required', 'checkpoint_required', 'challenge_required'];
+  let mutationSeq = 0;                                   // client_mutation_id: sekme başına 1'den artan, anlamsız, kaydedilmez
+  let clActive = null;                                   // { jobId, aborted }
+
+  // pk: string pk; değilse string id'nin "_" öncesi. Sayı pk asla çevrilmez (2^53 üstü yuvarlanır; R7 M6)
+  function pkOf(media) {
+    let pk = null;
+    if (typeof media.pk === 'string') pk = media.pk;
+    else if (typeof media.id === 'string') pk = media.id.split('_')[0];
+    return pk && NUM_ID_RE.test(pk) ? pk : null;
+  }
+
+  // Geçerli koleksiyon dizisi: ≤ 20 öğe, hepsi ^\d{1,25}$ string. Aksi null (çağıran fail-closed davranır; süzülmez, R6 H-2)
+  function validCollectionIds(v) {
+    if (!Array.isArray(v) || v.length > MAX_COLLECTION_IDS) return null;
+    return v.every((x) => typeof x === 'string' && NUM_ID_RE.test(x)) ? v.slice() : null;
+  }
+
+  function thumbnailOf(media) {
+    const iv = (media.image_versions2 && media.image_versions2.candidates) ? media.image_versions2
+      : (Array.isArray(media.carousel_media) && media.carousel_media[0] && media.carousel_media[0].image_versions2) || null;
+    const cands = iv && Array.isArray(iv.candidates) ? iv.candidates.filter((c) => c && typeof c.url === 'string') : [];
+    if (!cands.length) return null;
+    const big = cands.filter((c) => Number(c.width) >= 150).sort((a, b) => Number(a.width) - Number(b.width));
+    const url = (big[0] || cands[0]).url;
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' && !u.username && !u.password && THUMB_HOST_RE.test(u.hostname) && url.length <= 2000 ? url : null;
+    } catch { return null; }
+  }
+
+  // Saf alan kurucusu (§7.2.1): yalnız `Saved` alanları. Atlanacak öğede null.
+  function toSavedItem(entry) {
+    const media = entry && typeof entry === 'object' ? entry.media : null;
+    if (!media || typeof media !== 'object') return null;
+    const pk = pkOf(media);
+    if (!pk || typeof media.code !== 'string' || !CODE_RE.test(media.code)) return null;
+    const out = { media_id: pk, shortcode: media.code };
+    const owner = media.user && typeof media.user.username === 'string' ? media.user.username.toLowerCase() : '';
+    if (OWNER_RE.test(owner)) out.owner_username = owner;
+    const type = { 1: 'image', 2: 'video', 8: 'carousel' }[media.media_type];
+    if (type) out.media_type = type;
+    out.is_ad = media.product_type === 'ad';
+    const thumb = thumbnailOf(media);
+    if (thumb) out.thumbnail_url = thumb;
+    if (Array.isArray(media.saved_collection_ids)) {
+      const ids = validCollectionIds(media.saved_collection_ids);
+      if (ids) out.collection_ids = ids;
+      else out.collections_unreadable = true;
+    }
+    return out;
+  }
+
+  // Dar engel deseni (R6 M-6): yalnız yapısal alanlar; serbest metinde "try again later" engel sayılmaz
+  function isBlockBody(j) {
+    if (!j || typeof j !== 'object') return false;
+    return BLOCK_CODES.includes(j.message) || BLOCK_CODES.includes(j.error_type) || j.spam === true;
+  }
+
+  function topFields(j) {
+    if (!j || typeof j !== 'object' || Array.isArray(j)) return undefined;
+    const f = Object.keys(j).filter((k) => FIELD_NAME_RE.test(k)).slice(0, 10);
+    return f.length ? f : undefined;
+  }
+
+  const clSend = (msg) => chrome.runtime.sendMessage(msg);
+
+  // Bölünmüş bekleme: iptal edilince hemen çıkar, 15 sn'de bir kalp atışı gönderir. true = süre doldu, false = iptal
+  async function clSleep(job, ms) {
+    let left = Math.max(0, ms);
+    let sinceBeat = 0;
+    while (left > 0) {
+      if (job.aborted) return false;
+      const step = Math.min(1000, left);
+      await sleep(step);
+      left -= step;
+      sinceBeat += step;
+      if (sinceBeat >= 15000) { sinceBeat = 0; clSend({ type: 'ia-cl-beat', jobId: job.jobId }).catch(() => {}); }
+    }
+    return !job.aborted;
+  }
+  const secRange = (r, dflt) => {
+    const a = Array.isArray(r) ? Number(r[0]) : NaN;
+    const b = Array.isArray(r) ? Number(r[1]) : NaN;
+    const [lo, hi] = Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= a && b <= 3600 ? [a, b] : dflt;
+    return (lo + Math.random() * (hi - lo)) * 1000;
+  };
+
+  // GraphQL (unsave ve koleksiyon listesi): token'lar yalnız burada, istekten hemen önce okunur ve yalnız /api/graphql'e gider (AC-C54)
+  let graphqlCall = 0;
+  async function igGraphql(name, docId, variables) {
+    const tokens = pageTokens();
+    if (!tokens) return { tokensMissing: true };
+    graphqlCall += 1;
+    const body = new URLSearchParams({
+      av: viewerCookie(), __d: 'www', __user: '0', __a: '1', __req: String(graphqlCall), dpr: '1', __comet_req: '7',
+      fb_dtsg: tokens.dtsg, jazoest: tokens.jazoest, lsd: tokens.lsd,
+      fb_api_caller_class: 'RelayModern', fb_api_req_friendly_name: name,
+      variables: JSON.stringify(variables), server_timestamps: 'true', doc_id: docId,
+    }).toString();
+    const res = await fetch('/api/graphql', {
+      method: 'POST', credentials: 'include', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken(), 'X-IG-App-ID': IG_APP_ID,
+        'X-FB-LSD': tokens.lsd, 'X-FB-Friendly-Name': name, 'X-ASBD-ID': ASBD_ID },
+    });
+    let json = null;
+    try { json = JSON.parse((await res.text()).replace(/^for \(;;\);/, '')); } catch { /* JSON değil */ }
+    return { status: res.status, json };
+  }
+
+  // Gönderi bilgisi okuması (yalnız okuma). § AC-C52 adım 1-2.
+  async function readInfo(pk) {
+    let r;
+    try { r = await igFetch(`/api/v1/media/${encodeURIComponent(pk)}/info/`); } catch { return { kind: 'fail', note_code: 'network' }; }
+    const j = r.json && typeof r.json === 'object' ? r.json : null;
+    if (r.status === 429) return { kind: 'fail', note_code: 'rate_limited', http_status: 429 };
+    if (r.status === 401 || (j && j.message === 'login_required')) return { kind: 'fail', note_code: 'login_required', http_status: r.status };
+    if (r.status === 404 || r.status === 410) return { kind: 'not_found', http_status: r.status };
+    if (isBlockBody(j)) return { kind: 'blocked' };
+    if (r.status !== 200) return { kind: 'fail', note_code: 'http_error', http_status: r.status };
+    if (!j) return { kind: 'fail', note_code: 'not_json', http_status: 200 };
+    const media = Array.isArray(j.items) && j.items.length ? j.items[0] : null;
+    if (!media || typeof media !== 'object' || typeof media.pk !== 'string' || media.pk !== pk) return { kind: 'fail', note_code: 'unrecognised_shape', http_status: 200 };
+    const saved = media.has_viewer_saved === true;       // alan yok ya da true değil = kaydedilmemiş (v1.6)
+    return { kind: 'ok', saved, ids: saved ? validCollectionIds(media.saved_collection_ids) : [] };   // saved && ids === null: okunamadı -> korunur
+  }
+
+  // Doğrulama okuması: en fazla 3 deneme. state: unsaved | saved | unavailable | rate_limited | login_required | not_found
+  async function verifyUnsaved(job, pk) {
+    let anyRead = false;
+    for (const [lo, hi] of VERIFY_DELAYS) {
+      if (!(await clSleep(job, lo + Math.random() * (hi - lo)))) return { state: 'aborted' };
+      let r;
+      try { r = await igFetch(`/api/v1/media/${encodeURIComponent(pk)}/info/`); } catch { continue; }
+      if (r.status === 429) return { state: 'rate_limited' };
+      if (r.status === 401 || (r.json && r.json.message === 'login_required')) return { state: 'login_required' };
+      if (r.status === 404 || r.status === 410) return { state: 'not_found' };
+      const media = r.status === 200 && r.json && Array.isArray(r.json.items) ? r.json.items[0] : null;
+      if (!media || typeof media !== 'object') continue;     // 5xx, ağ, boş yanıt: sıradaki deneme
+      anyRead = true;
+      if (media.has_viewer_saved !== true) return { state: 'unsaved' };
+    }
+    return { state: anyRead ? 'saved' : 'unavailable' };
+  }
+
+  const R = (item, outcome, extra) => ({ item_id: item.id, outcome, wrote: false, ...extra });
+
+  // Unsave yanıtının sınıfı (§7.9.4 B; ilk tutan satır)
+  function classifyUnsave(r, pk) {
+    if (r.status === 429) return { row: 1 };
+    if (r.status === 401 || (r.json && r.json.message === 'login_required')) return { row: 2 };
+    const media = r.json && r.json.data && r.json.data.xig_media_unsave && r.json.data.xig_media_unsave.media;
+    if (r.status === 200 && media && media.id === pk) return { row: 3 };
+    if (isBlockBody(r.json)) return { row: 4 };
+    if (r.status >= 500) return { row: 5 };
+    return { row: 6 };
+  }
+
+  // Yazmadan sonraki sonuç (satır 3, 5, 6 doğrulama okumasıyla birlikte)
+  async function afterWrite(job, item, row, r) {
+    const v = await verifyUnsaved(job, item.ref);
+    const W = (outcome, extra) => R(item, outcome, { wrote: true, ...extra });
+    if (v.state === 'aborted') return { end: true };
+    if (v.state === 'rate_limited') return W('failed', { note_code: 'rate_limited', http_status: 429 });
+    if (v.state === 'login_required') return W('failed', { note_code: 'login_required' });
+    if (v.state === 'not_found') return W('not_found', { note_code: 'not_found' });
+    if (v.state === 'unsaved') return W('done', row === 6 ? { fields: topFields(r.json) } : {});
+    if (row === 3) return W('failed', { note_code: v.state === 'saved' ? 'verify_failed' : 'verify_unavailable' });
+    if (row === 5) return v.state === 'saved' ? W('failed', { note_code: 'http_error', http_status: r.status }) : W('failed', { note_code: 'verify_unavailable' });
+    return W('failed', { note_code: 'mutation_unrecognised', http_status: r.status, fields: topFields(r.json) });
+  }
+
+  async function unsaveOne(job, item, allow) {
+    if (!csrfToken() || loginWall()) return R(item, 'failed', { note_code: 'login_required' });
+    const rd = await readInfo(item.ref);
+    if (rd.kind === 'blocked') return R(item, 'blocked', { note_code: 'blocked' });
+    if (rd.kind === 'not_found') return R(item, 'not_found', { note_code: 'not_found', http_status: rd.http_status });
+    if (rd.kind === 'fail') return R(item, 'failed', { note_code: rd.note_code, http_status: rd.http_status });
+    if (!rd.saved) return R(item, 'already', { note_code: 'already' });
+    // Koruma kuralı (§6.10): alan okunamadıysa korunur; boş dizi korunmaz; hepsi allow içindeyse korunmaz
+    if (rd.ids === null || (rd.ids.length > 0 && !rd.ids.every((x) => allow.includes(x)))) return R(item, 'protected', { note_code: 'in_collection' });
+
+    const viewer = viewerCookie();
+    if (!viewer) return R(item, 'failed', { note_code: 'login_required' });
+    for (;;) {
+      let pc;
+      try { pc = await clSend({ type: 'ia-cl-precheck', jobId: job.jobId, itemId: item.id, collectionIds: rd.ids, viewer }); } catch { return { end: true }; }
+      const action = pc && typeof pc === 'object' ? pc.action : null;
+      if (action === 'wait') { if (!(await clSleep(job, Math.min(Math.max(Number(pc.retryAfterMs) || 1000, 1000), 3600000)))) return { end: true }; continue; }
+      if (action === 'skip') return { skip: true };
+      if (action === 'report') {
+        const outcome = pc.outcome === 'protected' ? 'protected' : 'failed';
+        return R(item, outcome, { note_code: outcome === 'protected' ? 'in_collection' : 'precheck_unavailable' });
+      }
+      if (action !== 'write') return { end: true };
+      break;
+    }
+    if (job.aborted) return { end: true };
+
+    // Yazma: actor_id, precheck'te gönderilen viewer ile aynı olmalı (AC-S17)
+    if (viewerCookie() !== viewer) return R(item, 'failed', { note_code: 'account_mismatch' });
+    let r;
+    try {
+      r = await igGraphql(UNSAVE_NAME, UNSAVE_DOC_ID, { input: { media_id: item.ref, actor_id: viewer, client_mutation_id: String(++mutationSeq) } });
+    } catch { r = { status: 0, json: null, netError: true }; }
+    if (r.tokensMissing) return R(item, 'failed', { note_code: 'tokens_missing' });
+    if (r.netError) return afterWrite(job, item, 5, { status: 0, json: null });
+    const c = classifyUnsave(r, item.ref);
+    const W = (outcome, extra) => R(item, outcome, { wrote: true, ...extra });
+    if (c.row === 1) return W('failed', { note_code: 'rate_limited', http_status: 429 });
+    if (c.row === 2) return W('failed', { note_code: 'login_required', http_status: r.status });
+    if (c.row === 4) return W('blocked', { note_code: 'blocked' });
+    return afterWrite(job, item, c.row, r);
+  }
+
+  async function runUnsaveJob(job) {
+    let result = null;
+    let lastWrote = false;
+    let first = true;
+    for (let guard = 0; guard < 1200 && !job.aborted; guard++) {
+      let next;
+      try { next = await clSend({ type: 'ia-cl-next', jobId: job.jobId, result }); } catch { return; }
+      result = null;
+      const item = next && next.item;
+      if (!item) return;
+      const ok = Number.isInteger(item.id) && item.id > 0 && typeof item.ref === 'string' && NUM_ID_RE.test(item.ref);
+      const allow = Array.isArray(next.allow) ? next.allow.filter((x) => typeof x === 'string' && NUM_ID_RE.test(x)) : [];
+      // Gecikme yalnız gerçek bir yazmadan sonra; yazmasız biten öğeden sonra yalnız okuma aralığı (AC-C52)
+      if (!first && !(await clSleep(job, lastWrote ? secRange(next.delay, [10, 45]) : secRange(next.readGap, READ_GAP_DEFAULT)))) return;
+      first = false;
+      if (!ok) { result = { item_id: Number.isInteger(item && item.id) ? item.id : 0, outcome: 'failed', note_code: 'unrecognised_shape', wrote: false }; lastWrote = false; continue; }
+      let out;
+      try { out = await unsaveOne(job, item, allow); } catch { out = R(item, 'failed', { note_code: 'exception' }); }
+      if (out.end) return;
+      if (out.skip) { lastWrote = false; continue; }
+      lastWrote = out.wrote === true;
+      result = out;
+    }
+  }
+
+  // ── Tarama ───────────────────────────────────────────────────────────────────
+  const finishScan = (job, outcome, note_code, http_status, fields) =>
+    clSend({ type: 'ia-cl-finish', jobId: job.jobId, outcome, ...(note_code ? { note_code } : {}), ...(http_status ? { http_status } : {}), ...(fields ? { fields } : {}) }).catch(() => {});
+
+  // Koleksiyon listesi (W, istek 4). { available, collections } | { available:false, note_code } | { finish:{...} }
+  async function readCollections(job) {
+    const unavailable = { available: false, note_code: 'collections_unavailable' };
+    const all = [];
+    let after = null;
+    for (let page = 0; page < MAX_COLLECTION_PAGES; page++) {
+      if (page > 0 && !(await clSleep(job, rand(1500, 3000)))) return { finish: null };
+      let r;
+      try { r = await igGraphql(COLLECTIONS_NAME, COLLECTIONS_DOC_ID, after ? { first: 50, after } : { first: 50 }); } catch { return unavailable; }
+      if (r.tokensMissing) return unavailable;
+      if (r.status === 429) return { finish: ['failed', 'rate_limited', 429] };
+      if (isBlockBody(r.json)) return { finish: ['blocked', 'blocked'] };
+      if (r.status === 401 || (r.json && r.json.message === 'login_required')) return { finish: ['failed', 'login_required', r.status] };
+      const mc = r.status === 200 && r.json && r.json.data && r.json.data.viewer && r.json.data.viewer.media_collections;
+      if (!mc || !Array.isArray(mc.edges) || !mc.page_info) return unavailable;
+      for (const e of mc.edges) {
+        const n = e && e.node;
+        if (!n || typeof n.collection_id !== 'string' || !NUM_ID_RE.test(n.collection_id) || typeof n.collection_name !== 'string') return unavailable;
+        all.push({ collection_id: n.collection_id, name: n.collection_name });   // başka alan (cover_media dahil) okunmaz
+      }
+      if (all.length > 200) return unavailable;
+      if (mc.page_info.has_next_page !== true) return { available: true, collections: all };
+      if (typeof mc.page_info.end_cursor !== 'string' || !mc.page_info.end_cursor) return unavailable;
+      after = mc.page_info.end_cursor;
+    }
+    return unavailable;                                  // 4 sayfada bitmedi: 200'den fazla koleksiyon
+  }
+
+  async function runScanJob(job, collectionChoice) {
+    if (!csrfToken() || loginWall()) { await finishScan(job, 'failed', 'login_required'); return; }
+    if (collectionChoice === true && COLLECTIONS_DOC_ID) {
+      let c;
+      try { c = await readCollections(job); } catch { c = { available: false, note_code: 'collections_unavailable' }; }
+      if (job.aborted) return;
+      if (c.finish === null) return;
+      if (c.finish) { await finishScan(job, ...c.finish); return; }
+      await clSend({ type: 'ia-cl-collections', jobId: job.jobId, ...c }).catch(() => {});
+    }
+    let url = '/api/v1/feed/saved/posts/';
+    let pageNo = 0;
+    for (let guard = 0; guard < 400 && !job.aborted; guard++) {
+      const fail = (note, status) => finishScan(job, pageNo > 0 ? 'partial' : 'failed', note, status);
+      let r;
+      try { r = await igFetch(url); } catch { await fail('network'); return; }
+      const j = r.json && typeof r.json === 'object' ? r.json : null;
+      if (r.status === 429) { await fail('rate_limited', 429); return; }
+      if (r.status === 401 || (j && j.message === 'login_required')) { await fail('login_required', r.status); return; }
+      if (isBlockBody(j)) { await finishScan(job, 'blocked', 'blocked'); return; }
+      if (r.status !== 200) { await fail('http_error', r.status); return; }
+      if (!j) { await fail('not_json', 200); return; }
+      if (!Array.isArray(j.items)) { await fail('unrecognised_shape', 200); return; }
+      // Şekil değişmiş olabilir: dolu sayfada hiçbir öğede has_viewer_saved === true yoksa tarama başarısız (R6 M-8)
+      if (j.items.length > 0 && !j.items.some((x) => x && x.media && x.media.has_viewer_saved === true)) { await fail('unrecognised_shape', 200); return; }
+      const items = j.items.map(toSavedItem).filter(Boolean);
+      if (items.length) {
+        pageNo += 1;
+        let reply;
+        try { reply = await clSend({ type: 'ia-cl-page', jobId: job.jobId, pageNo, items, skipped: j.items.length - items.length }); } catch { return; }
+        if (!reply || reply.continue !== true) return;                    // arka plan sonucu kendisi yönetti
+        if (j.more_available !== true || typeof j.next_max_id !== 'string' || !j.next_max_id) { await finishScan(job, 'ok'); return; }
+        url = `/api/v1/feed/saved/posts/?max_id=${encodeURIComponent(j.next_max_id)}`;
+        if (!(await clSleep(job, Math.min(Math.max(Number(reply.waitMs) || 3000, 0), 600000)))) return;
+        continue;
+      }
+      if (j.more_available === true && typeof j.next_max_id === 'string' && j.next_max_id && j.items.length > 0) {
+        url = `/api/v1/feed/saved/posts/?max_id=${encodeURIComponent(j.next_max_id)}`;   // sayfadaki hiçbir öğe kullanılamadı: sonrakine geç
+        if (!(await clSleep(job, secRange(null, READ_GAP_DEFAULT)))) return;
+        continue;
+      }
+      await finishScan(job, 'ok');
+      return;
+    }
+  }
+
+  function startCleanupJob(msg) {
+    if (clActive || typeof msg.jobId !== 'string' || !msg.jobId) return false;
+    const job = { jobId: msg.jobId, aborted: false };
+    clActive = job;
+    const work = msg.kind === 'saved_scan' ? runScanJob(job, msg.collectionChoice) : runUnsaveJob(job);
+    work.catch(() => {}).finally(() => { if (clActive === job) clActive = null; });
+    return true;
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id || !msg || typeof msg !== 'object') return false;
     if (msg.type === 'ia-api-ping') { sendResponse({ ok: true, csrf: !!csrfToken(), loginWall: loginWall() }); return false; }
     if (msg.type === 'ia-api-run' && typeof msg.jobId === 'string') { runApiJob(msg.jobId); sendResponse({ ok: true }); return false; }
+    if (msg.type === 'ia-cl-run' && (msg.kind === 'saved_scan' || msg.kind === 'saved_unsave')) { sendResponse({ ok: startCleanupJob(msg) }); return false; }
+    if (msg.type === 'ia-cl-abort' && clActive && clActive.jobId === msg.jobId) { clActive.aborted = true; sendResponse({ ok: true }); return false; }
     return false;
   });
   // Bu sekmeyi doğrudan istekler için aday olarak bildir (sekme izni gerekmez)
