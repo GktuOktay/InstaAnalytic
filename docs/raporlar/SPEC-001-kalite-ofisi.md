@@ -201,3 +201,6 @@ Açık kalemler (NOT MET, LAVYER GEREKİR, NOT VERIFIED/UNPROVEN dahil):
 14. QA kanıtı kirli ağaçta; commit karması ve taze koşu yok (stale riski); tam frontend suite 592/593 (flaky B-1), Node 22'de tekrar koşulmadı.
 
 Teslimi durdurmuyorum; açık maddeler CEO'ya bildirilir. `COMPLIANCE READY` değildir.
+
+## Backend lisans taraması (ana oturum, 2026-11-11)
+`pip-licenses` backend konteynerinde çalıştırıldı. GPL/AGPL/SSPL ve lisanssız paket yok. Tek zayıf copyleft: `psycopg2-binary` (LGPL), dinamik bağlanıyor, değiştirilmeden kullanılıyor. Avukat gerekirse LGPL yükümlülüğü kontrol edilir.
