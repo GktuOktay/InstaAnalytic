@@ -17,6 +17,12 @@
 | `interactions` | Like / yorum etkileşimleri |
 | `action_log` | Gerçekleştirilen aksiyonlar |
 | `sync_jobs` | Sync geçmişi |
+| `cleanup_scans` | Kaydedilenler taramaları (SPEC-001, migration `o5e7a9c1d3f5`) |
+| `saved_collections` | Kullanıcının koleksiyonları ve koruma bayrağı |
+| `saved_targets` | Taramadaki kaydedilen gönderiler (envanter) |
+| `cleanup_batches` | Temizleme partileri (taslak, onaylı, çalışan, durmuş, biten) |
+| `cleanup_items` | Partideki tek tek çıkarma işleri |
+| `cleanup_write_grants` | Verilen yazma izinleri (saatlik/günlük sayım) |
 
 ---
 
@@ -164,4 +170,148 @@ sessions ──< posts
 sessions ──< action_log >── ig_users
 posts ──< interactions >── ig_users
 sessions ──< sync_jobs
+```
+
+---
+
+## Kaydedilenleri temizleme tabloları (SPEC-001)
+
+Migration: `backend/alembic/versions/o5e7a9c1d3f5_cleanup_saved.py` (`down_revision = 'n4d6f8b0c2e4'`). Modeller: `backend/app/models/cleanup.py` (`Session` ve `ActionLog` kolonları `models/session.py`, `models/action_log.py`'de). Kısıtlar migration ile modelde aynıdır; adlandırılmış CHECK'ler `ck_<tablo>_<kolon>` biçimindedir. Kimlik kolonları `^\d{1,25}$` desenine uyar. Tüm yeni tablolar `session_id` ile `sessions(id) ON DELETE CASCADE` bağlıdır; `DELETE /api/sessions/{id}/purge` bu satırları da siler.
+
+### Mevcut tablolarda değişiklik
+```sql
+ALTER TABLE sessions
+    ADD COLUMN allow_unsave           BOOLEAN NOT NULL DEFAULT FALSE,  -- "Kaydedilen temizleme" anahtarı
+    ADD COLUMN unsave_enabled_at      TIMESTAMPTZ,
+    ADD COLUMN cleanup_paused_until   TIMESTAMPTZ,                     -- ek iş duraklatması (takipten ayrı kolon)
+    ADD COLUMN cleanup_paused_reason  VARCHAR(200);                    -- blocked | follow_blocked
+
+ALTER TABLE action_log
+    ALTER COLUMN ig_user_id DROP NOT NULL,       -- unsave / cleanup_setting / collection_protection satırlarında null olabilir
+    ADD COLUMN target_ref   VARCHAR(64),         -- gönderi kimliği ya da koleksiyon kimliği
+    ADD COLUMN target_label VARCHAR(200);        -- koleksiyon korumasında yalnız 'protected' | 'unprotected'
+```
+`action_log.action_type` (varchar(30)) yeni değerler alır: `unsave`, `cleanup_setting`, `collection_protection`. `downgrade` yeni tabloları ve kolonları düşürür; `action_log.ig_user_id` nullable kalır (ADR-0001 b), çünkü geri NOT NULL yapmak o satırları silmeyi gerektirir.
+
+### Yeni tablolar
+```sql
+CREATE TABLE cleanup_scans (
+    id                      BIGSERIAL PRIMARY KEY,
+    session_id              UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    kind                    VARCHAR(5)  NOT NULL DEFAULT 'saved',            -- CHECK = 'saved'
+    status                  VARCHAR(10) NOT NULL,                            -- running|ok|partial|failed|blocked
+    pages                   INTEGER NOT NULL DEFAULT 0,                      -- CHECK >= 0
+    items                   INTEGER NOT NULL DEFAULT 0,                      -- CHECK >= 0
+    duplicates              INTEGER NOT NULL DEFAULT 0,                      -- CHECK >= 0
+    started_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_page_at            TIMESTAMPTZ,
+    finished_at             TIMESTAMPTZ,
+    note_code               VARCHAR(30),
+    collections_mode        VARCHAR(14) NOT NULL DEFAULT 'all_protected',    -- per_collection (W) | all_protected (F)
+    collections_received_at TIMESTAMPTZ                                      -- koleksiyon listesi bu tarama için alındı (tek hak)
+);
+CREATE INDEX ix_cleanup_scans_session_id ON cleanup_scans(session_id);
+
+CREATE TABLE saved_collections (
+    id                 BIGSERIAL PRIMARY KEY,
+    session_id         UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    collection_id      VARCHAR(25)  NOT NULL,                                -- CHECK ~ '^\d{1,25}$'
+    name               VARCHAR(100) NOT NULL,                                -- CHECK char_length 1..100; log'a yazılmaz
+    protected          BOOLEAN NOT NULL DEFAULT TRUE,                        -- yeni koleksiyon korumalı başlar
+    first_seen_scan_id BIGINT REFERENCES cleanup_scans(id) ON DELETE SET NULL,
+    last_seen_scan_id  BIGINT REFERENCES cleanup_scans(id) ON DELETE SET NULL,
+    listed_scan_id     BIGINT REFERENCES cleanup_scans(id) ON DELETE SET NULL, -- son koleksiyon çağrısının taraması
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_saved_collections_session_collection UNIQUE (session_id, collection_id)
+);
+
+CREATE TABLE saved_targets (
+    id                     BIGSERIAL PRIMARY KEY,
+    session_id             UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    scan_id                BIGINT NOT NULL REFERENCES cleanup_scans(id) ON DELETE CASCADE,
+    position               INTEGER NOT NULL,                                 -- CHECK >= 0
+    media_id               VARCHAR(25) NOT NULL,                             -- CHECK ~ '^\d{1,25}$'
+    shortcode              VARCHAR(40) NOT NULL,                             -- CHECK ~ '^[\w-]{5,40}$'
+    owner_username         VARCHAR(30),                                      -- CHECK null ya da ~ '^[a-z0-9._]{1,30}$'
+    media_type             VARCHAR(10),                                      -- CHECK null ya da image|video|carousel
+    is_ad                  BOOLEAN NOT NULL DEFAULT FALSE,
+    thumbnail_url          TEXT,
+    collection_ids         JSONB,                                            -- null = bilgi yok
+    collections_unreadable BOOLEAN NOT NULL DEFAULT FALSE,
+    CONSTRAINT uq_saved_targets_scan_media UNIQUE (scan_id, media_id)
+);
+CREATE INDEX ix_saved_targets_scan_owner ON saved_targets(scan_id, owner_username);
+
+CREATE TABLE cleanup_batches (
+    id                   BIGSERIAL PRIMARY KEY,
+    session_id           UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    kind                 VARCHAR(5)  NOT NULL DEFAULT 'saved',               -- CHECK = 'saved'
+    scan_id              BIGINT REFERENCES cleanup_scans(id) ON DELETE SET NULL,
+    status               VARCHAR(10) NOT NULL,                               -- draft|confirmed|running|stopped|done|cancelled|expired
+    selection            JSONB,
+    plan_refs            JSONB,                                              -- önizlemedeki gönderi kimlikleri (taslakta)
+    item_count           INTEGER NOT NULL DEFAULT 0,                         -- CHECK 0..500
+    max_items_at_preview INTEGER NOT NULL,
+    run_seq              INTEGER NOT NULL DEFAULT 0,                         -- çalıştırma çitleme belirteci (kimlik doğrulayıcı değil)
+    last_stop_reason     VARCHAR(30),
+    last_allow_at        TIMESTAMPTZ,
+    stale_after_s        INTEGER,
+    stopped_ext_version  VARCHAR(20),                                        -- durma anındaki eklenti sürümü
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at           TIMESTAMPTZ NOT NULL,
+    confirmed_at         TIMESTAMPTZ,
+    started_at           TIMESTAMPTZ,
+    last_seen_at         TIMESTAMPTZ,
+    last_progress_at     TIMESTAMPTZ,
+    finished_at          TIMESTAMPTZ
+);
+-- Profil başına tek taslak ve tek etkin parti (kısmi benzersiz indeksler)
+CREATE UNIQUE INDEX uq_cleanup_batches_active ON cleanup_batches(session_id, kind)
+    WHERE status IN ('confirmed','running','stopped');
+CREATE UNIQUE INDEX uq_cleanup_batches_draft ON cleanup_batches(session_id, kind)
+    WHERE status = 'draft';
+
+CREATE TABLE cleanup_items (
+    id           BIGSERIAL PRIMARY KEY,
+    session_id   UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    batch_id     BIGINT NOT NULL REFERENCES cleanup_batches(id) ON DELETE CASCADE,
+    action       VARCHAR(10) NOT NULL DEFAULT 'unsave',                      -- CHECK = 'unsave'
+    ref          VARCHAR(25) NOT NULL,                                       -- CHECK ~ '^\d{1,25}$' (gönderi pk)
+    label        VARCHAR(200) NOT NULL,
+    status       VARCHAR(10) NOT NULL DEFAULT 'pending',                     -- pending|done|already|not_found|protected|failed|cancelled
+    attempts     INTEGER NOT NULL DEFAULT 0,                                 -- CHECK 0..3
+    note_code    VARCHAR(30),
+    http_status  SMALLINT,
+    fields       JSONB,                                                      -- yalnız üst düzey alan adları
+    prechecked_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    done_at      TIMESTAMPTZ
+);
+CREATE INDEX ix_cleanup_items_session_action_status ON cleanup_items(session_id, action, status);
+CREATE UNIQUE INDEX uq_cleanup_items_pending_ref ON cleanup_items(session_id, action, ref)
+    WHERE status = 'pending';                                                -- aynı gönderi iki bekleyen işte olamaz
+
+CREATE TABLE cleanup_write_grants (
+    id         BIGSERIAL PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    item_id    BIGINT NOT NULL REFERENCES cleanup_items(id) ON DELETE CASCADE,
+    granted_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_cleanup_write_grants_session_granted ON cleanup_write_grants(session_id, granted_at);
+```
+
+### Saklama
+- `cleanup_retention` (günde bir, Celery beat): `expired` ve `cancelled` taslakları 1 gün sonra siler, tür başına son 20 taramanın dışındakini siler (partilerde `scan_id` null olur), 48 saatten eski `cleanup_write_grants` satırlarını siler.
+- Yeni bir tarama `ok`/`partial` bitince eski taramanın `saved_targets` satırları silinir; tarama satırı kalır.
+- `cleanup_stale` (60 sn): süresi geçen `running` partileri `stopped(stale)`, takılan taramaları `failed` yapar.
+- Saklanan kişisel veri: gönderi sahibinin kullanıcı adı, gönderi kimliği ve kısa kodu, küçük resim adresi, kullanıcının kendi koleksiyon adları. Raporlara yalnız sayı gider.
+
+### İlişki diyagramı (kaydedilenler)
+```
+sessions ──< cleanup_scans ──< saved_targets
+sessions ──< saved_collections            (taramalara first/last/listed_scan_id ile gevşek bağlı)
+sessions ──< cleanup_batches >── cleanup_scans   (scan_id, SET NULL)
+cleanup_batches ──< cleanup_items ──< cleanup_write_grants
+sessions ──< action_log                   (target_ref, target_label)
 ```

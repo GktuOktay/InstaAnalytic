@@ -871,6 +871,13 @@ const tr: GuideContent = {
         link: { to: '#uyari', label: 'Ne yapmalı' },
       },
       { term: 'Takip / takipten çıkma', text: 'Varsayılan olarak kapalı. Açılsa bile saatte en fazla 15, günde en fazla 60 işlem; iki işlem arasında en az 60 saniye. Bu işlemlerin birinde Instagram engel gösterirse uygulama kendi takip işlemlerini 6 saat bekletir.' },
+      {
+        term: 'Kaydedilen temizleme (Ek İşler)',
+        text: "Varsayılan olarak kapalı. Ayarlar'daki \"Kaydedilen temizleme\" anahtarı, risk onay kutusunu işaretlemeden açılmaz. Açıkken eklenti, senin Instagram sekmende, onayladığın gönderileri tek tek Kaydedilenler listenden çıkarır; bu, Instagram'a istek gönderen bir iştir. Gönderilerin kendisi silinmez. İşlem geri alınamaz: uygulama çıkarılan gönderiyi listene geri ekleyemez. Önizlemeyi görüp gönderi sayısını yazarak onaylamadan hiçbir şey yapılmaz; her duruşta devam için Başlat'a sen basarsın.",
+        link: { to: '/extras', label: 'Ek İşler' },
+      },
+      { term: 'Temizleme sınırları', text: 'Güvenli profilde saatte 40, günde 200 çıkarma; her çıkarma arasında 20-45 saniye bekler. Dengeli 60/300, Agresif 80/400. Bir partide en fazla 500 gönderi olur. Takip ve temizleme birlikte saatte en fazla 80, günde 400 işlem yapar; takip kuyruğu bu toplama uymadığı için en kötü durumda saatte 95, günde 460 işlem olabilir. İlk 72 saatte günlük sınırın üçte biri, 168 saate kadar üçte ikisi uygulanır. Saat 1 ile 8 arasında (İstanbul saati) işlem yapılmaz. Değerler backend/config/limits.toml dosyasından gelir ve kodda sabit üst sınırları vardır; Ayarlar sayfasında salt okunur görünür. Bu değerler tahmindir.', link: { to: '/settings', label: 'Ayarlar' } },
+      { term: 'Koleksiyon koruması', text: "Her koleksiyon korumalı başlar; korunan koleksiyondaki gönderilere dokunulmaz. Koleksiyon listesi alınamazsa ya da bir gönderinin koleksiyonu okunamazsa gönderi korunur. Bir koleksiyonun korumasını kaldırmak için paylaşılmadığını onaylaman gerekir: uygulama bir koleksiyonun paylaşılıp paylaşılmadığını bilemez. Kaldırdığın koruma, sen geri alana kadar kaldırılmış kalır. Instagram'da kaydedilenlerden çıkan bir gönderi, korumasız koleksiyonundan da çıkabilir." },
       { term: 'Verilerin', text: 'Yalnızca kendi bilgisayarında durur. Ayarlar sayfasındaki "Tüm verimi sil" ile hepsini silebilirsin.', link: { to: '/settings', label: 'Ayarlar' } },
     ],
     riskTitle: 'Risk profili neyi değiştirir',
@@ -883,6 +890,7 @@ const tr: GuideContent = {
       'İşler Instagram sayfasının düzenine dayanır. Instagram düğmelerin yerini değiştirirse bir iş beğenme sayısını ya da "daha fazla yorum"u bulamayabilir. O zaman gönderiyi kendin açabilirsin; eklenti gezerken de kaydeder.',
       "İş görünen bir Instagram sekmesinde, bir insan gibi çalışır. Yine de Instagram uyarı gösterebilir. Uygulama seni uyarır ama durdurmaz.",
       'Uygulamayı internete açma. Yalnızca kendi bilgisayarında çalıştır.',
+      "Kaydedilen temizleme Instagram'ın kullanım koşullarında yasak olan otomatik bir işlemdir. Instagram hesabına geçici kısıtlama ya da daha ağır bir yaptırım uygulayabilir; hiçbir ayar bunun olmayacağını garanti etmez. Çıkarılan gönderiler geri alınamaz. Kullanılan Instagram istekleri belgelenmemiştir ve haber verilmeden değişebilir; o zaman iş durur ve eklentinin yeni sürümü gerekir. Bu metin hukuki görüş değildir.",
     ],
   },
 
@@ -930,6 +938,41 @@ const tr: GuideContent = {
       },
       { term: 'Hayalet görünen biri aslında aktif.', text: 'Hesap kısa süre kapalı kalmış olabilir. Takipten çıkmadan önce profiline kendin bak.' },
       { term: 'Bütün verimi silmek istiyorum.', text: 'Ayarlar sayfasında profili seç ve "Tüm verimi sil"e bas. Geri alınamaz.' },
+      {
+        term: 'Ek İşler sayfasında "Bu ek iş kapalı" yazıyor.',
+        text: 'Kaydedilen temizleme varsayılan olarak kapalıdır. Ayarlar sayfasında "Kaydedilen temizleme" anahtarını aç; açma penceresindeki metni oku ve onay kutusunu işaretle.',
+        link: { to: '/settings', label: 'Ayarlar' },
+      },
+      {
+        term: 'Ek İşler sayfasında "Bu iş için eklenti 2.9.0 veya üstü gerekli" yazıyor.',
+        text: 'Kaydedilenleri tarama ve temizleme eklenti 2.9.0 ya da üstünü ister. Eklentiyi güncelle, Instagram sekmesini ve uygulama sayfasını yenile.',
+        link: { to: '#guncelle', label: 'Güncelleme' },
+      },
+      {
+        term: 'Başlat düğmesi soluk; "Başlat şu saatten sonra etkin" yazıyor.',
+        text: 'Saatlik ya da günlük sınır dolmuş, saat 1 ile 8 arasındasın (İstanbul saati; bu aralıkta işlem yapılmaz) ya da işlemler duraklatılmış. Yazan saatte Başlat etkinleşir; partiyi sen yeniden başlatırsın, kendiliğinden devam etmez. "Eklentide başka bir iş çalışıyor" yazıyorsa o iş bitince Başlat\'a bas.',
+      },
+      {
+        term: 'Bir gönderi seçilemiyor; "Korunan koleksiyonda" yazıyor.',
+        text: 'Gönderi bir koleksiyonda ve koleksiyon korunuyor, ya da koleksiyon bilgisi okunamadı. Korunan gönderilere dokunulmaz. İstersen Kaydedilenler sekmesindeki "Korunan koleksiyonlar" panelinden o koleksiyonun korumasını kaldırabilirsin; bunun için koleksiyonun paylaşılmadığını onaylaman gerekir.',
+      },
+      {
+        term: '"Instagram çok sık istek yapıldığını söyledi" yazıyor.',
+        text: "Instagram bir isteği çok sık bularak reddetti (429). Parti durdu; hesap kendiliğinden 24 saat duraklatılmaz. Bir süre bekleyip Başlat'a bas. Hemen yeniden başlatırsan Instagram'a yeniden istek gider ve art arda reddedilme hesabın kısıtlanma riskini artırabilir.",
+      },
+      {
+        term: '"Instagram işlemi engelledi; tüm işlemler 24 saat duraklatıldı" yazıyor.',
+        text: 'Instagram engel sinyali verdi. Uygulama tüm işlemleri (takip dahil) 24 saat duraklatır ve parti durur. Yazan saatten önce Başlat etkinleşmez. Instagram\'ı telefonundan normal kullan, istenirse doğrulamayı kendin yap.',
+      },
+      {
+        term: '"Instagram kaydedilenlerden çıkarma isteğini tanımadı" yazıyor.',
+        text: 'Instagram kullandığımız isteğin biçimini değiştirmiş olabilir. İş ilk gönderide durdu ve o gönderi değişmedi. Eklentinin yeni sürümü gelene kadar bu parti başlatılamaz; sürüm gelince eklentiyi güncelle, Instagram sekmesini yenile ve Başlat\'a bas.',
+        link: { to: '#guncelle', label: 'Güncelleme' },
+      },
+      {
+        term: 'Çıkarılan gönderiyi geri almak istiyorum.',
+        text: 'Uygulama bunu yapamaz. Gönderiyi Instagram\'da yeniden kaydetmen gerekir. Önizleme ve onay adımı bu yüzden vardır.',
+      },
     ],
   },
 
@@ -1550,6 +1593,13 @@ const en: GuideContent = {
         link: { to: '#uyari', label: 'What to do' },
       },
       { term: 'Follow / unfollow', text: 'Off by default. Even when on: at most 15 an hour, 60 a day, at least 60 seconds apart. If Instagram blocks one of these actions, the app holds its own follow actions for 6 hours.' },
+      {
+        term: 'Saved cleanup (Extra jobs)',
+        text: 'Off by default. The "Saved posts cleanup" switch in Settings does not turn on until you tick the risk box. While it is on, the extension removes the posts you approve from your Saved list one by one, in your own Instagram tab; this job does send requests to Instagram. The posts themselves are not deleted. It cannot be undone: the app cannot add a removed post back to your list. Nothing happens until you see the preview and confirm by typing the number; you press Start again after every stop.',
+        link: { to: '/extras', label: 'Extra jobs' },
+      },
+      { term: 'Cleanup limits', text: 'On the Safe profile: 40 removals an hour, 200 a day, waiting 20-45 seconds between removals. Balanced is 60/300, Aggressive 80/400. One batch holds at most 500 posts. Follow and cleanup together are held to 80 an hour and 400 a day; the follow queue does not obey that total, so the worst case is 95 an hour and 460 a day. For the first 72 hours a third of the daily limit applies, then two thirds until 168 hours. Nothing is done between 1 a.m. and 8 a.m. (Istanbul time). The values come from backend/config/limits.toml, have fixed upper limits in the code, and show read-only on the Settings page. They are estimates.', link: { to: '/settings', label: 'Settings' } },
+      { term: 'Collection protection', text: 'Every collection starts as protected; posts in a protected collection are not touched. If the collection list cannot be read, or a post\'s collections cannot be read, the post is protected. To unprotect a collection you must confirm it is not shared: the app cannot tell whether a collection is shared. Protection you turn off stays off until you turn it back on. On Instagram, a post removed from Saved may also leave its unprotected collections.' },
       { term: 'Your data', text: 'Stays on your computer. "Delete all my data" on the Settings page removes everything.', link: { to: '/settings', label: 'Settings' } },
     ],
     riskTitle: 'What the risk profile changes',
@@ -1562,6 +1612,7 @@ const en: GuideContent = {
       'The jobs depend on the layout of Instagram\'s page. If Instagram moves its buttons, a job may not find the likes count or "load more comments". Then you can open the post yourself; the extension also saves while you browse.',
       'The job runs in a visible Instagram tab, like a person. Instagram may still show warnings. The app warns you but does not stop you.',
       'Do not expose the app to the internet. Run it only on your own computer.',
+      "Saved cleanup is an automated action that Instagram's terms prohibit. Instagram may temporarily restrict your account or take stronger action; no setting guarantees it will not. Removed posts cannot be restored. The Instagram requests it uses are undocumented and can change without notice; then the job stops and a new extension version is needed. This text is not legal advice.",
     ],
   },
 
@@ -1609,6 +1660,41 @@ const en: GuideContent = {
       },
       { term: 'Someone marked as a ghost is actually active.', text: 'The account may have been off for a short time. Check their profile yourself before unfollowing.' },
       { term: 'I want to delete all my data.', text: 'On the Settings page, pick the profile and press "Delete all my data". This cannot be undone.' },
+      {
+        term: 'The Extra jobs page says "This extra job is off".',
+        text: 'Saved cleanup is off by default. Turn on the "Saved posts cleanup" switch on the Settings page; read the text in the window that opens and tick the box.',
+        link: { to: '/settings', label: 'Settings' },
+      },
+      {
+        term: 'The Extra jobs page says the extension must be 2.9.0 or later.',
+        text: 'Scanning and cleaning saved posts needs extension 2.9.0 or later. Update the extension, then reload the Instagram tab and the app page.',
+        link: { to: '#guncelle', label: 'Update' },
+      },
+      {
+        term: 'Start is greyed out and says "Start becomes available after".',
+        text: 'The hourly or daily limit is used up, it is between 1 a.m. and 8 a.m. (Istanbul time; nothing is done then), or actions are paused. Start becomes available at the time shown; you restart the batch yourself, it does not continue on its own. If it says "Another job is running in the extension", press Start when that job ends.',
+      },
+      {
+        term: 'A post cannot be selected and says "In a protected collection".',
+        text: 'The post is in a collection and that collection is protected, or its collections could not be read. Protected posts are not touched. If you want, unprotect that collection in the "Protected collections" panel on the Saved posts tab; you must confirm it is not shared.',
+      },
+      {
+        term: 'It says "Instagram said there were too many requests".',
+        text: 'Instagram rejected a request as too frequent (429). The batch stopped; your account is not paused for 24 hours automatically. Wait a while, then press Start. If you restart right away, another request goes to Instagram, and repeated rejections can raise the risk of your account being restricted.',
+      },
+      {
+        term: 'It says "Instagram blocked the action; all actions are paused for 24 hours".',
+        text: 'Instagram showed a block signal. The app pauses all actions (follow included) for 24 hours and the batch stops. Start does not become available before the time shown. Use Instagram normally on your phone and complete any verification yourself.',
+      },
+      {
+        term: 'It says "Instagram did not recognise the unsave request".',
+        text: 'Instagram may have changed the shape of the request we use. The job stopped at the first post and that post was not changed. This batch cannot be started until a new extension version arrives; when it does, update the extension, reload the Instagram tab and press Start.',
+        link: { to: '#guncelle', label: 'Update' },
+      },
+      {
+        term: 'I want to restore a removed post.',
+        text: 'The app cannot do that. You have to save the post again on Instagram. That is why there is a preview and a confirmation step.',
+      },
     ],
   },
 
