@@ -27,6 +27,7 @@ API_DELAY = (3, 5)        # sn: eklenti doğrudan Instagram web isteği yaparken
 MANUAL_DELAY = (15, 35)   # sn: kullanıcının kendi tıkladığı işlemler arasında (profil açıp bakmak + tıklamak kadar)
 MAX_ATTEMPTS = 3          # başarısız bir işlem toplam bu kadar denenir (hesap bulunamadı / engel hariç)
 BLOCK_PAUSE = timedelta(hours=24)
+STALE_AFTER = timedelta(hours=24)   # bu süreden eski bekleyen işlem düşer: eski seçimler yeni seçimlerin önüne geçmesin
 
 
 def _now() -> datetime:
@@ -40,6 +41,18 @@ def limits(session: Session, now: datetime) -> tuple[int, int, int, int]:
 async def _done_since(db: AsyncSession, session: Session, since: datetime) -> int:
     return (await db.execute(select(func.count(BridgeAction.id)).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "done", BridgeAction.done_at >= since))).scalar() or 0
+
+
+async def expire_stale(db: AsyncSession, session: Session, now: datetime) -> int:
+    """24 saatten eski bekleyen işlemleri 'skipped' yapar. Eskiden seçilmiş kişiler günler sonra sessizce işlenmez
+    ve parti sırasında yeni seçilenlerin önüne geçmez."""
+    res = await db.execute(update(BridgeAction).where(
+        BridgeAction.session_id == session.id, BridgeAction.status == "pending",
+        BridgeAction.created_at < now - STALE_AFTER).values(
+        status="skipped", done_at=now, note="Süresi doldu: 24 saatten eski bekleyen işlem."))
+    if res.rowcount:
+        await db.commit()
+    return res.rowcount or 0
 
 
 def gate(session: Session, now: datetime) -> str | None:
@@ -66,6 +79,7 @@ async def enqueue(db: AsyncSession, session: Session, action: str, user_ids: lis
     if action not in ACTIONS:
         raise ValueError("action")
     ids = list(dict.fromkeys(user_ids))[:MAX_ENQUEUE]
+    await expire_stale(db, session, _now())
     users = {u.id: u for u in (await db.execute(select(IgUser).where(IgUser.id.in_(ids)))).scalars()}
     pending = {(r.ig_user_id, r.action) for r in (await db.execute(select(BridgeAction).where(
         BridgeAction.session_id == session.id, BridgeAction.status == "pending"))).scalars()}
@@ -119,6 +133,7 @@ async def next_batch(db: AsyncSession, session: Session, limit: int, now: dateti
     """Eklentiye verilecek sıradaki işlemler. Bütçe, sessiz saat ve duraklatma burada uygulanır."""
     now = now or _now()
     hourly, daily, dmin, dmax = limits(session, now)
+    await expire_stale(db, session, now)
     out = {"items": [], "delay": [dmin, dmax], "manual_delay": list(MANUAL_DELAY), "api_delay": list(API_DELAY), "reason": None}
     why = gate(session, now)
     if why:

@@ -3,8 +3,9 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
+from app.models.bridge_action import BridgeAction
 from app.models.ig_user import IgUser
 from app.models.interaction import Interaction
 from app.models.post import Post
@@ -482,6 +483,24 @@ async def test_actions_next_respects_gates_budget_and_batch_size(db, make_sessio
         await _pool_user(db, s, 710 + i, f"u{i}")
     await bridge_actions.enqueue(db, s, "unfollow", list(range(712, 724)))
     assert len((await bridge_actions.next_batch(db, s, 50, DAY))["items"]) <= bridge_actions.MAX_BATCH
+
+
+@pytest.mark.asyncio
+async def test_actions_next_expires_stale_pending_so_new_picks_run(db, make_session):
+    """Dünkü bug: 6 gün önce seçilmiş bekleyenler partiyi doldurup yeni seçilenleri geride bırakıyordu."""
+    s = await make_session(source="zip", allow_actions=True)
+    for i in range(731, 743):
+        await _pool_user(db, s, i, f"old{i}")
+    await _pool_user(db, s, 750, "fresh")
+    await bridge_actions.enqueue(db, s, "unfollow", list(range(731, 743)) + [750])
+    await db.execute(update(BridgeAction).where(BridgeAction.session_id == s.id, BridgeAction.username != "fresh").values(created_at=DAY - timedelta(days=6)))
+    await db.execute(update(BridgeAction).where(BridgeAction.session_id == s.id, BridgeAction.username == "fresh").values(created_at=DAY - timedelta(hours=1)))
+    await db.commit()
+    b = await bridge_actions.next_batch(db, s, 10, DAY)
+    assert [i["username"] for i in b["items"]] == ["fresh"]
+    stale = (await db.execute(select(BridgeAction).where(BridgeAction.username == "old731"))).scalar_one()
+    await db.refresh(stale)
+    assert stale.status == "skipped" and "Süresi doldu" in stale.note
 
 
 @pytest.mark.asyncio
