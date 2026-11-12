@@ -571,6 +571,8 @@ const tr = {
       offNote:      'İşlemler Ayarlar\'dan kapatılmış. İstekler kuyruğa eklenir ve silinmez; işlemleri açınca eklenti sırayla yapar.',
       pausedNote:   'İşlemler güvenlik için duraklatıldı. Kuyruktaki istekler silinmez; duraklama bitince devam edilir.',
       quiet:        'Sessiz saatler (01:00-08:00): işlem yapılmaz, sabah devam edilir.',
+      waitingAuto:  (n: number) => `${n} işlem sırada: eklenti birkaç saniye içinde kendiliğinden başlar. İşlemler 10'luk partiler hâlinde, aralarda bekleyerek yapılır; ilerleme burada görünür.`,
+      waitingManual: 'İşlemler sırada. Başlatmak için Çalıştır düğmesine bas.',
       needExt:      'İşlemleri yapmak için Chrome eklentisi gerekli.',
       removeZip:    'ZIP profilinde takipçiyi çıkarma yapılamaz; Instagram\'da elle yapın.',
     },

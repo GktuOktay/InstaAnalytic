@@ -74,6 +74,14 @@ describe('UsersPage — ZIP profile: the extension does follow / unfollow from a
     expect(await screen.findByText(/Sessiz saatler \(01:00-08:00\)/)).toBeInTheDocument()
   })
 
+  it('queued actions say the extension starts by itself (does not look stuck)', async () => {
+    sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
+    bridge.actions.mockResolvedValue(queue({ pending_count: 12, pending: [{ id: 1, ig_user_id: 5, username: 'ali', action: 'unfollow', manual: true }] }))
+    renderApp(<UsersPage />)
+    window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.9.0' }, origin: window.location.origin, source: window }))
+    expect(await screen.findByTestId('queue-waiting')).toHaveTextContent(/12 işlem sırada: eklenti birkaç saniye içinde kendiliğinden başlar/)
+  })
+
   it('actions turned off in Settings: requests are still queued (kept) and the panel links to Settings — no warning button', async () => {
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: false })])
     bridge.actions.mockResolvedValue(queue({ enabled: false, blocked: 'off', pending_count: 1 }))

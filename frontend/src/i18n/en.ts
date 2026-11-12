@@ -571,6 +571,8 @@ const en: Translations = {
       offNote:      'Actions are turned off in Settings. Requests are queued and kept; once you turn actions on, the extension does them in order.',
       pausedNote:   'Actions are paused for safety. Queued requests are kept and continue when the pause ends.',
       quiet:        'Quiet hours (01:00-08:00): no actions run, they continue in the morning.',
+      waitingAuto:  (n: number) => `${n} actions queued: the extension starts by itself in a few seconds. Actions run in batches of 10 with pauses between them; progress shows here.`,
+      waitingManual: 'Actions are queued. Press Run to start them.',
       needExt:      'The Chrome extension is needed to run the actions.',
       removeZip:    'Removing a follower is not available for ZIP profiles; do it by hand on Instagram.',
     },

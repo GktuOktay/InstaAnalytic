@@ -483,6 +483,11 @@ export default function UsersPage() {
           )}
           {queue.blocked === 'paused' && <p className="text-xs text-amber-300 mt-1">{T.users.queue.pausedNote}</p>}
           {queue.quiet_hours && <p className="text-xs text-amber-300 mt-1">{T.users.queue.quiet}</p>}
+          {queue.pending_count > 0 && !extRunning && !queue.blocked && !queue.quiet_hours && ext.available && !runError && (
+            <p data-testid="queue-waiting" className="text-xs text-purple-300 mt-1">
+              {queue.pending.some(p => p.manual) ? T.users.queue.waitingAuto(queue.pending_count) : T.users.queue.waitingManual}
+            </p>
+          )}
           {runError && queue.pending_count > 0 && !extRunning && (
             <p role="alert" className="text-xs text-red-300 bg-red-950/30 border border-red-900 rounded-lg px-2 py-1 mt-2">
               {T.users.queue.notStarted}: {runError}
