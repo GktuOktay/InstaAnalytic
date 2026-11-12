@@ -31,6 +31,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    // Vite 7 deny: test imports backend fixture (?raw); allow only that folder.
+    fs: { allow: ['.', '../backend/tests/fixtures'] },
     proxy: {
       '/api': {
         target: 'http://backend:8000',

@@ -227,7 +227,7 @@ describe('ExtrasPage batch panel', () => {
     // ia-run'a hiç yanıt verme
     const spy = window.postMessage as unknown as ReturnType<typeof vi.fn>
     const orig = spy.getMockImplementation()!
-    spy.mockImplementation(((d: any) => { if (d?.type === 'ia-run') { posted.push(d); return } return orig(d, '*') }) as any)
+    spy.mockImplementation(((d: any) => { if (d?.type === 'ia-run') { posted.push(d); return } return (orig as any)(d, '*') }) as any)
     api.status.mockResolvedValue(status({}, batch({ id: 7 })))
     api.start.mockResolvedValue({ batch_id: 7, status: 'running', run_seq: 5, started_at: null })
     api.stop.mockResolvedValue({ batch_id: 7, status: 'stopped', last_stop_reason: 'start_failed', applied: true })

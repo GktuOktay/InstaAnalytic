@@ -300,7 +300,7 @@ describe('UsersPage — clicking a person starts the extension at human pace', (
   function extReady() {
     window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.6.3' }, origin: window.location.origin, source: window }))
   }
-  const runCalls = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run')
+  const runCalls = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.filter((c: any[]) => (c[0] as any)?.type === 'ia-run')
 
   beforeEach(() => {
     sess.list.mockResolvedValue([makeSession({ source: 'zip', allow_actions: true })])
@@ -395,7 +395,7 @@ describe('UsersPage — several quick clicks in a row', () => {
     await userEvent.click(btns[1])
     await userEvent.click(btns[2])
     await waitFor(() => expect(bridge.enqueueActions).toHaveBeenCalledTimes(3))                  // üçü de kuyruğa girdi
-    expect(post.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run').length).toBe(1)          // tek başlatma isteği
+    expect(post.mock.calls.filter((c: any[]) => (c[0] as any)?.type === 'ia-run').length).toBe(1)          // tek başlatma isteği
     post.mockRestore()
   })
 })
@@ -406,7 +406,7 @@ describe('UsersPage — a clicked person that is left waiting is started automat
   const announce = () => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-ext', version: '2.8.3' }, origin: window.location.origin, source: window }))
   const pendingManual = (manual: boolean) => queue({ pending_count: 1, pending: [{ id: 1, ig_user_id: 5, username: 'ali', action: 'unfollow', manual }] })
   let post: ReturnType<typeof vi.spyOn>
-  const runs = () => post.mock.calls.filter(c => (c[0] as any)?.type === 'ia-run').length
+  const runs = () => post.mock.calls.filter((c: any[]) => (c[0] as any)?.type === 'ia-run').length
   const answer = (reply: unknown) => vi.spyOn(window, 'postMessage').mockImplementation(((d: any) => {
     if (d?.type === 'ia-run') setTimeout(() => window.dispatchEvent(new MessageEvent('message', { data: { __ia: true, type: 'ia-reply', id: d.id, reply }, origin: window.location.origin, source: window })), 5)
   }) as any)
