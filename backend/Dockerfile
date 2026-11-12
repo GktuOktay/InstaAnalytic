@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements.lock ./
+# Hash'li kilit (SPEC-003): sürüm ve içerik doğrulanır. Güncelleme: requirements.txt değişince scripts/lock-deps.sh
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Playwright browser (Plan B için)
 RUN apt-get update && apt-get install -y \
