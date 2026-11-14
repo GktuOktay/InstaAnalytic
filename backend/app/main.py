@@ -5,7 +5,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.core.auth import require_api_token
+from app.core.auth import EarlyTokenGate, require_api_token
 from app.routers import health, sessions, analysis, tasks, actions, posts, users, graph, proxy, report, imports, privacy, insights, ghosts, bridge, notifications, cleanup
 from app.services.cleanup_scan import CleanupError
 
@@ -40,6 +40,7 @@ async def _validation_error(request: Request, exc: RequestValidationError):
     return JSONResponse({"detail": {"code": "invalid", "fields": (names or ["body"])[:10]}}, status_code=422)
 
 
+app.add_middleware(EarlyTokenGate)   # önce eklenen içte kalır; CORS dışta (401'e de CORS başlığı, OPTIONS ön uçuş)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3002", "http://127.0.0.1:3002"],

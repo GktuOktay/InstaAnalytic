@@ -75,11 +75,11 @@ def _many_files(n):
     return [("files", (f"f{i}.json", b"[]", "application/json")) for i in range(n)]
 
 
-async def test_pb5d_parsing_happens_before_auth_today(raw):
-    """Kayıt: token'sız, yabancı Origin'li 1001 parça -> ayrıştırıcı sınırı yetkiden önce çalışır."""
+async def test_pb5d_auth_happens_before_parsing(raw):
+    """SPEC-003: token'sız istek gövde ayrıştırılmadan 401 alır (1001 parça da, 1 parça da)."""
     url = f"/api/sessions/{SID}/import/zip"
     evil = {"Origin": "http://evil.example"}
     many = await raw.post(url, files=_many_files(1001), headers=evil)
-    assert many.status_code == TOO_MANY_FILES_STATUS
+    assert many.status_code == 401
     one = await raw.post(url, files=_many_files(1), headers=evil)
     assert one.status_code == 401
