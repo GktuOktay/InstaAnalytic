@@ -24,7 +24,7 @@ Repodaki bir doküman değişince `python3 ~/Desktop/Projects/proje-masasi/bin/b
 
 ## Temel ilkeler (bozma)
 
-- Uygulama Instagram'a kendisi istek göndermez; işler kuyruğa yazılır, eklenti kullanıcının kendi Instagram sekmesinde insan hızında yapar (`services/bridge_actions.py`, `extension/content.js`).
+- Temizleme (SPEC-001) ve eklenti kuyruğu işleri Instagram'a sunucudan gitmez: işler `bridge_actions` kuyruğuna yazılır, eklenti kullanıcının kendi Instagram sekmesinde insan hızında yapar (`services/bridge_actions.py`, `extension/content.js`). Eski sunucu tarafı yollar (Plan B: Playwright ile senkron, hayalet kontrolü, Toplu Çıkar, oturum doğrulama) canlı özellik olarak kalır (IA K-28); yeni yazma özellikleri eklenti kuyruğuna yazılır.
 - Hız sınırları risk profilinden gelir (`services/risk_profiles.py`); engel → 24 sa duraklatma; her otomatik işlem `action_log`'a yazılır.
 - Oturum Fernet ile şifreli; portlar yalnız 127.0.0.1; tüm `/api` uçları `X-API-Token` ister (fail-closed).
 - DM içeriği saklanmaz ve gösterilmez (ZIP içe aktarma mesajları bilinçli olarak yok sayar).
